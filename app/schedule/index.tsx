@@ -4,29 +4,18 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, Clock, Briefcase, ChevronRight } from 'lucide-react-native';
+import { MapPin, Clock, Briefcase } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { apiRequest } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { ScheduleShift } from '@/types';
 
-const DAY_LABELS: Record<string, string> = {
-  '0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed',
-  '4': 'Thu', '5': 'Fri', '6': 'Sat',
-};
-
 const DAY_TO_INDEX: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
 
 function nextDateForDay(day: string) {
@@ -65,21 +54,37 @@ function isToday(dateStr: string) {
 }
 
 export default function ScheduleScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
   const { data: shifts, isLoading } = useQuery<ScheduleShift[]>({
-    queryKey: ['schedule'],
+    queryKey: ['schedule', user?.fullName],
     queryFn: async () => {
       try {
         const res = await apiRequest<{ items: any[] }>('/schedules');
         const items = res.data?.items ?? [];
 
-        const mapped = items
-          .map((e) => {
-            if (!e) return null;
-            if (!e.startTime || !e.endTime || !e.location) return null;
+        // Filter schedules for current user only
+        const currentUserName = (user?.fullName || '').toLowerCase().trim();
+        const currentUserUsername = (user?.username || '').toLowerCase().trim();
+        
+        const userSchedules = items.filter((e) => {
+          const assignee = String(e.assignee || e.employee || '').toLowerCase().trim();
+          if (!assignee) return false;
+          
+          // Match if assignee contains user's name or username, or vice versa
+          return assignee === currentUserName || 
+                 assignee === currentUserUsername ||
+                 assignee.includes(currentUserName) || 
+                 currentUserName.includes(assignee) ||
+                 assignee.includes(currentUserUsername) ||
+                 currentUserUsername.includes(assignee);
+        });
 
+        const mapped = userSchedules
+          .map((e) => {
+            if (!e || !e.startTime || !e.endTime || !e.location) return null;
+            
             const date = typeof e.day === 'string' ? nextDateForDay(e.day) : null;
             if (!date) return null;
 
@@ -100,9 +105,10 @@ export default function ScheduleScreen() {
         return [];
       }
     },
+    enabled: !!user?.fullName,
   });
 
-  const renderShift = ({ item, index }: { item: ScheduleShift; index: number }) => {
+  const renderShift = ({ item }: { item: ScheduleShift }) => {
     const today = isToday(item.date);
     return (
       <View style={[styles.shiftCard, today && styles.shiftCardToday]}>
@@ -164,6 +170,13 @@ export default function ScheduleScreen() {
     </View>
   );
 
+  const renderLoading = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+      <Text style={styles.loadingText}>Loading your schedule...</Text>
+    </View>
+  );
+
   const totalHoursPerWeek = (shifts ?? []).reduce((sum, shift) => {
     const [startH, startM] = shift.startTime.split(':').map(Number);
     const [endH, endM] = shift.endTime.split(':').map(Number);
@@ -171,38 +184,31 @@ export default function ScheduleScreen() {
   }, 0);
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft color={Colors.surface} size={22} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Schedule</Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Summary Bar */}
+      <View style={styles.summaryBar}>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>{shifts?.length ?? 0}</Text>
+          <Text style={styles.summaryLabel}>Upcoming</Text>
         </View>
-
-        <View style={styles.summaryBar}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{shifts?.length ?? 0}</Text>
-            <Text style={styles.summaryLabel}>Upcoming</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{totalHoursPerWeek.toFixed(0)}h</Text>
-            <Text style={styles.summaryLabel}>Total Hours</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>5</Text>
-            <Text style={styles.summaryLabel}>Days / Week</Text>
-          </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>{totalHoursPerWeek.toFixed(0)}h</Text>
+          <Text style={styles.summaryLabel}>Total Hours</Text>
         </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>
+            {shifts ? new Set(shifts.map(s => s.date)).size : 0}
+          </Text>
+          <Text style={styles.summaryLabel}>Days</Text>
+        </View>
+      </View>
 
-        <View style={styles.content}>
+      <View style={styles.content}>
+        {isLoading ? (
+          renderLoading()
+        ) : (
           <FlatList
             data={shifts}
             renderItem={renderShift}
@@ -211,42 +217,32 @@ export default function ScheduleScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={renderEmpty}
           />
-        </View>
+        )}
       </View>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
+    backgroundColor: Colors.background,
   },
   summaryBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 16,
+    backgroundColor: Colors.primary,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   summaryItem: {
     flex: 1,
@@ -259,20 +255,17 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.7)',
     fontWeight: '500' as const,
     marginTop: 2,
   },
   summaryDivider: {
     width: 1,
     height: 30,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   content: {
     flex: 1,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   listContent: {
     paddingTop: 16,
@@ -336,7 +329,7 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
   },
   dateFullStrToday: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.7)',
   },
   shiftTimeBadge: {
     flexDirection: 'row',
@@ -348,7 +341,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   shiftTimeBadgeToday: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   shiftTimeBadgeText: {
     fontSize: 13,
@@ -384,7 +377,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   taskPillToday: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   taskPillText: {
     fontSize: 12,
@@ -392,7 +385,7 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
   },
   taskPillTextToday: {
-    color: 'rgba(255,255,255,0.9)',
+    color: '#FFFFFF',
   },
   emptyContainer: {
     flex: 1,
@@ -409,5 +402,17 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500' as const,
   },
 });

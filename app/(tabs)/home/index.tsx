@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   Animated,
   RefreshControl,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -21,15 +20,12 @@ import {
   Calendar,
   ChevronRight,
   TrendingUp,
-  Menu,
-  Bell,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSidebar } from '@/contexts/SidebarContext';
 import { apiRequest } from '@/services/api';
 import { mockDashboard, mockSchedule } from '@/services/mockData';
-import { DashboardSummary, ScheduleShift } from '@/types';
+import { DashboardSummary, ScheduleShift, Task, TaskStatus } from '@/types';
 
 const DAY_TO_INDEX: Record<string, number> = {
   Sun: 0,
@@ -58,25 +54,74 @@ function nextDateForDay(day: string) {
 }
 
 export default function DashboardScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { openSidebar } = useSidebar();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // const { data: dashboard, isLoading, refetch } = useQuery<DashboardSummary>({
-  //   queryKey: ['dashboard'],
-  //   queryFn: async () => {
-  //     try {
-  //       const res = await fetch('http://localhost:3000/api/dashboard');
-  //       if (res.ok) return res.json();
-  //       throw new Error('API unavailable');
-  //     } catch {
-  //       return mockDashboard;
-  //     }
-  //   },
-  // });
-  const { data: dashboard, isLoading, refetch } = useQuery<DashboardSummary>({
+  // Fetch tasks for the current user to calculate stats
+  const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
+    queryKey: ['tasks', 'dashboard'],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest<{ items: any[] }>('/tasks');
+        const items = res.data?.items ?? [];
+        return items.map((t) => ({
+          id: String(t.id ?? t._id ?? ''),
+          title: String(t.title ?? ''),
+          description: String(t.description ?? ''),
+          status: (String(t.status || 'pending').replace('-', '_') as any) as TaskStatus,
+          priority: (t.priority ?? 'medium') as any,
+          assignedDate: String(t.createdAt ?? ''),
+          dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '',
+          notes: [],
+          images: [],
+          category: String(t.location || 'Task'),
+          assignees: Array.isArray(t.assignees) ? t.assignees : [],
+        })) as Task[];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  // Get user's recent tasks
+  const userTasks = useMemo(() => {
+    if (!tasks || !user) return [];
+    
+    // Match by username or fullName (backend might use either)
+    const userUsername = (user?.username || '').toLowerCase().trim();
+    const userFullName = (user?.fullName || '').toLowerCase().trim();
+    
+    // Filter tasks where current user is in assignees
+    const filtered = tasks.filter((t) => {
+      if (!t.assignees || t.assignees.length === 0) return false;
+      
+      return t.assignees.some((a: string) => {
+        const assignee = a.toLowerCase().trim();
+        // Match exact username or fullName, or partial match
+        return assignee === userUsername || 
+               assignee === userFullName ||
+               assignee.includes(userUsername) ||
+               userFullName.includes(assignee) ||
+               assignee.includes(userFullName);
+      });
+    });
+    
+    // Sort by date (newest first)
+    return filtered.sort((a, b) => new Date(b.assignedDate).getTime() - new Date(a.assignedDate).getTime());
+  }, [tasks, user]);
+
+  // Calculate stats from user tasks
+  const userTaskStats = useMemo(() => {
+    return {
+      total: userTasks.length,
+      pending: userTasks.filter(t => t.status === 'pending').length,
+      inProgress: userTasks.filter(t => t.status === 'in_progress').length,
+      completed: userTasks.filter(t => t.status === 'completed').length,
+    };
+  }, [userTasks]);
+
+  const { data: dashboardSummary, isLoading: summaryLoading, refetch } = useQuery<DashboardSummary>({
     queryKey: ['dashboard'],
     queryFn: async () => {
       try {
@@ -92,10 +137,10 @@ export default function DashboardScreen() {
 
         const d = res.data;
         return {
-          totalTasks: Number(d.activeTasks ?? 0),
-          pendingTasks: Number(d.dueToday ?? 0),
-          inProgressTasks: 0,
-          completedTasks: 0,
+          totalTasks: userTaskStats.total, // Use user's task count
+          pendingTasks: userTaskStats.pending,
+          inProgressTasks: userTaskStats.inProgress,
+          completedTasks: userTaskStats.completed,
           isClockedIn: false,
           todayHours: Number(d.hoursLoggedToday ?? 0),
           weeklyHours: 0,
@@ -104,9 +149,16 @@ export default function DashboardScreen() {
           notifications: [],
         } as DashboardSummary;
       } catch {
-        return mockDashboard;
+        return {
+          ...mockDashboard,
+          totalTasks: userTaskStats.total,
+          pendingTasks: userTaskStats.pending,
+          inProgressTasks: userTaskStats.inProgress,
+          completedTasks: userTaskStats.completed,
+        };
       }
     },
+    enabled: !!tasks, // Only run after tasks are loaded
   });
 
   // const { data: schedule } = useQuery<ScheduleShift[]>({
@@ -171,38 +223,34 @@ export default function DashboardScreen() {
 
   const firstName = user?.fullName.split(' ')[0] || 'Employee';
   const todayShift = schedule?.[0];
-  const unreadNotifs = dashboard?.notifications.filter(n => !n.read).length ?? 0;
+  const unreadNotifs = dashboardSummary?.notifications.filter(n => !n.read).length ?? 0;
+  const isLoading = tasksLoading || summaryLoading;
+
+  // Helper functions for task status styling
+  const getStatusColor = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': return Colors.success;
+      case 'in_progress': return Colors.secondary;
+      case 'pending': return Colors.warning;
+      default: return Colors.textTertiary;
+    }
+  };
+
+  const getStatusBgColor = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': return Colors.successLight;
+      case 'in_progress': return Colors.infoLight;
+      case 'pending': return Colors.warningLight;
+      default: return Colors.surfaceAlt;
+    }
+  };
+
+  const formatStatus = (status: TaskStatus) => {
+    return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.hamburgerBtn}
-          onPress={openSidebar}
-          activeOpacity={0.7}
-          testID="dashboard-hamburger"
-        >
-          <Menu color={Colors.surface} size={22} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.greeting}>{getGreeting()},</Text>
-          <Text style={styles.userName}>{firstName}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.notifBtn}
-          onPress={() => router.push('/notifications' as any)}
-          activeOpacity={0.7}
-          testID="dashboard-notifications"
-        >
-          <Bell color={Colors.surface} size={21} />
-          {unreadNotifs > 0 && (
-            <View style={styles.notifDotBadge}>
-              <Text style={styles.notifDotText}>{unreadNotifs > 9 ? '9+' : unreadNotifs}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
+    <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -212,11 +260,11 @@ export default function DashboardScreen() {
         }
       >
         <Animated.View style={{ opacity: fadeAnim }}>
-          {dashboard?.isClockedIn && (
+          {dashboardSummary?.isClockedIn && (
             <View style={styles.clockStatusCard}>
               <View style={styles.clockStatusDot} />
               <Text style={styles.clockStatusText}>You're clocked in</Text>
-              <Text style={styles.clockStatusHours}>{dashboard.todayHours.toFixed(1)}h today</Text>
+              <Text style={styles.clockStatusHours}>{dashboardSummary.todayHours.toFixed(1)}h today</Text>
             </View>
           )}
 
@@ -229,7 +277,7 @@ export default function DashboardScreen() {
               <View style={styles.statIconBg}>
                 <LayoutDashboard color="#FFFFFF" size={18} />
               </View>
-              <Text style={styles.statNumber}>{dashboard?.totalTasks ?? 0}</Text>
+              <Text style={styles.statNumber}>{dashboardSummary?.totalTasks ?? 0}</Text>
               <Text style={styles.statLabel}>Total Tasks</Text>
             </TouchableOpacity>
 
@@ -242,7 +290,7 @@ export default function DashboardScreen() {
                 <AlertCircle color={Colors.warning} size={18} />
               </View>
               <Text style={[styles.statNumber, { color: Colors.warning }]}>
-                {dashboard?.pendingTasks ?? 0}
+                {dashboardSummary?.pendingTasks ?? 0}
               </Text>
               <Text style={styles.statLabel}>Pending</Text>
             </TouchableOpacity>
@@ -256,7 +304,7 @@ export default function DashboardScreen() {
                 <Loader color={Colors.secondary} size={18} />
               </View>
               <Text style={[styles.statNumber, { color: Colors.secondary }]}>
-                {dashboard?.inProgressTasks ?? 0}
+                {dashboardSummary?.inProgressTasks ?? 0}
               </Text>
               <Text style={styles.statLabel}>In Progress</Text>
             </TouchableOpacity>
@@ -270,7 +318,7 @@ export default function DashboardScreen() {
                 <CheckCircle2 color={Colors.success} size={18} />
               </View>
               <Text style={[styles.statNumber, { color: Colors.success }]}>
-                {dashboard?.completedTasks ?? 0}
+                {dashboardSummary?.completedTasks ?? 0}
               </Text>
               <Text style={styles.statLabel}>Completed</Text>
             </TouchableOpacity>
@@ -282,14 +330,14 @@ export default function DashboardScreen() {
               <Text style={styles.weeklyTitle}>Weekly Hours</Text>
             </View>
             <View style={styles.weeklyContent}>
-              <Text style={styles.weeklyHours}>{dashboard?.weeklyHours.toFixed(1) ?? '0.0'}</Text>
+              <Text style={styles.weeklyHours}>{dashboardSummary?.weeklyHours.toFixed(1) ?? '0.0'}</Text>
               <Text style={styles.weeklyUnit}>/ 40 hrs</Text>
             </View>
             <View style={styles.progressBarBg}>
               <Animated.View
                 style={[
                   styles.progressBarFill,
-                  { width: `${Math.min(((dashboard?.weeklyHours ?? 0) / 40) * 100, 100)}%` as any },
+                  { width: `${Math.min(((dashboardSummary?.weeklyHours ?? 0) / 40) * 100, 100)}%` as any },
                 ]}
               />
             </View>
@@ -360,7 +408,7 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           )}
 
-          {dashboard?.notifications && dashboard.notifications.length > 0 && (
+          {dashboardSummary?.notifications && dashboardSummary.notifications.length > 0 && (
             <View style={styles.notificationsSection}>
               <View style={styles.notifHeader}>
                 <Text style={styles.sectionTitle}>Recent Notifications</Text>
@@ -368,7 +416,7 @@ export default function DashboardScreen() {
                   <Text style={styles.seeAllText}>See all</Text>
                 </TouchableOpacity>
               </View>
-              {dashboard.notifications.slice(0, 3).map((notif) => (
+              {dashboardSummary.notifications.slice(0, 3).map((notif) => (
                 <View
                   key={notif.id}
                   style={[styles.notifItem, !notif.read && styles.notifItemUnread]}
@@ -386,6 +434,41 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
                 </View>
+              ))}
+            </View>
+          )}
+
+          {/* Recent Tasks Section */}
+          {userTasks && userTasks.length > 0 && (
+            <View style={styles.recentTasksSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Recent Tasks</Text>
+                <TouchableOpacity onPress={() => router.push('/(tabs)/tasks' as any)}>
+                  <Text style={styles.seeAllText}>See all</Text>
+                </TouchableOpacity>
+              </View>
+              {userTasks.slice(0, 5).map((task) => (
+                <TouchableOpacity
+                  key={task.id}
+                  style={styles.recentTaskItem}
+                  onPress={() => router.push(`/(tabs)/tasks/${task.id}` as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.taskLeft}>
+                    <View style={[styles.taskStatusDot, { backgroundColor: getStatusColor(task.status) }]} />
+                    <View style={styles.taskInfo}>
+                      <Text style={styles.taskTitle} numberOfLines={1}>
+                        {task.title}
+                      </Text>
+                      <Text style={styles.taskCategory}>{task.category}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.taskBadge, { backgroundColor: getStatusBgColor(task.status) }]}>
+                    <Text style={[styles.taskBadgeText, { color: getStatusColor(task.status) }]}>
+                      {formatStatus(task.status)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -717,5 +800,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  // Recent Tasks Section
+  recentTasksSection: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  recentTaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  taskLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  taskStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 12,
+  },
+  taskInfo: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  taskCategory: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  taskBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  taskBadgeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
   },
 });

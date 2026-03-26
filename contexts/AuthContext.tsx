@@ -20,6 +20,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           id: string;
           name: string;
           email: string;
+          username?: string;
           role: string;
           status: string;
           phone?: string;
@@ -38,6 +39,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const mappedUser: User = {
         id: me.id,
         email: me.email || fallbackEmail || '',
+        username: me.username || '',
         fullName: me.name || '',
         phone: me.phone || '',
         jobTitle: me.employeeRole || '',
@@ -87,8 +89,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
       console.log('[Auth] Attempting login for:', email);
 
-      const loginRes = await apiRequest<{ item: { token: string; role: string; username: string } }>(
-        '/auth/employee/login',
+      const loginRes = await apiRequest<{ item: { token: string; role: string; username: string; name?: string } }>(
+        '/auth/employee-login',
         {
           method: 'POST',
           body: JSON.stringify({ email, password }),
@@ -103,6 +105,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await AsyncStorage.setItem(AUTH_TOKEN_KEY, loginItem.token);
 
       const mappedUser = await refreshMe(email);
+      // Add username from login response if not set by refreshMe
+      if (loginItem.username && !mappedUser.username) {
+        mappedUser.username = loginItem.username;
+      }
+      if (loginItem.name && !mappedUser.fullName) {
+        mappedUser.fullName = loginItem.name;
+      }
       console.log('[Auth] Login successful via API');
       return { user: mappedUser, token: loginItem.token };
     },

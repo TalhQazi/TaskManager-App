@@ -5,6 +5,7 @@ import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { SidebarProvider } from '@/contexts/SidebarContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,9 +62,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <AuthProvider>
-            <AuthGate>
-              <RootLayoutNav />
-            </AuthGate>
+            <SidebarProvider>
+              <AuthGate>
+                <RootLayoutNav />
+              </AuthGate>
+            </SidebarProvider>
           </AuthProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

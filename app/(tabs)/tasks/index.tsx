@@ -10,12 +10,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Filter, ClipboardList, Menu } from 'lucide-react-native';
+import { ClipboardList } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import StatusBadge from '@/components/StatusBadge';
 import PriorityIndicator from '@/components/PriorityIndicator';
 import { apiRequest } from '@/services/api';
-import { useSidebar } from '@/contexts/SidebarContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Task, TaskStatus } from '@/types';
 
 const FILTERS: { key: TaskStatus | 'all'; label: string }[] = [
@@ -28,7 +28,7 @@ const FILTERS: { key: TaskStatus | 'all'; label: string }[] = [
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { openSidebar } = useSidebar();
+  const { user } = useAuth();
   const [activeFilter, setActiveFilter] = useState<TaskStatus | 'all'>('all');
 
   const { data: tasks, isLoading, refetch } = useQuery<Task[]>({
@@ -48,6 +48,7 @@ export default function TasksScreen() {
           notes: [],
           images: [],
           category: String(t.location || 'Task'),
+          assignees: Array.isArray(t.assignees) ? t.assignees : [],
         })) as Task[];
       } catch {
         return [];
@@ -55,11 +56,32 @@ export default function TasksScreen() {
     },
   });
 
+  // Filter tasks - only show tasks where current user is assigned
   const filteredTasks = useMemo(() => {
-    if (!tasks) return [];
-    if (activeFilter === 'all') return tasks;
-    return tasks.filter((t) => t.status === activeFilter);
-  }, [tasks, activeFilter]);
+    if (!tasks || !user) return [];
+    
+    // Match by username or fullName (backend might use either)
+    const userUsername = (user?.username || '').toLowerCase().trim();
+    const userFullName = (user?.fullName || '').toLowerCase().trim();
+    
+    // Filter tasks where current user is in assignees
+    const userTasks = tasks.filter((t) => {
+      if (!t.assignees || t.assignees.length === 0) return false;
+      
+      return t.assignees.some((a: string) => {
+        const assignee = a.toLowerCase().trim();
+        // Match exact username or fullName, or partial match
+        return assignee === userUsername || 
+               assignee === userFullName ||
+               assignee.includes(userUsername) ||
+               userFullName.includes(assignee) ||
+               assignee.includes(userFullName);
+      });
+    });
+    
+    if (activeFilter === 'all') return userTasks;
+    return userTasks.filter((t) => t.status === activeFilter);
+  }, [tasks, activeFilter, user]);
 
   const renderTask = ({ item }: { item: Task }) => (
     <TouchableOpacity
@@ -101,26 +123,6 @@ export default function TasksScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={openSidebar}
-          activeOpacity={0.7}
-          testID="tasks-hamburger"
-        >
-          <Menu color={Colors.surface} size={22} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Tasks</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconButton}>
-            <Search color={Colors.surface} size={20} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton}>
-            <Filter color={Colors.surface} size={20} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <View style={styles.content}>
         <View style={styles.filtersRow}>
           {FILTERS.map((f) => (
@@ -161,37 +163,11 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.background,
   },
   content: {
     flex: 1,
     backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   filtersRow: {
     flexDirection: 'row',

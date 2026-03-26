@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
@@ -20,26 +20,49 @@ import {
   CheckCircle2,
   Loader,
   AlertCircle,
+  MapPin,
+  User,
+  ChevronLeft,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import StatusBadge from '@/components/StatusBadge';
 import PriorityIndicator from '@/components/PriorityIndicator';
 import { apiRequest } from '@/services/api';
-import { mockTasks } from '@/services/mockData';
 import { Task, TaskStatus } from '@/types';
 
+const STATUS_OPTIONS: { key: TaskStatus; label: string; color: string }[] = [
+  { key: 'pending', label: 'Pending', color: '#F59E0B' },
+  { key: 'in_progress', label: 'In Progress', color: '#3B82F6' },
+  { key: 'completed', label: 'Completed', color: '#22C55E' },
+];
+
 export default function TaskDetailScreen() {
-  const { taskId } = useLocalSearchParams<{ taskId: string }>();
+  const params = useLocalSearchParams<{ taskId?: string | string[] }>();
+  const taskId = Array.isArray(params.taskId) ? params.taskId[0] : params.taskId;
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [newNote, setNewNote] = useState<string>('');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
-  const { data: task, isLoading } = useQuery<Task | undefined>({
-    queryKey: ['task', taskId],
+  const { data: task, isLoading, error } = useQuery<Task>({
+    queryKey: ['task', String(taskId || '')],
+    enabled: !!taskId,
     queryFn: async () => {
       try {
-        const res = await apiRequest<{ item?: any }>(`/tasks/${taskId}`);
+        const res = await apiRequest<{ item?: any; error?: { message?: string } }>(`/tasks/${taskId}`);
+        
+        // Check if API returned an error
+        if (res.error) {
+          console.error('[Task Detail] API error:', res.error);
+          throw new Error(res.error.message || 'Failed to load task');
+        }
+        
         const t = res.data?.item;
-        if (!t) return undefined;
+        if (!t) {
+          console.error('[Task Detail] No task item in response:', res);
+          throw new Error('Task not found');
+        }
+        
         return {
           id: String(t.id ?? t._id ?? ''),
           title: String(t.title ?? ''),
@@ -48,12 +71,15 @@ export default function TaskDetailScreen() {
           priority: (t.priority ?? 'medium') as any,
           assignedDate: String(t.createdAt ?? ''),
           dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '',
-          notes: [],
-          images: [],
-          category: String(t.location || 'Task'),
+          notes: Array.isArray(t.notes) ? t.notes : [],
+          images: Array.isArray(t.images) ? t.images : [],
+          category: String(t.location || t.category || 'Task'),
+          location: String(t.location || ''),
+          assignees: Array.isArray(t.assignees) ? t.assignees : [],
         } as Task;
-      } catch {
-        return mockTasks.find((t) => t.id === taskId);
+      } catch (err: any) {
+        console.error('[Task Detail] Error fetching task:', err);
+        throw err;
       }
     },
   });
@@ -62,8 +88,8 @@ export default function TaskDetailScreen() {
     mutationFn: async (newStatus: TaskStatus) => {
       try {
         const backendStatus = String(newStatus).replace('_', '-');
-        await apiRequest<{ item: any }>(`/tasks/${taskId}`, {
-          method: 'PUT',
+        await apiRequest<{ item: any }>(`/tasks/${taskId}/status`, {
+          method: 'PATCH',
           body: JSON.stringify({ status: backendStatus }),
         });
 
@@ -101,7 +127,7 @@ export default function TaskDetailScreen() {
         'Update Status',
         `Change status to "${newStatus.replace('_', ' ')}"?`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel', onPress: () => setShowStatusDropdown(false) },
           { text: 'Confirm', onPress: () => statusMutation.mutate(newStatus) },
         ],
       );
@@ -122,22 +148,52 @@ export default function TaskDetailScreen() {
     );
   }
 
-  if (!task) {
+  if (!taskId) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Task not found</Text>
+        <Text style={styles.errorText}>Invalid task id</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.loadingContainer}>
+        <AlertCircle color={Colors.error} size={48} style={{ marginBottom: 16 }} />
+        <Text style={styles.errorText}>
+          {error instanceof Error ? error.message : 'Failed to load task'}
+        </Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => queryClient.invalidateQueries({ queryKey: ['task', String(taskId)] })}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: task.category }} />
+    <View style={styles.container}>
+      {/* Back Button Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+        >
+          <ChevronLeft color={Colors.text} size={24} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Task Details</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
       <ScrollView
-        style={styles.container}
+        style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        {/* Task Title & Meta */}
         <View style={styles.topSection}>
           <View style={styles.metaRow}>
             <StatusBadge status={task.status} size="medium" />
@@ -147,61 +203,133 @@ export default function TaskDetailScreen() {
           <Text style={styles.description}>{task.description}</Text>
         </View>
 
+        {/* Task Details Card */}
         <View style={styles.detailsCard}>
+          {/* Location */}
+          <View style={styles.detailRow}>
+            <MapPin color={Colors.textTertiary} size={16} />
+            <Text style={styles.detailLabel}>Location</Text>
+            <Text style={styles.detailValue}>{task.location || task.category || 'Not specified'}</Text>
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* Assigned Date */}
           <View style={styles.detailRow}>
             <CalendarDays color={Colors.textTertiary} size={16} />
             <Text style={styles.detailLabel}>Assigned</Text>
-            <Text style={styles.detailValue}>{task.assignedDate}</Text>
+            <Text style={styles.detailValue}>
+              {task.assignedDate ? new Date(task.assignedDate).toLocaleDateString() : 'N/A'}
+            </Text>
           </View>
           <View style={styles.detailDivider} />
+
+          {/* Due Date */}
           <View style={styles.detailRow}>
             <Clock color={Colors.textTertiary} size={16} />
             <Text style={styles.detailLabel}>Due Date</Text>
-            <Text style={styles.detailValue}>{task.dueDate}</Text>
+            <Text style={styles.detailValue}>{task.dueDate || 'No due date'}</Text>
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* Assignees */}
+          <View style={styles.assigneesRow}>
+            <User color={Colors.textTertiary} size={16} />
+            <Text style={styles.detailLabel}>Assignees</Text>
+          </View>
+          <View style={styles.assigneesList}>
+            {task.assignees && task.assignees.length > 0 ? (
+              task.assignees.map((assignee, idx) => (
+                <View key={idx} style={styles.assigneeChip}>
+                  <Text style={styles.assigneeText}>{assignee}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noAssigneesText}>No assignees</Text>
+            )}
           </View>
         </View>
 
+        {/* Status Update Section */}
         <View style={styles.statusSection}>
-          <Text style={styles.sectionTitle}>Update Status</Text>
-          <View style={styles.statusButtons}>
-            {task.status !== 'pending' ? null : (
+          <Text style={styles.sectionTitle}>Task Status</Text>
+          
+          {/* Current Status Display */}
+          <TouchableOpacity 
+            style={styles.currentStatusBtn}
+            onPress={() => setShowStatusDropdown(!showStatusDropdown)}
+          >
+            <View style={[styles.statusDot, { backgroundColor: 
+              task.status === 'completed' ? '#22C55E' : 
+              task.status === 'in_progress' ? '#3B82F6' : '#F59E0B'
+            }]} />
+            <Text style={styles.currentStatusText}>
+              {task.status.replace('_', ' ').toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Status Options Dropdown */}
+          {showStatusDropdown && (
+            <View style={styles.statusDropdown}>
+              {STATUS_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.statusOption,
+                    task.status === option.key && styles.statusOptionActive
+                  ]}
+                  onPress={() => handleStatusChange(option.key)}
+                  disabled={statusMutation.isPending || task.status === option.key}
+                >
+                  <View style={[styles.statusDot, { backgroundColor: option.color }]} />
+                  <Text style={[
+                    styles.statusOptionText,
+                    task.status === option.key && styles.statusOptionTextActive
+                  ]}>
+                    {option.label}
+                  </Text>
+                  {task.status === option.key && (
+                    <CheckCircle2 color={option.color} size={16} style={styles.statusCheck} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Quick Action Buttons */}
+          <View style={styles.quickActions}>
+            {task.status === 'pending' && (
               <TouchableOpacity
-                style={[styles.statusBtn, styles.statusBtnInProgress]}
+                style={[styles.actionBtn, styles.startBtn]}
                 onPress={() => handleStatusChange('in_progress')}
                 disabled={statusMutation.isPending}
-                activeOpacity={0.7}
               >
-                <Loader color={Colors.secondary} size={16} />
-                <Text style={[styles.statusBtnText, { color: Colors.secondary }]}>
-                  Start Task
-                </Text>
+                <Loader color="#FFFFFF" size={18} />
+                <Text style={styles.actionBtnText}>Start Task</Text>
               </TouchableOpacity>
             )}
             {task.status === 'in_progress' && (
               <TouchableOpacity
-                style={[styles.statusBtn, styles.statusBtnComplete]}
+                style={[styles.actionBtn, styles.completeBtn]}
                 onPress={() => handleStatusChange('completed')}
                 disabled={statusMutation.isPending}
-                activeOpacity={0.7}
               >
-                <CheckCircle2 color={Colors.success} size={16} />
-                <Text style={[styles.statusBtnText, { color: Colors.success }]}>
-                  Mark Complete
-                </Text>
+                <CheckCircle2 color="#FFFFFF" size={18} />
+                <Text style={styles.actionBtnText}>Mark Complete</Text>
               </TouchableOpacity>
             )}
             {task.status === 'completed' && (
               <View style={styles.completedBanner}>
-                <CheckCircle2 color={Colors.success} size={18} />
-                <Text style={styles.completedText}>This task is completed</Text>
+                <CheckCircle2 color={Colors.success} size={20} />
+                <Text style={styles.completedText}>Task Completed</Text>
               </View>
             )}
           </View>
         </View>
 
+        {/* Notes Section */}
         <View style={styles.notesSection}>
           <View style={styles.notesTitleRow}>
-            <MessageSquare color={Colors.primary} size={16} />
+            <MessageSquare color={Colors.primary} size={18} />
             <Text style={styles.sectionTitle}>Notes ({task.notes.length})</Text>
           </View>
 
@@ -232,6 +360,7 @@ export default function TaskDetailScreen() {
           </View>
         </View>
 
+        {/* Photo Upload */}
         <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7}>
           <Camera color={Colors.secondary} size={20} />
           <Text style={styles.uploadBtnText}>Upload Photo Evidence</Text>
@@ -239,7 +368,7 @@ export default function TaskDetailScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </>
+    </View>
   );
 }
 
@@ -248,9 +377,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  scrollView: {
+    flex: 1,
+  },
   contentContainer: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   loadingContainer: {
     flex: 1,
@@ -260,7 +417,20 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: Colors.error || '#EF4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600' as const,
   },
   topSection: {
     marginBottom: 16,
@@ -272,10 +442,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700' as const,
     color: Colors.text,
-    lineHeight: 26,
+    lineHeight: 28,
     marginBottom: 8,
   },
   description: {
@@ -299,6 +469,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  assigneesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   detailLabel: {
     flex: 1,
     fontSize: 13,
@@ -308,11 +484,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: Colors.text,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   detailDivider: {
     height: 1,
     backgroundColor: Colors.borderLight,
     marginVertical: 12,
+  },
+  assigneesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingLeft: 24,
+  },
+  assigneeChip: {
+    backgroundColor: Colors.infoLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  assigneeText: {
+    fontSize: 12,
+    color: Colors.secondary,
+    fontWeight: '500' as const,
+  },
+  noAssigneesText: {
+    fontSize: 13,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
   },
   statusSection: {
     marginBottom: 20,
@@ -321,31 +521,80 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700' as const,
     color: Colors.text,
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  statusButtons: {
+  currentStatusBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 12,
   },
-  statusBtn: {
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  currentStatusText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  statusDropdown: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  statusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  statusOptionActive: {
+    backgroundColor: Colors.infoLight,
+  },
+  statusOptionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.text,
+  },
+  statusOptionTextActive: {
+    fontWeight: '600' as const,
+    color: Colors.primary,
+  },
+  statusCheck: {
+    marginLeft: 'auto',
+  },
+  quickActions: {
+    marginTop: 8,
+  },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 14,
     borderRadius: 12,
-    borderWidth: 1.5,
   },
-  statusBtnInProgress: {
-    borderColor: Colors.secondary,
-    backgroundColor: Colors.infoLight,
+  startBtn: {
+    backgroundColor: Colors.secondary,
   },
-  statusBtnComplete: {
-    borderColor: Colors.success,
-    backgroundColor: Colors.successLight,
+  completeBtn: {
+    backgroundColor: Colors.success,
   },
-  statusBtnText: {
+  actionBtnText: {
     fontSize: 15,
     fontWeight: '600' as const,
+    color: '#FFFFFF',
   },
   completedBanner: {
     flexDirection: 'row',

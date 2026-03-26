@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const API_BASE_URL = 'http://192.168.18.56:5000/api';
+ export const API_BASE_URL = 'http://192.168.18.56:5000/api';
+//export const API_BASE_URL = 'https://task.se7eninc.com';
 
 async function getAuthToken(): Promise<string | null> {
   try {

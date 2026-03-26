@@ -1,6 +1,8 @@
 export interface User {
   id: string;
   email: string;
+  username?: string;
+  name?: string;
   fullName: string;
   phone: string;
   jobTitle: string;
@@ -31,6 +33,8 @@ export interface Task {
   notes: string[];
   images: string[];
   category: string;
+  assignees?: string[];
+  location?: string;
 }
 
 export interface TimeEntry {

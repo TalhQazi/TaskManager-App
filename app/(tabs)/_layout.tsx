@@ -1,81 +1,51 @@
-import { Tabs } from 'expo-router';
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { Slot } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LayoutDashboard, Clock, MessageSquare } from 'lucide-react-native';
 import Colors from '@/constants/colors';
-import { SidebarProvider } from '@/contexts/SidebarContext';
 import Sidebar from '@/components/Sidebar';
+import Header from '@/components/Header';
 
-function TabLayoutInner() {
+export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 768;
 
   return (
-    <View style={{ flex: 1 }}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: Colors.primary,
-          tabBarInactiveTintColor: Colors.tabInactive,
-          tabBarStyle: {
-            backgroundColor: Colors.surface,
-            borderTopColor: Colors.borderLight,
-            borderTopWidth: 1,
-            height: 60 + insets.bottom,
-            paddingBottom: Math.max(8, insets.bottom),
-            paddingTop: 6,
-          },
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-          },
-        }}
-      >
-        <Tabs.Screen
-          name="home"
-          options={{
-            title: 'Dashboard',
-            tabBarIcon: ({ color, size }) => <LayoutDashboard color={color} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="clock"
-          options={{
-            title: 'Clock',
-            tabBarIcon: ({ color, size }) => <Clock color={color} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="messages"
-          options={{
-            title: 'Messages',
-            tabBarIcon: ({ color, size }) => <MessageSquare color={color} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="tasks"
-          options={{
-            tabBarButton: () => null,
-            tabBarItemStyle: { display: 'none' },
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            tabBarButton: () => null,
-            tabBarItemStyle: { display: 'none' },
-          }}
-        />
-      </Tabs>
+    <View style={styles.container}>
+      {/* Permanent Sidebar */}
       <Sidebar />
+
+      {/* Main Content Area - shifted right for sidebar */}
+      <View style={[
+        styles.content,
+        {
+          paddingBottom: insets.bottom,
+          marginLeft: isLargeScreen ? 280 : 0,
+        },
+      ]}>
+        {/* Persistent Header */}
+        <Header />
+
+        {/* Screen Content */}
+        <View style={styles.screenContent}>
+          <Slot />
+        </View>
+      </View>
     </View>
   );
 }
 
-export default function TabLayout() {
-  return (
-    <SidebarProvider>
-      <TabLayoutInner />
-    </SidebarProvider>
-  );
-}
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  content: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+  },
+  screenContent: {
+    flex: 1,
+  },
+});

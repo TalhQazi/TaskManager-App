@@ -15,7 +15,7 @@ const statusConfig: Record<TaskStatus, { label: string; color: string; bg: strin
 };
 
 export default function StatusBadge({ status, size = 'small' }: StatusBadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] || { label: 'Unknown', color: Colors.textSecondary, bg: Colors.surfaceAlt };
 
   return (
     <View style={[styles.badge, { backgroundColor: config.bg }, size === 'medium' && styles.badgeMedium]}>

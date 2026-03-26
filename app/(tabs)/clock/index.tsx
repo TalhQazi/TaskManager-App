@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { Clock, LogIn, LogOut, Calendar, Menu } from 'lucide-react-native';
+import { Clock, LogIn, LogOut, Calendar } from 'lucide-react-native';
 import Colors from '@/constants/colors';
-import { useSidebar } from '@/contexts/SidebarContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/services/api';
-import { mockTimeEntries } from '@/services/mockData';
 import { TimeEntry } from '@/types';
 
 export default function TimeClockScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { openSidebar } = useSidebar();
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
@@ -33,14 +30,36 @@ export default function TimeClockScreen() {
   const pulseRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const { data: entries } = useQuery<TimeEntry[]>({
-    queryKey: ['timeEntries'],
+    queryKey: ['timeEntries', user?.id || user?.username],
     queryFn: async () => {
       try {
-        const res = await apiRequest<{ items: any[] }>('/time-entries');
+        // Fetch time entries for current user using employee filter
+        const employeeName = user?.fullName || user?.username || user?.name || '';
+        const res = await apiRequest<{ items: any[] }>(`/time-entries?employee=${encodeURIComponent(employeeName)}`);
         const items = res.data?.items ?? [];
-        return items.map((e) => {
-          const clockIn = e.clockIn ? String(e.clockIn) : null;
-          const clockOut = e.clockOut ? String(e.clockOut) : null;
+        
+        // Also filter by userId if available for extra safety
+        const userId = String(user?.id || user?.sub || '').trim();
+        const userName = String(user?.username || user?.fullName || user?.name || '').toLowerCase().trim();
+        
+        const userEntries = items
+          .filter((e) => {
+            // Match by userId if available
+            const entryUserId = String(e.userId || '').trim();
+            if (userId && entryUserId === userId) return true;
+            
+            // Match by employee name
+            const entryEmployee = String(e.employee || '').toLowerCase().trim();
+            if (entryEmployee === userName) return true;
+            if (entryEmployee.includes(userName) || userName.includes(entryEmployee)) return true;
+            
+            return false;
+          })
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        return userEntries.map((e) => {
+          const clockIn = e.clockInAt ? String(e.clockInAt) : e.clockIn ? String(e.clockIn) : null;
+          const clockOut = e.clockOutAt ? String(e.clockOutAt) : e.clockOut ? String(e.clockOut) : null;
           const status = clockIn && !clockOut ? 'clocked_in' : clockIn && clockOut ? 'clocked_out' : 'not_started';
           const date = e.date ? new Date(e.date).toISOString() : new Date().toISOString();
           return {
@@ -53,9 +72,10 @@ export default function TimeClockScreen() {
           } as TimeEntry;
         });
       } catch {
-        return mockTimeEntries;
+        return [];
       }
     },
+    enabled: !!user,
   });
 
   const todayEntry = entries?.[0];
@@ -104,43 +124,47 @@ export default function TimeClockScreen() {
   const clockMutation = useMutation({
     mutationFn: async (action: 'clock_in' | 'clock_out') => {
       try {
-        const nowIso = new Date().toISOString();
-
+        const employeeName = user?.fullName || user?.username || user?.name || 'employee';
+        
         if (action === 'clock_in') {
-          const payload = {
-            employee: user?.fullName || user?.id || 'employee',
-            date: nowIso,
-            clockIn: nowIso,
-            clockOut: '',
-            totalHours: 0,
-            status: 'incomplete',
-            location: '',
-          };
-          const created = await apiRequest<{ item: any }>('/time-entries', {
+          // Use dedicated clock-in endpoint
+          const created = await apiRequest<{ item: any }>('/time-entries/clock-in', {
             method: 'POST',
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              employee: employeeName,
+              location: '',
+            }),
           });
           return created.data?.item;
         }
 
-        const listRes = await apiRequest<{ items: any[] }>('/time-entries');
+        // Clock out - need to find open entry first
+        // Get user's entries to find the open one
+        const listRes = await apiRequest<{ items: any[] }>(`/time-entries?employee=${encodeURIComponent(employeeName)}`);
         const items = listRes.data?.items ?? [];
-        const openEntry = items.find((e) => !e.clockOut);
-        if (!openEntry?.id) {
+        
+        // Find entry that has clockIn but no clockOut
+        const openEntry = items.find((e) => {
+          const hasClockIn = e.clockInAt || e.clockIn;
+          const hasClockOut = e.clockOutAt || e.clockOut;
+          return hasClockIn && !hasClockOut;
+        });
+        
+        if (!openEntry?.id && !openEntry?._id) {
           throw new Error('No open time entry found');
         }
 
-        const updated = await apiRequest<{ item: any }>(`/time-entries/${openEntry.id}`,
-          {
-            method: 'PUT',
-            body: JSON.stringify({ clockOut: nowIso, status: 'complete' }),
-          },
-        );
+        const entryId = openEntry.id || openEntry._id;
+        
+        // Use dedicated clock-out endpoint
+        const updated = await apiRequest<{ item: any }>(`/time-entries/${entryId}/clock-out`, {
+          method: 'POST',
+        });
 
         return updated.data?.item;
-      } catch {
-        console.log(`[Clock] ${action} recorded (demo mode)`);
-        return { action, timestamp: new Date().toISOString() };
+      } catch (err) {
+        console.log(`[Clock] Error:`, err);
+        throw err;
       }
     },
     onSuccess: (_, action) => {
@@ -151,7 +175,13 @@ export default function TimeClockScreen() {
       } else {
         setLocalClockedIn(false);
       }
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err) => {
+      console.log(`[Clock] Mutation error:`, err);
+      Alert.alert('Error', 'Failed to record time. Please try again.');
     },
   });
 
@@ -185,28 +215,65 @@ export default function TimeClockScreen() {
     return `${hours}h ${minutes}m`;
   };
 
-  const weeklyTotal = weekEntries.reduce((sum, e) => sum + (e.totalHours ?? 0), 0);
+  // Calculate today's hours from entries
+  const todayHours = useMemo(() => {
+    if (isClockedIn && clockInTime) {
+      const diff = Date.now() - new Date(clockInTime).getTime();
+      const hours = Math.floor(diff / 3600000);
+      const minutes = Math.floor((diff % 3600000) / 60000);
+      return { hours, minutes, total: hours + minutes / 60 };
+    }
+    if (todayEntry?.totalHours) {
+      const hours = Math.floor(todayEntry.totalHours);
+      const minutes = Math.round((todayEntry.totalHours - hours) * 60);
+      return { hours, minutes, total: todayEntry.totalHours };
+    }
+    return { hours: 0, minutes: 0, total: 0 };
+  }, [isClockedIn, clockInTime, todayEntry]);
+
+  // Calculate weekly hours (last 7 days)
+  const weekHours = useMemo(() => {
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekEntries = entries?.filter((e) => {
+      const entryDate = new Date(e.date);
+      return entryDate >= weekAgo && entryDate <= now;
+    }) || [];
+    return weekEntries.reduce((sum, e) => sum + (e.totalHours ?? 0), 0);
+  }, [entries]);
+
+  const weeklyTotal = weekHours;
   const elapsed = getElapsedTime();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.hamburgerBtn}
-          onPress={openSidebar}
-          activeOpacity={0.7}
-          testID="clock-hamburger"
-        >
-          <Menu color={Colors.surface} size={22} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Time Clock</Text>
-      </View>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Summary Cards */}
+        <View style={styles.summaryCardsContainer}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryCardLabel}>Today's Hours</Text>
+            <Text style={styles.summaryCardValue}>
+              {todayHours.hours}h {todayHours.minutes}m
+            </Text>
+            <Text style={styles.summaryCardSubtext}>
+              {todayHours.total.toFixed(1)} hours total
+            </Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryCardLabel}>This Week</Text>
+            <Text style={styles.summaryCardValue}>
+              {Math.floor(weekHours)}h {Math.round((weekHours % 1) * 60)}m
+            </Text>
+            <Text style={styles.summaryCardSubtext}>
+              {weekHours.toFixed(1)} hours total
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.clockFace}>
           <Text style={styles.currentTime}>{currentTime}</Text>
           <Text style={styles.currentDate}>{currentDate}</Text>
@@ -315,26 +382,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.primary,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  hamburgerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
   scrollView: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -345,6 +392,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 28,
     paddingBottom: 24,
+  },
+  summaryCardsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 16,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  summaryCardLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500' as const,
+    marginBottom: 8,
+  },
+  summaryCardValue: {
+    fontSize: 24,
+    fontWeight: '800' as const,
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  summaryCardSubtext: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+    fontWeight: '500' as const,
   },
   clockFace: {
     alignItems: 'center',

@@ -8,7 +8,9 @@
     "start:offline": "expo start --offline",
     "start:tunnel": "expo start --tunnel",
     "start-web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

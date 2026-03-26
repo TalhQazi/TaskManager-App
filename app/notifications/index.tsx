@@ -6,10 +6,9 @@ import {
   FlatList,
   TouchableOpacity,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Bell, ClipboardList, Calendar, MessageSquare, Info, CheckCheck } from 'lucide-react-native';
+import { Bell, ClipboardList, Calendar, MessageSquare, Info, CheckCheck } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { apiRequest } from '@/services/api';
 import { Notification } from '@/types';
@@ -29,7 +28,6 @@ const COLOR_MAP: Record<Notification['type'], string> = {
 };
 
 export default function NotificationsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [readOverrides, setReadOverrides] = useState<Record<string, boolean>>({});
 
@@ -138,106 +136,78 @@ export default function NotificationsScreen() {
   );
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft color={Colors.surface} size={22} />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Mark All Read Button */}
+      {unreadCount > 0 && (
+        <View style={styles.markAllContainer}>
+          <TouchableOpacity style={styles.markAllBtn} onPress={markAllRead} activeOpacity={0.7}>
+            <CheckCheck color={Colors.primary} size={18} />
+            <Text style={styles.markAllText}>Mark all as read</Text>
           </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Notifications</Text>
-            {unreadCount > 0 && (
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{unreadCount} new</Text>
-              </View>
-            )}
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{unreadCount} new</Text>
           </View>
-          {unreadCount > 0 && (
-            <TouchableOpacity style={styles.markAllBtn} onPress={markAllRead} activeOpacity={0.7}>
-              <CheckCheck color={Colors.surface} size={18} />
-            </TouchableOpacity>
-          )}
         </View>
+      )}
 
-        <View style={styles.content}>
-          <FlatList
-            data={notifications}
-            renderItem={renderNotification}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderEmpty}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-          />
-        </View>
+      <View style={styles.content}>
+        <FlatList
+          data={notifications}
+          renderItem={renderNotification}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderEmpty}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+        />
       </View>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.background,
   },
-  header: {
+  markAllContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
+  markAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: Colors.infoLight,
+    borderRadius: 10,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
+  markAllText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.primary,
   },
   countBadge: {
     backgroundColor: Colors.error,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 10,
   },
   countText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700' as const,
     color: '#FFFFFF',
   },
-  markAllBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   content: {
     flex: 1,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   listContent: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingHorizontal: 16,
     paddingBottom: 32,
     flexGrow: 1,
