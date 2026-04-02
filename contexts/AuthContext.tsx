@@ -42,11 +42,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         username: me.username || '',
         fullName: me.name || '',
         phone: me.phone || '',
-        jobTitle: me.employeeRole || '',
+        jobTitle: String(me.role || '').toLowerCase() === 'manager' ? 'Manager' : me.employeeRole || '',
         department: me.department || '',
         company: me.company || '',
         hireDate: me.hireDate || '',
-        role: 'employee',
+        role: String(me.role || '').toLowerCase() === 'manager' ? 'manager' : 'employee',
       };
 
       setUser(mappedUser);
@@ -86,14 +86,25 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, []);
 
   const loginMutation = useMutation({
-    mutationFn: async ({ email, password }: { email: string; password: string }) => {
+    mutationFn: async ({
+      email,
+      password,
+      loginAs,
+    }: {
+      email: string;
+      password: string;
+      loginAs: 'employee' | 'manager';
+    }) => {
       console.log('[Auth] Attempting login for:', email);
 
       const loginRes = await apiRequest<{ item: { token: string; role: string; username: string; name?: string } }>(
-        '/auth/employee-login',
+        loginAs === 'manager' ? '/auth/login' : '/auth/employee/login',
         {
           method: 'POST',
-          body: JSON.stringify({ email, password }),
+          body:
+            loginAs === 'manager'
+              ? JSON.stringify({ username: email, password })
+              : JSON.stringify({ email, password }),
         },
       );
 
@@ -105,6 +116,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await AsyncStorage.setItem(AUTH_TOKEN_KEY, loginItem.token);
 
       const mappedUser = await refreshMe(email);
+
+      if (mappedUser.role !== loginAs) {
+        await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+        await AsyncStorage.removeItem(AUTH_USER_KEY);
+        throw new Error('Invalid role for this login');
+      }
       // Add username from login response if not set by refreshMe
       if (loginItem.username && !mappedUser.username) {
         mappedUser.username = loginItem.username;
