@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback ,useEffect} from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,16 @@ import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/services/api';
 import { Message } from '@/types';
+import { io } from "socket.io-client";
+
+
+type SocketMessage = {
+  id?: string;
+  sender: string;
+  recipient: string;
+  content: string;
+  timestamp: string;
+};
 
 export default function ChatScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
@@ -23,9 +33,12 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList<Message>>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const socketRef = useRef<any>(null);
 
-  const myId = user?.id || user?.fullName || 'employee';
+  const myId = user?.fullName ;
   const other = String(conversationId || '');
+
+
 
   const { data: messages } = useQuery<Message[]>({
     queryKey: ['messages', conversationId],
@@ -80,8 +93,62 @@ export default function ChatScreen() {
     },
   });
 
+
+ useEffect(() => {
+ socketRef.current = io("https://task.se7eninc.com", { 
+  path: "/api/socket.io",
+  transports: ["polling","websocket", ],
+  reconnection: true,
+  reconnectionAttempts: 5,
+  timeout: 20000,
+  });
+
+  const socket = socketRef.current;
+
+  socket.on("connect", () => {
+    console.log("✅ Mobile connected",myId);
+    
+    socket.emit("join", { user: myId });
+  });
+
+
+  socket.on("connect_error", (err:any) => {
+  console.log("ERROR:", err.message);
+});
+
+socket.on("disconnect", (reason:any) => {
+  console.log(" DISCONNECTED:", reason);
+});
+
+
+  socket.on("new-message", (data: SocketMessage) => {
+    console.log(" Mobile received:", data);
+  });
+
+  return () => {
+    socket.disconnect();
+  };
+}, []);
+
+
+  useEffect(() => {
+  flatListRef.current?.scrollToEnd({ animated: true });
+}, [messages]);
+
   const handleSend = useCallback(() => {
     if (!inputText.trim()) return;
+
+    const message = {
+    sender: myId,
+    recipient: other,
+    content: inputText.trim(),
+    timestamp: new Date().toISOString(),
+    type: 'direct',
+    status: 'sent',
+  };
+
+  socketRef.current.emit("send-message", message);
+
     sendMutation.mutate(inputText.trim());
     setInputText('');
   }, [inputText, sendMutation]);

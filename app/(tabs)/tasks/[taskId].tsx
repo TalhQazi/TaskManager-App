@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback ,useRef, useEffect} from 'react';
 import {
   View,
   Text,
@@ -30,19 +30,51 @@ import PriorityIndicator from '@/components/PriorityIndicator';
 import { apiRequest } from '@/services/api';
 import { Task, TaskStatus } from '@/types';
 
+import { io, Socket } from 'socket.io-client';
+
 const STATUS_OPTIONS: { key: TaskStatus; label: string; color: string }[] = [
   { key: 'pending', label: 'Pending', color: '#F59E0B' },
   { key: 'in_progress', label: 'In Progress', color: '#3B82F6' },
   { key: 'completed', label: 'Completed', color: '#22C55E' },
 ];
 
+const SOCKET_URL = 'https://task.se7eninc.com';
+
 export default function TaskDetailScreen() {
+  const socketRef = useRef<Socket | null>(null);
   const params = useLocalSearchParams<{ taskId?: string | string[] }>();
   const taskId = Array.isArray(params.taskId) ? params.taskId[0] : params.taskId;
   const router = useRouter();
   const queryClient = useQueryClient();
   const [newNote, setNewNote] = useState<string>('');
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+
+
+ useEffect(() => {
+  if (!taskId) return;
+
+  socketRef.current = io(SOCKET_URL, { transports: ['websocket'] });
+  const socket = socketRef.current;
+
+  socket.on('connect', () => {
+    setIsSocketConnected(true);
+    socket.emit('joinTask', taskId);
+  });
+
+  // Listen for the comment event
+  socket.on('newComment', (newComment) => {
+    // Update the specific comments query cache
+    queryClient.setQueryData(['task-comments', taskId], (oldData: any) => {
+      return oldData ? [...oldData, newComment] : [newComment];
+    });
+  });
+
+  return () => {
+    socket.emit('leaveTask', taskId);
+    socket.disconnect();
+  };
+}, [taskId, queryClient]);
 
   const { data: task, isLoading, error } = useQuery<Task>({
     queryKey: ['task', String(taskId || '')],
@@ -84,6 +116,16 @@ export default function TaskDetailScreen() {
     },
   });
 
+
+  const { data: comments, isLoading: commentsLoading } = useQuery({
+  queryKey: ['task-comments', taskId],
+  enabled: !!taskId,
+  queryFn: async () => {
+    const res = await apiRequest<{ items: any[] }>(`/tasks/${taskId}/comments`);
+    return res.data?.items || [];
+  },
+});
+
   const statusMutation = useMutation({
     mutationFn: async (newStatus: TaskStatus) => {
       try {
@@ -106,7 +148,7 @@ export default function TaskDetailScreen() {
     },
   });
 
-  const noteMutation = useMutation({
+  const _noteMutation = useMutation({
     mutationFn: async (note: string) => {
       try {
         return { note };
@@ -120,6 +162,27 @@ export default function TaskDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
     },
   });
+
+  const noteMutation = useMutation({
+    mutationFn: async (note: string) => {
+      // This calls the same endpoint used by your web app's sendComment logic
+      return await apiRequest(`/tasks/${taskId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          message: note,
+        }),
+      });
+    },
+    onSuccess: () => {
+      setNewNote('');
+       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+    },
+    onError: (err) => {
+      Alert.alert('Error', 'Failed to send note.');
+      console.error(err);
+    }
+  });
+
 
   const handleStatusChange = useCallback(
     (newStatus: TaskStatus) => {
@@ -328,17 +391,45 @@ export default function TaskDetailScreen() {
 
         {/* Notes Section */}
         <View style={styles.notesSection}>
-          <View style={styles.notesTitleRow}>
+         {/* <View style={styles.notesTitleRow}>
             <MessageSquare color={Colors.primary} size={18} />
             <Text style={styles.sectionTitle}>Notes ({task.notes.length})</Text>
           </View>
 
-          {task.notes.map((note, idx) => (
+          task.notes.map((note, idx) => (
             <View key={idx} style={styles.noteItem}>
               <View style={styles.noteBullet} />
               <Text style={styles.noteText}>{note}</Text>
             </View>
-          ))}
+          ))*/}
+          <View style={styles.notesSection}>
+  <View style={styles.notesTitleRow}>
+    <MessageSquare color={Colors.primary} size={18} />
+    <Text style={styles.sectionTitle}>
+      Comments ({comments?.length || 0})
+    </Text>
+  </View>
+
+  {commentsLoading ? (
+    <ActivityIndicator size="small" color={Colors.primary} />
+  ) : comments?.length === 0 ? (
+    <Text style={styles.noAssigneesText}>No comments yet.</Text>
+  ) : (
+    comments.map((comment: any) => (
+      <View key={comment.id || comment._id} style={styles.commentContainer}>
+        <View style={styles.commentHeader}>
+          <Text style={styles.commentAuthor}>{comment.authorUsername}</Text>
+          <Text style={styles.commentDate}>
+            {new Date(comment.createdAt).toLocaleDateString()}
+          </Text>
+        </View>
+        <Text style={styles.noteText}>{comment.message}</Text> 
+      </View>
+    ))
+  )}
+
+ 
+</View>
 
           <View style={styles.noteInputRow}>
             <TextInput
@@ -687,4 +778,28 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.secondary,
   },
+
+
+  commentContainer: {
+  backgroundColor: Colors.surface,
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 10,
+  borderWidth: 1,
+  borderColor: Colors.borderLight,
+},
+commentHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 4,
+},
+commentAuthor: {
+  fontSize: 13,
+  fontWeight: '700',
+  color: Colors.primary,
+},
+commentDate: {
+  fontSize: 11,
+  color: Colors.textTertiary,
+},
 });
