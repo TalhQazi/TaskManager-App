@@ -52,6 +52,8 @@ export default function ProfileScreen() {
           employeeRole?: string;
         };
       }>('/auth/me');
+      console.log('[Profile] Fetched user data:', res.data?.item);
+      console.log("MOBILE PROFILE DATA:", JSON.stringify(res.data?.item, null, 2));
       return res.data?.item;
     },
     enabled: !!user,
