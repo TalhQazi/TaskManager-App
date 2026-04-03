@@ -9,7 +9,7 @@ export interface User {
   department: string;
   company: string;
   hireDate?: string;
-  role: 'employee';
+  role: 'employee' | 'manager';
   avatarUrl?: string;
 }
 
