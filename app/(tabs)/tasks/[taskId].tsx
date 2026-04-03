@@ -423,7 +423,7 @@ export default function TaskDetailScreen() {
             {new Date(comment.createdAt).toLocaleDateString()}
           </Text>
         </View>
-        <Text style={styles.noteText}>{comment.message}</Text>
+        <Text style={styles.noteText}>{comment.message}</Text> 
       </View>
     ))
   )}

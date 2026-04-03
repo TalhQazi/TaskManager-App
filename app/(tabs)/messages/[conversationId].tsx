@@ -95,7 +95,7 @@ export default function ChatScreen() {
 
 
  useEffect(() => {
- socketRef.current = io("https://task.se7eninc.com", {
+ socketRef.current = io("https://task.se7eninc.com", { 
   path: "/api/socket.io",
   transports: ["polling","websocket", ],
   reconnection: true,
