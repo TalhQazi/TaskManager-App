@@ -8,7 +8,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Platform,Image, FlatList,
 } from 'react-native';
+
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,10 +29,12 @@ import {
 import Colors from '@/constants/colors';
 import StatusBadge from '@/components/StatusBadge';
 import PriorityIndicator from '@/components/PriorityIndicator';
-import { apiRequest } from '@/services/api';
+import { API_BASE_URL, apiRequest } from '@/services/api';
 import { Task, TaskStatus } from '@/types';
-
+import * as ImagePicker from 'expo-image-picker';
 import { io, Socket } from 'socket.io-client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 const STATUS_OPTIONS: { key: TaskStatus; label: string; color: string }[] = [
   { key: 'pending', label: 'Pending', color: '#F59E0B' },
@@ -49,7 +53,8 @@ export default function TaskDetailScreen() {
   const [newNote, setNewNote] = useState<string>('');
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
-
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
  useEffect(() => {
   if (!taskId) return;
@@ -62,9 +67,8 @@ export default function TaskDetailScreen() {
     socket.emit('joinTask', taskId);
   });
 
-  // Listen for the comment event
   socket.on('newComment', (newComment) => {
-    // Update the specific comments query cache
+   
     queryClient.setQueryData(['task-comments', taskId], (oldData: any) => {
       return oldData ? [...oldData, newComment] : [newComment];
     });
@@ -76,6 +80,89 @@ export default function TaskDetailScreen() {
   };
 }, [taskId, queryClient]);
 
+const renderImage = ({ item }: { item: string }) => (
+  <Image source={{ uri: item }} style={styles.image} />
+);
+
+const handleUploadPhoto = async () => {
+  try {
+   setUploading(true);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow access to photos");
+      return;
+    }
+
+  
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], 
+      quality: 0.7,
+      allowsMultipleSelection: false,
+    });
+
+    if (result.canceled) return;
+
+    const image = result.assets[0];
+
+   
+    const token = await AsyncStorage.getItem('auth_token');
+
+    if (!token) {
+      Alert.alert("Error", "User not authenticated");
+      return;
+    }
+
+    
+    const formData = new FormData();
+
+    formData.append("files", {
+      uri: Platform.OS === 'android' ? image.uri : image.uri.replace('file://', ''),
+      name: image.fileName || `photo_${Date.now()}.jpg`,
+      type: image.mimeType || 'image/jpeg',
+    } as any);
+
+    formData.append("title", "Task Photo");
+    formData.append("description", "Photo Evidence");
+
+    console.log("UPLOAD URL:", `${API_BASE_URL}/api/tasks/upload`);
+
+   
+    const res = await fetch(`${API_BASE_URL}/api/tasks/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+       
+      },
+      body: formData,
+    });
+
+    const text = await res.text();
+    console.log("UPLOAD RESPONSE:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("Invalid server response");
+    }
+
+    if (!res.ok) {
+      throw new Error(data?.error?.message || "Upload failed");
+    }
+
+    if (data?.item?.attachment?.url) {
+      setImages(prev => [...prev, data.item.attachment.url]);
+    }
+    setUploading(false);
+    Alert.alert("Success", "Photo uploaded successfully");
+
+  } catch (err: any) {
+    setUploading(false);
+    console.error("UPLOAD ERROR:", err);
+    Alert.alert("Error", err.message || "Upload failed");
+  }
+};
+
   const { data: task, isLoading, error } = useQuery<Task>({
     queryKey: ['task', String(taskId || '')],
     enabled: !!taskId,
@@ -83,7 +170,7 @@ export default function TaskDetailScreen() {
       try {
         const res = await apiRequest<{ item?: any; error?: { message?: string } }>(`/tasks/${taskId}`);
         
-        // Check if API returned an error
+      
         if (res.error) {
           console.error('[Task Detail] API error:', res.error);
           throw new Error(res.error.message || 'Failed to load task');
@@ -165,7 +252,7 @@ export default function TaskDetailScreen() {
 
   const noteMutation = useMutation({
     mutationFn: async (note: string) => {
-      // This calls the same endpoint used by your web app's sendComment logic
+     
       return await apiRequest(`/tasks/${taskId}/comments`, {
         method: 'POST',
         body: JSON.stringify({
@@ -449,12 +536,36 @@ export default function TaskDetailScreen() {
               <Send color={newNote.trim() ? Colors.primary : Colors.textTertiary} size={18} />
             </TouchableOpacity>
           </View>
+
+        {/*  <ScrollView contentContainerStyle={{ padding: 10 }}>
+     <View style={styles.gallery}>
+    {images.map((img, index) => (
+      <Image
+        key={index}
+        source={{ uri: img }}
+        style={styles.image}
+      />
+    ))}
+  </View>
+
+</ScrollView>*/}
+          
         </View>
 
         {/* Photo Upload */}
-        <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7}>
-          <Camera color={Colors.secondary} size={20} />
-          <Text style={styles.uploadBtnText}>Upload Photo Evidence</Text>
+        <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7} onPress={handleUploadPhoto} 
+        disabled={uploading}>
+         {uploading ? (
+    <>
+      <ActivityIndicator size="small" color={Colors.secondary} />
+      <Text style={styles.uploadBtnText}>Uploading...</Text>
+    </>
+  ) : (
+    <>
+      <Camera color={Colors.secondary} size={20} />
+      <Text style={styles.uploadBtnText}>Upload Photo Evidence</Text>
+    </>
+  )}
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
@@ -467,6 +578,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+   gallery: {
+    flexDirection: 'row',
+    flexWrap: 'wrap', 
+    marginTop: 10,
+  },
+  image: {
+    width: '30%',      
+    aspectRatio: 1,    
+    margin: '1.5%',
+    borderRadius: 8,
   },
   header: {
     flexDirection: 'row',
