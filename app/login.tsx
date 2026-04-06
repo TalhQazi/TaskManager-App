@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
+  Image,
 } from 'react-native';
 import { Shield, Mail, Lock, Eye, EyeOff, Sparkles, Fingerprint, ArrowRight } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,7 +27,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string>('');
-  const [loginAs, setLoginAs] = useState<'employee' | 'manager'>('employee');
+  const [loginAs, setLoginAs] = useState<'employee' | 'manager'>('manager');
 
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -232,7 +233,11 @@ export default function LoginScreen() {
                 colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.05)']}
                 style={styles.logoCircle}
               >
-                <Shield color="#FFFFFF" size={40} strokeWidth={1.5} />
+                <Image
+                  source={require('@/assets/images/icon.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
               </LinearGradient>
             </Animated.View>
             <Animated.Text style={[styles.appName, { opacity: logoOpacity }]}>
@@ -262,19 +267,6 @@ export default function LoginScreen() {
               {/* Role Switch */}
               <Animated.View style={[styles.roleSwitchRow, { transform: [{ scale: roleChipScale }] }]}>
                 <TouchableOpacity
-                  style={[styles.roleChip, loginAs === 'employee' && styles.roleChipActive]}
-                  onPress={() => setLoginAs('employee')}
-                  activeOpacity={0.7}
-                  testID="login-as-employee"
-                >
-                  <Text style={[styles.roleChipText, loginAs === 'employee' && styles.roleChipTextActive]}>
-                    Employee
-                  </Text>
-                  {loginAs === 'employee' && (
-                    <Animated.View style={styles.roleChipActiveIndicator} />
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
                   style={[styles.roleChip, loginAs === 'manager' && styles.roleChipActive]}
                   onPress={() => setLoginAs('manager')}
                   activeOpacity={0.7}
@@ -287,6 +279,20 @@ export default function LoginScreen() {
                     <Animated.View style={styles.roleChipActiveIndicator} />
                   )}
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.roleChip, loginAs === 'employee' && styles.roleChipActive]}
+                  onPress={() => setLoginAs('employee')}
+                  activeOpacity={0.7}
+                  testID="login-as-employee"
+                >
+                  <Text style={[styles.roleChipText, loginAs === 'employee' && styles.roleChipTextActive]}>
+                    Employee
+                  </Text>
+                  {loginAs === 'employee' && (
+                    <Animated.View style={styles.roleChipActiveIndicator} />
+                  )}
+                </TouchableOpacity>
+                
               </Animated.View>
 
               {/* Error Message with Animation */}
@@ -387,7 +393,7 @@ export default function LoginScreen() {
 
           {/* Footer */}
           <Animated.View style={[styles.footer, { opacity: formOpacity }]}>
-            <Text style={styles.footerText}>© 2024 TaskManager. All rights reserved.</Text>
+            <Text style={styles.footerText}> 2024 TaskManager. All rights reserved.</Text>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -439,6 +445,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  logoImage: {
+    width: 50,
+    height: 50,
   },
   appName: {
     fontSize: 32,
