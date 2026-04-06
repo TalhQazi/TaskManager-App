@@ -381,13 +381,7 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </Animated.View>
 
-              {/* Biometric Option */}
-              <TouchableOpacity style={styles.biometricOption}>
-                <View style={styles.biometricIconBg}>
-                  <Fingerprint size={20} color={Colors.primary} />
-                </View>
-                <Text style={styles.biometricText}>Use Biometric Login</Text>
-              </TouchableOpacity>
+             
             </LinearGradient>
           </Animated.View>
 
