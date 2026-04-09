@@ -34,7 +34,12 @@ import { Task, TaskStatus } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { MaterialIcons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
+import * as IntentLauncher from 'expo-intent-launcher';
 
 const STATUS_OPTIONS: { key: TaskStatus; label: string; color: string }[] = [
   { key: 'pending', label: 'Pending', color: '#F59E0B' },
@@ -55,6 +60,7 @@ export default function TaskDetailScreen() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+
 
  useEffect(() => {
   if (!taskId) return;
@@ -124,10 +130,10 @@ const handleUploadPhoto = async () => {
     formData.append("title", "Task Photo");
     formData.append("description", "Photo Evidence");
 
-    console.log("UPLOAD URL:", `${API_BASE_URL}/api/tasks/upload`);
+    console.log("UPLOAD URL:", `${API_BASE_URL}/tasks/upload`);
 
    
-    const res = await fetch(`${API_BASE_URL}/api/tasks/upload`, {
+    const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -151,8 +157,15 @@ const handleUploadPhoto = async () => {
     }
 
     if (data?.item?.attachment?.url) {
-      setImages(prev => [...prev, data.item.attachment.url]);
+    let imageUrl = data.item.attachment.url;
+
+    
+    if (!imageUrl.startsWith("data:image")) {
+      imageUrl = `data:image/jpeg;base64,${imageUrl}`;
     }
+
+    setImages(prev => [...prev, imageUrl]);
+  }
     setUploading(false);
     Alert.alert("Success", "Photo uploaded successfully");
 
@@ -163,13 +176,177 @@ const handleUploadPhoto = async () => {
   }
 };
 
+const handleUploadDocument = async () => {
+  try {
+    setUploading(true)
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "*/*", 
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) return;
+
+    const file = result.assets[0];
+
+    const token = await AsyncStorage.getItem('auth_token');
+
+    const formData = new FormData();
+
+    formData.append("files", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || "application/octet-stream",
+    } as any);
+
+    formData.append("title", "Task File");
+    formData.append("description", "Task Attachment");
+
+    const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (data?.item?.attachment?.url) {
+   
+    }
+    setUploading(false);
+    Alert.alert("Success", "File uploaded");
+  } catch (e) {
+    console.log(e);
+    setUploading(false);
+    Alert.alert("Error", "Upload failed");
+  }
+};
+
+const getFileType = (base64: string) => {
+  if (base64.includes("application/pdf")) return "pdf";
+  if (base64.includes("image")) return "image";
+  if (base64.includes("wordprocessingml")) return "doc";
+  return "file";
+};
+
+
+
+
+
+
+const openBase64File = async (base64Data: string, type: string) => {
+  try {
+    let mimeType = "*/*";
+    let extension = "file";
+
+    if (type === "pdf") {
+      mimeType = "application/pdf";
+      extension = "pdf";
+    } else if (type === "doc") {
+      mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      extension = "docx";
+    } else if (type === "image") {
+      mimeType = "image/jpeg";
+      extension = "jpg";
+    }
+
+   
+    const fileName = `file_${Date.now()}.${extension}`;
+    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+    const base64 = base64Data.includes(",")
+      ? base64Data.split(",")[1]
+      : base64Data;
+
+    if (!base64) {
+      Alert.alert("Error", "Invalid file data");
+      return;
+    }
+
+    await FileSystem.writeAsStringAsync(fileUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    if (Platform.OS === "android") {
+      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+
+      await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+        data: contentUri,
+        flags: 1, 
+        type: mimeType,
+      });
+    } else {
+     
+      await Sharing.shareAsync(fileUri, { mimeType });
+    }
+  } catch (e) {
+    console.error("❌ Open File Error:", e);
+    Alert.alert("Error", "No application found to open this file type.");
+  }
+};
+
+const openTaskFile = async (base64Data: string, type: string) => {
+  try {
+    setUploading(true); 
+    
+    let mimeType = "application/octet-stream";
+    let extension = "file";
+
+    
+    if (type === "pdf") {
+      mimeType = "application/pdf";
+      extension = "pdf";
+    } else if (type === "image") {
+      mimeType = "image/jpeg";
+      extension = "jpg";
+    } else if (type === "doc") {
+      mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      extension = "docx";
+    }
+
+   
+    const fileName = `Task_${Date.now()}.${extension}`;
+    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+    const cleanBase64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+
+    await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+   
+    if (Platform.OS === 'android') {
+     
+      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+
+      try {
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          flags: 1, 
+          type: mimeType,
+        });
+      } catch (e) {
+        await Sharing.shareAsync(fileUri, { mimeType });
+      }
+    } else {
+     
+      await Sharing.shareAsync(fileUri, { mimeType, UTI: type === 'pdf' ? 'com.adobe.pdf' : undefined });
+    }
+  } catch (error: any) {
+    console.log("Error", "Could not open file: " + error.message);
+    Alert.alert("Error", "Could not open file: " + error.message);
+  } finally {
+    setUploading(false);
+  }
+};
+
   const { data: task, isLoading, error } = useQuery<Task>({
     queryKey: ['task', String(taskId || '')],
     enabled: !!taskId,
     queryFn: async () => {
       try {
         const res = await apiRequest<{ item?: any; error?: { message?: string } }>(`/tasks/${taskId}`);
-        
+        console.log("TASK API FULL RESPONSE:", res.data.attachments);
       
         if (res.error) {
           console.error('[Task Detail] API error:', res.error);
@@ -191,7 +368,18 @@ const handleUploadPhoto = async () => {
           assignedDate: String(t.createdAt ?? ''),
           dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '',
           notes: Array.isArray(t.notes) ? t.notes : [],
-          images: Array.isArray(t.images) ? t.images : [],
+           attachments: Array.isArray(t.attachments) ? t.attachments : [],
+
+        
+          images: Array.isArray(t.attachments)
+            ? t.attachments.map((item: any) => {
+                let img = item.url || "";
+                if (!img.startsWith("data:image")) {
+                  img = `data:image/jpeg;base64,${img}`;
+                }
+                return img;
+              })
+            : [],
           category: String(t.location || t.category || 'Task'),
           location: String(t.location || ''),
           assignees: Array.isArray(t.assignees) ? t.assignees : [],
@@ -203,6 +391,16 @@ const handleUploadPhoto = async () => {
     },
   });
 
+  const attachmentsArray = Array.isArray(task?.attachments) ? task.attachments : [];
+
+ 
+/*   const imageAttachments = attachmentsArray
+  .map((a: any) => a.url)
+  .filter((url: string) => url?.startsWith("data:image"));
+
+const documentAttachments = attachmentsArray
+  .map((a: any) => a.url)
+  .filter((url: string) => !url?.startsWith("data:image"));*/
 
   const { data: comments, isLoading: commentsLoading } = useQuery({
   queryKey: ['task-comments', taskId],
@@ -537,23 +735,36 @@ const handleUploadPhoto = async () => {
             </TouchableOpacity>
           </View>
 
-        {/*  <ScrollView contentContainerStyle={{ padding: 10 }}>
+          <ScrollView contentContainerStyle={{ padding: 10 }}>
      <View style={styles.gallery}>
-    {images.map((img, index) => (
-      <Image
-        key={index}
-        source={{ uri: img }}
-        style={styles.image}
-      />
-    ))}
+  {attachmentsArray.map((item: any, index: number) => {
+  const url = item.url;
+  const fileType = getFileType(url);
+
+  return (
+    <TouchableOpacity
+      key={index}
+      style={styles.fileButton}
+      activeOpacity={0.7}
+   
+    onPress={() => openTaskFile(url, fileType)}
+    >
+      <MaterialIcons name="insert-drive-file" size={18} color="#333" />
+
+      <Text style={styles.fileButtonText}>
+        File {index + 1}
+      </Text>
+    </TouchableOpacity>
+  );
+})}
   </View>
 
-</ScrollView>*/}
+</ScrollView>
           
         </View>
 
         {/* Photo Upload */}
-        <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7} onPress={handleUploadPhoto} 
+        <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7} onPress={handleUploadDocument} 
         disabled={uploading}>
          {uploading ? (
     <>
@@ -575,6 +786,22 @@ const handleUploadPhoto = async () => {
 }
 
 const styles = StyleSheet.create({
+  fileButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 10,
+  paddingHorizontal: 14,
+  backgroundColor: '#f2f2f2',
+  borderRadius: 8,
+  marginVertical: 6,marginHorizontal: 4,
+  
+},
+
+fileButtonText: {
+  marginLeft: 8,
+  fontSize: 15,
+  color: '#333',
+},
   container: {
     flex: 1,
     backgroundColor: Colors.background,

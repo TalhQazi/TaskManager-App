@@ -18,6 +18,16 @@
       "bundleIdentifier": "app.rork.employee-mobile-app-50y6sgn"
     },
     "android": {
+      "intentFilters": [
+    {
+      "action": "VIEW",
+      "data": [
+        { "scheme": "content", "mimeType": "application/pdf" },
+        { "scheme": "content", "mimeType": "image/*" },
+        { "scheme": "content", "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }
+      ]
+    }
+  ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,7 +40,10 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-file-system",
+      "expo-document-picker",
+      "expo-image-picker"
     ],
     "experiments": {
       "typedRoutes": true
