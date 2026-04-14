@@ -216,7 +216,7 @@ export default function LoginScreen() {
 
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.topSection}>
@@ -264,7 +264,7 @@ export default function LoginScreen() {
               <Text style={styles.welcomeText}>Welcome back</Text>
               <Text style={styles.instructionText}>Sign in to access your workspace</Text>
 
-              {/* Role Switch */}
+              {/* Role Switch  */}
               <Animated.View style={[styles.roleSwitchRow, { transform: [{ scale: roleChipScale }] }]}>
                 <TouchableOpacity
                   style={[styles.roleChip, loginAs === 'manager' && styles.roleChipActive]}
@@ -578,7 +578,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   loginButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.5,
   },
   loginButtonText: {
     color: '#FFFFFF',

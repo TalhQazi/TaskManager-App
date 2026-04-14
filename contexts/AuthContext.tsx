@@ -97,17 +97,25 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }) => {
       console.log('[Auth] Attempting login for:', email);
 
+      console.log('[Auth] Attempting login with payload:', {
+      username: email, // or email if manager
+      password,
+      loginAs,
+    });
+    
       const loginRes = await apiRequest<{ item: { token: string; role: string; username: string; name?: string } }>(
-        loginAs === 'manager' ? '/auth/login' : '/auth/employee/login',
+        
+        loginAs === 'manager' ? '/auth/login' : '/auth/employee-login',
         {
           method: 'POST',
           body:
             loginAs === 'manager'
               ? JSON.stringify({ username: email, password })
-              : JSON.stringify({ email, password }),
+              : JSON.stringify({ username: email, password }),
         },
+       
       );
-
+      console.log(`[Auth] Login API response for ${email}:`, loginRes,loginAs)
       const loginItem = loginRes.data?.item;
       if (!loginItem?.token) {
         throw new Error('Login failed');
