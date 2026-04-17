@@ -6,7 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  ActivityIndicator,
+  ActivityIndicator,Image
 } from 'react-native';
 import { User, Mail, Phone, Briefcase, Building2, Calendar, LogOut } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -36,6 +36,26 @@ export default function ManagerProfileScreen() {
       return res.data?.item || (user as unknown as ProfileData);
     },
   });
+
+  const { data: userSettings } = useQuery({
+  queryKey: ['userSettings'],
+  queryFn: async () => {
+    const res = await apiRequest('/settings');
+    return res.data;
+  },
+  });
+
+  const avatarUrlRaw =
+  userSettings?.item?.avatarDataUrl ||   
+  userSettings?.item?.avatarUrl ||
+  userSettings?.item?.avatar ||
+  null;
+
+const avatarUrl = avatarUrlRaw
+  ? avatarUrlRaw.startsWith('http')
+    ? avatarUrlRaw
+    : `https://task.se7eninc.com${avatarUrlRaw}`
+  : null;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -83,9 +103,21 @@ export default function ManagerProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing || isLoading} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
-          <View style={styles.avatar}>
+         {/* <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          </View>*/}
+
+          <View style={styles.avatar}>
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatarImage}
+              onError={(e) => console.log("Image error:", e.nativeEvent)}
+            />
+          ) : (
+            <Text style={styles.avatarText}>{initials}</Text>
+          )}
+        </View>
           <Text style={styles.name}>{profile?.name || user?.fullName || 'Manager'}</Text>
           <Text style={styles.role}>{profile?.role || user?.jobTitle || 'Manager'}</Text>
         </View>
@@ -120,6 +152,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  avatarImage: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 50,
+},
   content: {
     flex: 1,
     paddingHorizontal: 16,

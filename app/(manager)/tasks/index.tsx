@@ -25,9 +25,15 @@ import {
   Send,
 } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/services/api';
+import { API_BASE_URL, apiRequest } from '@/services/api';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
+import { Linking, Alert } from 'react-native';
+
+import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Project {
   id: string;
@@ -226,9 +232,67 @@ export default function ManagerTasksScreen() {
     });
   };
 
+  const getDownloadUrl = (taskId: string, index: number) => {
+  return `${API_BASE_URL}/api/tasks/${taskId}/attachments/${index}/download`;
+};
+
+
+const getMimeType = (fileName: string) => {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+
+  switch (ext) {
+    case 'pdf': return 'application/pdf';
+    case 'doc':
+    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    default: return '*/*';
+  }
+};
+
+const openAttachment = async (taskId: string, index: number, fileName: string) => {
+  try {
+    const token = await AsyncStorage.getItem('auth_token');
+
+    const url = `${API_BASE_URL}/tasks/${taskId}/attachments/${index}/download`;
+
+    const ext = fileName.split('.').pop();
+
+    const fileUri =
+      FileSystem.documentDirectory + `file_${Date.now()}.${ext}`;
+
+    const result = await FileSystem.downloadAsync(url, fileUri, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (result.status !== 200) throw new Error("Download failed");
+
+    if (Platform.OS === 'android') {
+     
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1,
+        type: getMimeType(fileName),
+      });
+    } else {
+      // iOS fallback
+      await Sharing.shareAsync(result.uri);
+    }
+
+  } catch (err) {
+    console.log("Open error:", err);
+  }
+};
+
+
   const filteredStandaloneTasks = filterTasks(standaloneTasks);
 
-  // Show loading screen when data is loading
+
   if ((projectsLoading || tasksLoading) && !refreshing) {
     return (
       <View style={styles.container}>
@@ -242,6 +306,13 @@ export default function ManagerTasksScreen() {
       </View>
     );
   }
+
+  const buildFileUrl = (att, token) => {
+  if (att.url) return att.url;
+
+  // 👇 Adjust path depending on file type
+  return `${API_BASE_URL}/api/s3-proxy/avatars/${att.fileName}?token=${token}`;
+};
 
   // TASK DETAIL VIEW
   if (viewMode === 'task-detail' && selectedTask) {
@@ -334,7 +405,24 @@ export default function ManagerTasksScreen() {
                 <Text style={styles.sectionTitle}>Attachments ({selectedTask.attachments.length})</Text>
                 <View style={styles.attachmentsList}>
                   {selectedTask.attachments.map((att, idx) => (
-                    <TouchableOpacity key={idx} style={styles.attachmentItem}>
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.attachmentItem}
+                     onPress={() => {
+                    const attachment = selectedTask.attachments?.[idx];
+
+                    if (!attachment) {
+                      Alert.alert("Error", "Attachment not found");
+                      return;
+                    }
+
+                    openAttachment(
+                      selectedTask.id,
+                      idx,
+                      attachment.fileName
+                    );
+                  }}
+                    >
                       <Text style={styles.attachmentName}>📄 {att.fileName}</Text>
                     </TouchableOpacity>
                   ))}

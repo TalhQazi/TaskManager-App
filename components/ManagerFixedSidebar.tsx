@@ -379,17 +379,19 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: 50,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
     overflow: 'hidden',
+   
   },
   logoImage: {
-    width: 36,
-    height: 36,
+    width: 46,
+    height: 46,
+   
   },
   inner: {
     paddingTop: 16,

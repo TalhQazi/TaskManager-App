@@ -41,6 +41,7 @@ export default function ManagerHeader() {
     queryKey: ['managerHeaderSettings'],
     queryFn: async () => {
       const res = await apiRequest<{ item: HeaderSettings }>('/header-settings');
+     // console.log('Fetched header settings:', res.data);
       return res.data?.item;
     },
   });
@@ -75,9 +76,35 @@ export default function ManagerHeader() {
     return [Colors.primary, Colors.primary, Colors.primaryDark || Colors.primary];
   };
 
+
+  const { data: userSettings } = useQuery({
+  queryKey: ['userSettings'],
+  queryFn: async () => {
+    const res = await apiRequest('/settings'); 
+    
+    return res.data;
+  },
+});
+
+const avatarUrlRaw =
+  userSettings?.item?.avatarDataUrl || 
+  userSettings?.item?.avatarUrl ||
+  userSettings?.item?.avatar ||
+  null;
+
+
+const avatarUrl = avatarUrlRaw
+  ? avatarUrlRaw.startsWith('http')
+    ? avatarUrlRaw
+    : `https://task.se7eninc.com${avatarUrlRaw}`
+  : null;
+
   const backgroundColors = getBackgroundColors();
   const hasImageBackground = headerSettings?.backgroundType === 'image' && headerSettings?.imageConfig?.dataUrl;
   const headerHeight = headerSettings?.height || 72;
+
+
+  console.log("Final Avatar URL =>", avatarUrl);
 
   return (
     <View style={[styles.header, { paddingTop: insets.top, height: headerHeight + insets.top }]}>
@@ -101,7 +128,7 @@ export default function ManagerHeader() {
         />
       )}
       
-      <View style={[styles.content, { height: headerHeight }]}>
+      <View style={[styles.content, { /*height: headerHeight*/paddingBottom: 10 }]}>
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
@@ -120,7 +147,14 @@ export default function ManagerHeader() {
             onPress={() => router.push('/(manager)/profile' as any)}
             activeOpacity={0.75}
           >
+            {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatarImage}
+            />
+          ) : (
             <Text style={styles.avatarText}>{initials}</Text>
+          )}
           </TouchableOpacity>
         </View>
       </View>
@@ -142,6 +176,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  avatarImage: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 20,
+   resizeMode: 'cover',
+},
   backgroundImage: {
     position: 'absolute',
     top: 0,
@@ -149,7 +189,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     width: '100%',
-    height: '100%',
+   // height: '100%',
   },
   overlay: {
     position: 'absolute',
@@ -165,6 +205,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     position: 'relative',
     zIndex: 10,
+   
   },
   title: {
     flex: 1,

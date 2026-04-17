@@ -387,7 +387,7 @@ export default function ManagerHomeScreen() {
     Animated.timing(headerFadeAnim, {
       toValue: 1,
       duration: 800,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, []);
 
