@@ -27,7 +27,7 @@ interface HeaderSettings {
 }
 
 interface HeaderProps {
-  showBackButton?: boolean;
+  showBackButton?: boolean; 
   title?: string;
   onBackPress?: () => void;
 }
@@ -78,6 +78,7 @@ export default function Header({ showBackButton, title, onBackPress }: HeaderPro
   };
 
   const handleNotificationPress = () => {
+     console.log("CLICKED");
     router.push('/notifications' as any);
   };
 

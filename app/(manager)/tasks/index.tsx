@@ -10,7 +10,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
+  ActivityIndicator,Modal
 } from 'react-native';
 import {
   Search,
@@ -34,6 +34,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { getRemainingTime, getTimerState } from '@/util/taskTimer';
+import { useGlobalTimer } from '@/hooks/useGlobalTimer';
+import CreateExpenseSheet from '../expense/CreateExpenseSheet';
+import ExpenseSheetList from '../expense/ExpenseSheetList';
 
 interface Project {
   id: string;
@@ -78,7 +83,8 @@ export default function ManagerTasksScreen() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
-  
+  const now = useGlobalTimer();
+
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -86,6 +92,9 @@ export default function ManagerTasksScreen() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
+
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isExpenseListOpen, setIsExpenseListOpen] = useState(false);
 
   // Fetch projects
   const { data: projects = [], isLoading: projectsLoading, refetch: refetchProjects } = useQuery<Project[]>({
@@ -118,6 +127,25 @@ export default function ManagerTasksScreen() {
       console.error('Failed to load project:', err);
     }
   };
+
+  const getTimerColor = (state: string) => {
+  switch (state) {
+    case 'normal':
+      return '#16a34a';
+
+    case 'warning':
+      return '#eab308';
+
+    case 'critical':
+      return '#ef4444';
+
+    case 'overdue':
+      return '#dc2626';
+
+    default:
+      return Colors.textSecondary;
+  }
+};
 
   // Load task comments
   const loadComments = async (taskId: string) => {
@@ -339,6 +367,26 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
           <View style={styles.taskInfoCard}>
             <Text style={styles.taskTitle}>{selectedTask.title}</Text>
             <Text style={styles.taskDescription}>{selectedTask.description}</Text>
+            {(() => {
+  const timer = getRemainingTime(selectedTask.dueDate, now);
+
+  if (!timer) return null;
+
+  const state = getTimerState(timer.totalMs);
+
+  return (
+    <Text
+      style={[
+        styles.detailTimerText,
+        {
+          color: getTimerColor(state),
+        },
+      ]}
+    >
+      ⏱ Remaining Time: {timer.formatted}
+    </Text>
+  );
+})()}
 
             {/* Status & Priority */}
             <View style={styles.badgesRow}>
@@ -518,6 +566,24 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
 
         {/* Project Info */}
         <View style={styles.projectInfoCard}>
+        {/* Expense*/}
+        <View style={styles.projectActions}>
+  <TouchableOpacity
+    style={styles.actionButton}
+    onPress={() => setIsExpenseModalOpen(true)}
+  >
+    <Text style={styles.actionButtonText}>+ Create Expense</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={[styles.actionButton, styles.secondaryActionButton]}
+    onPress={() => setIsExpenseListOpen(true)}
+  >
+    <Text style={styles.secondaryActionButtonText}>View Expenses</Text>
+  </TouchableOpacity>
+</View>
+        {/* Expense*/}
+
           <Text style={styles.projectDescription}>{selectedProject.description || 'No description'}</Text>
           <Text style={styles.projectMeta}>
             {selectedProject.assignees?.length > 0 
@@ -557,6 +623,26 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
                   <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
                 </View>
                 <Text style={styles.taskCardDesc} numberOfLines={2}>{task.description}</Text>
+                {(() => {
+  const timer = getRemainingTime(task.dueDate, now);
+
+  if (!timer) return null;
+
+  const state = getTimerState(timer.totalMs);
+
+  return (
+    <Text
+      style={[
+        styles.timerText,
+        {
+          color: getTimerColor(state),
+        },
+      ]}
+    >
+      ⏱ {timer.formatted}
+    </Text>
+  );
+})()}
                 <View style={styles.taskCardFooter}>
                   <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(task.status)}20` }]}>
                     <Text style={[styles.statusBadgeText, { color: getStatusColor(task.status) }]}>{task.status}</Text>
@@ -568,6 +654,61 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
           )}
           <View style={{ height: 20 }} />
         </ScrollView>
+
+        <Modal
+  visible={isExpenseModalOpen}
+  animationType="slide"
+  transparent
+  onRequestClose={() => setIsExpenseModalOpen(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Create Expense Sheet</Text>
+
+        <TouchableOpacity
+          onPress={() => setIsExpenseModalOpen(false)}
+        >
+          <Text style={styles.closeText}>Close</Text>
+        </TouchableOpacity>
+      </View>
+
+      <CreateExpenseSheet
+        projectId={selectedProject?.id}
+        onClose={() => setIsExpenseModalOpen(false)}
+      />
+
+    </View>
+  </View>
+</Modal>
+<Modal
+  visible={isExpenseListOpen}
+  animationType="slide"
+  transparent
+  onRequestClose={() => setIsExpenseListOpen(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Expense Sheets</Text>
+
+        <TouchableOpacity
+          onPress={() => setIsExpenseListOpen(false)}
+        >
+          <Text style={styles.closeText}>Close</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ExpenseSheetList
+        projectId={selectedProject?.id}
+      />
+
+    </View>
+  </View>
+</Modal>
+
       </View>
     );
   }
@@ -634,7 +775,7 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
           )}
         </View>
 
-        {/* Standalone Tasks Section */}
+        {/* Standalone Tasks Section */} 
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Standalone Tasks</Text>
           {filteredStandaloneTasks.length === 0 ? (
@@ -650,6 +791,26 @@ const openAttachment = async (taskId: string, index: number, fileName: string) =
                   <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
                 </View>
                 <Text style={styles.taskCardDesc} numberOfLines={2}>{task.description}</Text>
+                {(() => {
+  const timer = getRemainingTime(task.dueDate, now);
+
+  if (!timer) return null;
+
+  const state = getTimerState(timer.totalMs);
+
+  return (
+    <Text
+      style={[
+        styles.timerText,
+        {
+          color: getTimerColor(state),
+        },
+      ]}
+    >
+      ⏱ {timer.formatted}
+    </Text>
+  );
+})()}
                 <View style={styles.taskCardFooter}>
                   <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(task.status)}20` }]}>
                     <Text style={[styles.statusBadgeText, { color: getStatusColor(task.status) }]}>{task.status}</Text>
@@ -1085,4 +1246,86 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 16,
   },
+  timerText: {
+  fontSize: 12,
+  fontWeight: '700',
+  marginBottom: 10,
+},
+
+detailTimerText: {
+  fontSize: 15,
+  fontWeight: '700',
+  marginBottom: 16,
+},
+
+projectActions: {
+  flexDirection: 'row',
+  gap: 10,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  backgroundColor: Colors.surface,
+  borderBottomWidth: 1,
+  borderBottomColor: Colors.border,
+},
+
+actionButton: {
+  flex: 1,
+  backgroundColor: Colors.primary,
+  paddingVertical: 12,
+  borderRadius: 12,
+  alignItems: 'center',
+},
+
+secondaryActionButton: {
+  backgroundColor: Colors.background,
+  borderWidth: 1,
+  borderColor: Colors.primary,
+},
+
+actionButtonText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 14,
+},
+
+secondaryActionButtonText: {
+  color: Colors.primary,
+  fontWeight: '700',
+  fontSize: 14,
+},
+
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  justifyContent: 'flex-end',
+},
+
+modalContainer: {
+  height: '90%',
+  backgroundColor: Colors.background,
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+  paddingTop: 12,
+},
+
+modalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+  paddingBottom: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: Colors.border,
+},
+
+modalTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: Colors.text,
+},
+
+closeText: {
+  color: Colors.primary,
+  fontWeight: '600',
+},
 });

@@ -104,7 +104,7 @@ const avatarUrl = avatarUrlRaw
   const headerHeight = headerSettings?.height || 72;
 
 
-  console.log("Final Avatar URL =>", avatarUrl);
+  //console.log("Final Avatar URL =>", avatarUrl);
 
   return (
     <View style={[styles.header, { paddingTop: insets.top, height: headerHeight + insets.top }]}>

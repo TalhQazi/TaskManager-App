@@ -246,7 +246,7 @@ export default function TimeClockScreen() {
   const elapsed = getElapsedTime();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: /*insets.top*/0 }]}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

@@ -91,8 +91,8 @@ export default function ProfileScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { paddingTop: /*insets.top*/0 }]}>
+      {/*<View style={styles.header}>
         <TouchableOpacity
           style={styles.hamburgerBtn}
           onPress={openSidebar}
@@ -102,7 +102,7 @@ export default function ProfileScreen() {
           <Menu color={Colors.surface} size={22} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
-      </View>
+      </View>*/}
 
       <ScrollView
         style={styles.scrollView}

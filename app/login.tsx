@@ -27,7 +27,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string>('');
-  const [loginAs, setLoginAs] = useState<'employee' | 'manager'>('manager');
+  //const [loginAs, setLoginAs] = useState<'employee' | 'manager'>('manager');
 
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -35,7 +35,7 @@ export default function LoginScreen() {
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formTranslateY = useRef(new Animated.Value(50)).current;
   const backgroundBounce = useRef(new Animated.Value(0)).current;
-  const roleChipScale = useRef(new Animated.Value(0.9)).current;
+  //const roleChipScale = useRef(new Animated.Value(0.9)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const emailShake = useRef(new Animated.Value(0)).current;
   const passwordShake = useRef(new Animated.Value(0)).current;
@@ -97,7 +97,7 @@ export default function LoginScreen() {
   }, []);
 
   // Role chip animation when changed
-  useEffect(() => {
+  /*useEffect(() => {
     Animated.sequence([
       Animated.timing(roleChipScale, {
         toValue: 0.95,
@@ -111,7 +111,7 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [loginAs]);
+  }, [loginAs]);*/
 
   const shakeAnimation = (animation: Animated.Value) => {
     Animated.sequence([
@@ -155,11 +155,14 @@ export default function LoginScreen() {
     }
     
     try {
-      await login({ email: email.trim(), password, loginAs });
+    //  await login({ email: email.trim(), password, loginAs });
+    await login({email: email.trim(), password,});
     } catch {
       console.log('[Login] Login failed');
     }
   };
+
+  
 
   const errorMessage = localError || loginError;
 
@@ -244,8 +247,10 @@ export default function LoginScreen() {
               TaskManager
             </Animated.Text>
             <Animated.Text style={[styles.subtitle, { opacity: logoOpacity }]}>
-              {loginAs === 'manager' ? 'Manager Portal' : 'Employee Portal'}
+              {/*loginAs === 'manager' ? 'Manager Portal' : 'Employee Portal'*/}
+              Login
             </Animated.Text>
+            
           </View>
 
           <Animated.View
@@ -265,7 +270,7 @@ export default function LoginScreen() {
               <Text style={styles.instructionText}>Sign in to access your workspace</Text>
 
               {/* Role Switch  */}
-              <Animated.View style={[styles.roleSwitchRow, { transform: [{ scale: roleChipScale }] }]}>
+              {/*<Animated.View style={[styles.roleSwitchRow, { transform: [{ scale: roleChipScale }] }]}>
                 <TouchableOpacity
                   style={[styles.roleChip, loginAs === 'manager' && styles.roleChipActive]}
                   onPress={() => setLoginAs('manager')}
@@ -293,7 +298,7 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
                 
-              </Animated.View>
+              </Animated.View>*/}
 
               {/* Error Message with Animation */}
               {errorMessage ? (

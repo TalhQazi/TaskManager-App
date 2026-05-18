@@ -51,7 +51,7 @@ const SOCKET_URL = 'https://task.se7eninc.com';
 
 export default function TaskDetailScreen() {
   const socketRef = useRef<Socket | null>(null);
-  const params = useLocalSearchParams<{ taskId?: string | string[] }>();
+  const params = useLocalSearchParams<{ taskId?: string | string[] }>(); 
   const taskId = Array.isArray(params.taskId) ? params.taskId[0] : params.taskId;
   const router = useRouter();
   const queryClient = useQueryClient();

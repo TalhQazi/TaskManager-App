@@ -46,7 +46,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         department: me.department || '',
         company: me.company || '',
         hireDate: me.hireDate || '',
-        role: String(me.role || '').toLowerCase() === 'manager' ? 'manager' : 'employee',
+       // role: String(me.role || '').toLowerCase() === 'manager' ? 'manager' : 'employee',
+        role:
+  String(me.role || '').toLowerCase() === 'manager'
+    ? 'manager'
+    : 'employee',
       };
 
       setUser(mappedUser);
@@ -86,60 +90,59 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, []);
 
   const loginMutation = useMutation({
-    mutationFn: async ({
-      email,
+   mutationFn: async ({
+  email,
+  password,
+}: {
+  email: string;
+  password: string;
+}) => {
+  console.log('[Auth] Attempting login for:', email);
+
+  const loginRes = await apiRequest<{
+    item: {
+      token: string;
+      role: string;
+      username: string;
+      name?: string;
+    };
+  }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({
+      username: email,
+      email: email,
       password,
-      loginAs,
-    }: {
-      email: string;
-      password: string;
-      loginAs: 'employee' | 'manager';
-    }) => {
-      console.log('[Auth] Attempting login for:', email);
+    }),
+  });
 
-      console.log('[Auth] Attempting login with payload:', {
-      username: email, // or email if manager
-      password,
-      loginAs,
-    });
-    
-      const loginRes = await apiRequest<{ item: { token: string; role: string; username: string; name?: string } }>(
-        
-        loginAs === 'manager' ? '/auth/login' : '/auth/employee-login',
-        {
-          method: 'POST',
-          body:
-            loginAs === 'manager'
-              ? JSON.stringify({ username: email, password })
-              : JSON.stringify({ username: email, password }),
-        },
-       
-      );
-      console.log(`[Auth] Login API response for ${email}:`, loginRes,loginAs)
-      const loginItem = loginRes.data?.item;
-      if (!loginItem?.token) {
-        throw new Error('Login failed');
-      }
+  console.log('[Auth] Login API response:', loginRes);
 
-      await AsyncStorage.setItem(AUTH_TOKEN_KEY, loginItem.token);
+  const loginItem = loginRes.data?.item;
 
-      const mappedUser = await refreshMe(email);
+  if (!loginItem?.token) {
+    throw new Error('Login failed');
+  }
 
-      if (mappedUser.role !== loginAs) {
-        await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
-        await AsyncStorage.removeItem(AUTH_USER_KEY);
-        throw new Error('Invalid role for this login');
-      }
-      // Add username from login response if not set by refreshMe
-      if (loginItem.username && !mappedUser.username) {
-        mappedUser.username = loginItem.username;
-      }
-      if (loginItem.name && !mappedUser.fullName) {
-        mappedUser.fullName = loginItem.name;
-      }
-      console.log('[Auth] Login successful via API');
-      return { user: mappedUser, token: loginItem.token };
-    },
+  await AsyncStorage.setItem(AUTH_TOKEN_KEY, loginItem.token);
+
+  const mappedUser = await refreshMe(email);
+
+  // Add username from login response if not set
+  if (loginItem.username && !mappedUser.username) {
+    mappedUser.username = loginItem.username;
+  }
+
+  if (loginItem.name && !mappedUser.fullName) {
+    mappedUser.fullName = loginItem.name;
+  }
+
+  console.log('[Auth] Login successful via API');
+
+  return {
+    user: mappedUser,
+    token: loginItem.token,
+  };
+},
     onSuccess: async (data) => {
       setUser(data.user);
       setToken(data.token);
