@@ -22,7 +22,13 @@ import {
   Bell,
   LogOut,
   ChevronRight,
-  X,
+  X,Megaphone,
+  Clock3,
+  Mail,
+  DollarSign,
+  ShoppingCart,
+  Car,
+  
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,6 +86,54 @@ const MENU_ITEMS: MenuItem[] = [
     route: '/notifications',
     color: '#EC4899',
   },
+  {
+  icon: Megaphone,
+  label: 'Announcements',
+  route: '/announcements',
+  color: '#8B5CF6',
+},
+{
+  label: 'Email Settings',
+  icon: Mail,
+  route: '/email-settings',
+  color: '#8B5CF6',
+},
+{
+  label: 'Leave Requests',
+  icon: Calendar,
+  route: '/leaverequest',
+  color: '#8B5CF6',
+},
+{
+  label: 'Payroll',
+  route: '/payroll',
+  icon: DollarSign,
+   color: '#8B5CF6',
+},
+{
+  label: 'Scrum Records',
+  route: '/scrum-records',
+  icon: ClipboardList,
+   color: '#8B5CF6',
+},
+{
+  label: 'Shopping Lists',
+  route: '/shoppinglists',
+  icon: ShoppingCart,
+   color: '#8B5CF6',
+},
+{
+  label: 'Travel Calender',
+  route: '/travelcalender',
+  icon: Car,
+   color: '#8B5CF6',
+}
+/*{
+    label: 'Attendance',
+    icon: Clock3,
+    route: '/attendance',
+     color: '#8B5CF6',
+  },*/
 ];
 
 interface SidebarProps {

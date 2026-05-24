@@ -1,28 +1,31 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePathname, router } from 'expo-router';
-import { Bell } from 'lucide-react-native';
-import Colors from '@/constants/colors';
-import { useAuth } from '@/contexts/AuthContext';
-import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/services/api';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useMemo, useEffect, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePathname, router } from "expo-router";
+import { Bell, Menu } from "lucide-react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
-// Header Settings Interface
+import Colors from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/services/api";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+
 interface HeaderSettings {
-  backgroundType: 'color' | 'image';
+  backgroundType: "color" | "image";
   colorConfig: {
     from: string;
     via: string;
     to: string;
   };
   imageConfig: {
-    url: string;
-    dataUrl: string;
-    repeat: string;
-    size: string;
-    position: string;
+    url?: string;
+    dataUrl?: string;
+    repeat?: string;
+    size?: string;
+    position?: string;
   };
   height: number;
   overlay: {
@@ -31,104 +34,127 @@ interface HeaderSettings {
   };
 }
 
-export default function ManagerHeader() {
+export default function ManagerHeader({ onMenuPress }: any) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { user } = useAuth();
 
-  // Fetch header settings from admin panel
+  const [tokenReady, setTokenReady] = useState(false);
+
+  // load token once
+  useEffect(() => {
+    (async () => {
+      await initToken();
+      setTokenReady(true);
+    })();
+  }, []);
+
+  // HEADER SETTINGS
   const { data: headerSettings } = useQuery<HeaderSettings>({
-    queryKey: ['managerHeaderSettings'],
+    queryKey: ["managerHeaderSettings"],
     queryFn: async () => {
-      const res = await apiRequest<{ item: HeaderSettings }>('/header-settings');
-     // console.log('Fetched header settings:', res.data);
+      const res = await apiRequest<{ item: HeaderSettings }>("/header-settings");
       return res.data?.item;
     },
   });
 
+  // USER SETTINGS (avatar)
+  const { data: userSettings } = useQuery({
+    queryKey: ["userSettings"],
+    queryFn: async () => {
+      const res = await apiRequest("/settings");
+      return res.data;
+    },
+  });
+
   const title = useMemo(() => {
-    if (pathname.includes('/tasks')) return 'Tasks';
-    if (pathname.includes('/team')) return 'Team';
-    if (pathname.includes('/vehicles')) return 'Vehicles';
-    if (pathname.includes('/appliances')) return 'Appliances';
-    if (pathname.includes('/schedule')) return 'Schedule';
-    if (pathname.includes('/time-tracking')) return 'Time Tracking';
-    if (pathname.includes('/messages')) return 'Messages';
-    if (pathname.includes('/notifications')) return 'Notifications';
-    if (pathname.includes('/profile')) return 'Profile';
-    return 'Manager Dashboard';
+    if (pathname.includes("/tasks")) return "Tasks";
+    if (pathname.includes("/vehicles")) return "Vehicles";
+    if (pathname.includes("/messages")) return "Messages";
+    if (pathname.includes("/notifications")) return "Notifications";
+    if (pathname.includes("/profile")) return "Profile";
+    return "Manager Dashboard";
   }, [pathname]);
 
-  const initials = (user?.fullName || user?.email || 'M')
-    .split(' ')
+  const initials = (user?.fullName || user?.email || "M")
+    .split(" ")
     .filter(Boolean)
     .map((p) => p[0])
     .slice(0, 2)
-    .join('')
+    .join("")
     .toUpperCase();
 
-  // Get background colors from settings or use defaults
-  const getBackgroundColors = (): [string, string, string] => {
-    if (headerSettings?.backgroundType === 'color' && headerSettings?.colorConfig) {
-      const { from, via, to } = headerSettings.colorConfig;
-      return [from || Colors.primary, via || Colors.primary, to || Colors.primaryDark || Colors.primary];
-    }
-    return [Colors.primary, Colors.primary, Colors.primaryDark || Colors.primary];
-  };
+  // BACKGROUND IMAGE LOGIC
+  const rawImage =
+    headerSettings?.imageConfig?.url ||
+    headerSettings?.imageConfig?.dataUrl;
 
+  const imageUri = tokenReady ? toProxiedUrl(rawImage) : undefined;
 
-  const { data: userSettings } = useQuery({
-  queryKey: ['userSettings'],
-  queryFn: async () => {
-    const res = await apiRequest('/settings'); 
-    
-    return res.data;
-  },
-});
+  const hasImageBackground =
+    headerSettings?.backgroundType === "image" && !!imageUri;
 
-const avatarUrlRaw =
-  userSettings?.item?.avatarDataUrl || 
-  userSettings?.item?.avatarUrl ||
-  userSettings?.item?.avatar ||
-  null;
+  // COLORS
+  const colors = headerSettings?.colorConfig
+    ? [
+        headerSettings.colorConfig.from,
+        headerSettings.colorConfig.via,
+        headerSettings.colorConfig.to,
+      ]
+    : [Colors.primary, Colors.primary, Colors.primaryDark || Colors.primary];
 
+  // AVATAR
+  const avatarRaw =
+    userSettings?.item?.avatarDataUrl ||
+    userSettings?.item?.avatarUrl ||
+    null;
 
-const avatarUrl = avatarUrlRaw
-  ? avatarUrlRaw.startsWith('http')
-    ? avatarUrlRaw
-    : `https://task.se7eninc.com${avatarUrlRaw}`
-  : null;
+  const avatarUrl = avatarRaw
+    ? avatarRaw.startsWith("http")
+      ? avatarRaw
+      : `https://task.se7eninc.com${avatarRaw}`
+    : null;
 
-  const backgroundColors = getBackgroundColors();
-  const hasImageBackground = headerSettings?.backgroundType === 'image' && headerSettings?.imageConfig?.dataUrl;
   const headerHeight = headerSettings?.height || 72;
 
-
-  //console.log("Final Avatar URL =>", avatarUrl);
-
   return (
-    <View style={[styles.header, { paddingTop: insets.top, height: headerHeight + insets.top }]}>
-      {hasImageBackground ? (
-        <>
-          <Image
-            source={{ uri: headerSettings?.imageConfig?.dataUrl }}
-            style={styles.backgroundImage}
-            resizeMode="cover"
-          />
-          {headerSettings?.overlay?.enabled && (
-            <View style={[styles.overlay, { backgroundColor: headerSettings?.overlay?.color || 'rgba(0,0,0,0.3)' }]} />
-          )}
-        </>
+    <View
+      style={[
+        styles.header,
+        { paddingTop: insets.top, height: headerHeight + insets.top },
+      ]}
+    >
+      {/* BACKGROUND */}
+      {hasImageBackground && imageUri ? (
+        <Image source={{ uri: imageUri }} style={styles.backgroundImage} />
       ) : (
         <LinearGradient
-          colors={backgroundColors}
+          colors={colors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.gradientBackground}
         />
       )}
-      
-      <View style={[styles.content, { /*height: headerHeight*/paddingBottom: 10 }]}>
+
+      {/* OVERLAY */}
+      {hasImageBackground && headerSettings?.overlay?.enabled && (
+        <View
+          style={[
+            styles.overlay,
+            {
+              backgroundColor:
+                headerSettings?.overlay?.color || "rgb(0, 0, 0)",
+            },
+          ]}
+        />
+      )}
+
+      {/* CONTENT */}
+      <View style={styles.content}>
+        <TouchableOpacity onPress={onMenuPress}>
+          <Menu color="#fff" size={22} />
+        </TouchableOpacity>
+
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
@@ -136,25 +162,20 @@ const avatarUrl = avatarUrlRaw
         <View style={styles.right}>
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => router.push('/(manager)/notifications' as any)}
-            activeOpacity={0.75}
+            onPress={() => router.push("/(manager)/notifications" as any)}
           >
-            <Bell color="#FFFFFF" size={20} />
+            <Bell color="#fff" size={20} />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.avatarButton}
-            onPress={() => router.push('/(manager)/profile' as any)}
-            activeOpacity={0.75}
+            onPress={() => router.push("/(manager)/profile" as any)}
           >
             {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={styles.avatarImage}
-            />
-          ) : (
-            <Text style={styles.avatarText}>{initials}</Text>
-          )}
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -164,83 +185,63 @@ const avatarUrl = avatarUrlRaw
 
 const styles = StyleSheet.create({
   header: {
-    width: '100%',
-    justifyContent: 'flex-end',
-    position: 'relative',
-    overflow: 'hidden',
+    width: "100%",
+    justifyContent: "flex-end",
+    position: "relative",
+    overflow: "hidden",
   },
   gradientBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
-  avatarImage: {
-  width: '100%',
-  height: '100%',
-  borderRadius: 20,
-   resizeMode: 'cover',
-},
   backgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-   // height: '100%',
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
   },
   overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
     paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    position: 'relative',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     zIndex: 10,
-   
   },
   title: {
     flex: 1,
     fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
+    fontWeight: "700",
+    color: "#fff",
   },
   right: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
-    marginLeft: 12,
   },
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 20,
   },
   avatarText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700' as const,
+    color: "#fff",
+    fontWeight: "700",
   },
 });

@@ -1,319 +1,545 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import {
   Bell,
-  ClipboardList,
-  Calendar,
-  MessageSquare,
+  CheckCircle2,
+  AlertCircle,
   Info,
   CheckCheck,
+  Eye,
 } from 'lucide-react-native';
+
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/colors';
 import { apiRequest } from '@/services/api';
-import { Notification } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
+type NotificationType =
+  | 'task'
+  | 'message'
+  | 'system'
+  | 'schedule'
+  | 'direct'
+  | 'broadcast';
 
-const ICON_MAP: Record<
-  Notification['type'],
-  React.ComponentType<{ color: string; size: number }>
-> = {
-  task: ClipboardList,
-  schedule: Calendar,
-  message: MessageSquare,
-  system: Info,
-};
-
-const COLOR_MAP: Record<Notification['type'], string> = {
-  task: Colors.warning,
-  schedule: Colors.secondary,
-  message: Colors.success,
-  system: Colors.textSecondary,
-};
+interface Notification {
+  id: string;
+  title: string;
+  content: string;
+  message?: string;
+  type: NotificationType;
+  status: string;
+  readBy?: string[];
+  timestamp: string;
+}
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-useFocusEffect(
-  useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['notifications'] });
-  }, [])
-);
+  const currentUserEmail = user?.email || '';
 
-  const { data: notifications = [] } = useQuery<Notification[]>({
-    queryKey: ['notifications'],
+  const [refreshing, setRefreshing] = useState(false);
+
+  const {
+    data: notifications = [],
+    isLoading,
+    refetch,
+  } = useQuery<Notification[]>({
+    queryKey: ['managerNotifications'],
     queryFn: async () => {
-      const res = await apiRequest<{ items: any[] }>('/notifications');
-      const items = res.data?.items ?? [];
+      const res = await apiRequest<{ items?: any[] }>(
+        '/notifications'
+      );
 
-      return items.map((n) => ({
-        id: String(n.id ?? n._id ?? ''),
-        title: n.title || 'Notification',
-        message: n.content || n.message || '',
-        type: n.type === 'direct' ? 'message' : 'system',
+      const items = res.data?.items || [];
 
-       
-        read: n.status?.toLowerCase() === 'read',
-
-        status: n.status,
-        timestamp: n.timestamp || new Date().toISOString(),
+      return items.map((item) => ({
+        id: String(item.id || item._id),
+        title: item.title || 'Notification',
+        content: item.content || item.message || '',
+        type:
+          item.type === 'direct'
+            ? 'message'
+            : item.type || 'system',
+        status: item.status || 'sent',
+        readBy: item.readBy || [],
+        timestamp: item.timestamp || new Date().toISOString(),
       }));
     },
   });
 
+  // UNREAD FILTER
+  const unreadNotifications = useMemo(() => {
+    return notifications.filter((notification) => {
+      const isRead =
+        notification.status === 'read' ||
+        notification.readBy?.includes(currentUserEmail);
 
+      return !isRead;
+    });
+  }, [notifications, currentUserEmail]);
+
+  const unreadCount = unreadNotifications.length;
+
+  // MARK SINGLE READ
   const markReadMutation = useMutation({
-  mutationFn: (id: string) =>
-  apiRequest(`/notifications/${id}/mark-read`, {
-  method: 'POST',
-}),
+    mutationFn: async (id: string) => {
+      await apiRequest(`/notifications/${id}/mark-read`, {
+        method: 'POST',
+      });
 
-  onMutate: async (id) => {
-    await queryClient.cancelQueries({ queryKey: ['notifications'] });
+      return id;
+    },
 
-    const previous = queryClient.getQueryData<Notification[]>([
-      'notifications',
-    ]);
+    onSuccess: (id) => {
+      queryClient.setQueryData(
+        ['managerNotifications'],
+        (oldData: Notification[] = []) => {
+          return oldData.map((notification) => {
+            if (notification.id === id) {
+              return {
+                ...notification,
+                status: 'read',
+                readBy: [
+                  ...(notification.readBy || []),
+                  currentUserEmail,
+                ],
+              };
+            }
 
-    queryClient.setQueryData<Notification[]>(['notifications'], (old) =>
-      old?.map((n) =>
-        n.id === id
-          ? { ...n, read: true, status: 'read' }
-          : n
-      ) || []
-    );
+            return notification;
+          });
+        }
+      );
+    },
+  });
 
-    return { previous };
-  },
+  // MARK ALL READ
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      const unreadIds = unreadNotifications.map((n) => n.id);
 
-  onError: (_err, _id, context) => {
-    queryClient.setQueryData(['notifications'], context?.previous);
-  },
+      await Promise.all(
+        unreadIds.map((id) =>
+          apiRequest(`/notifications/${id}/mark-read`, {
+            method: 'POST',
+          })
+        )
+      );
 
+      return unreadIds;
+    },
 
-});
+    onSuccess: (ids) => {
+      queryClient.setQueryData(
+        ['managerNotifications'],
+        (oldData: Notification[] = []) => {
+          return oldData.map((notification) => {
+            if (ids.includes(notification.id)) {
+              return {
+                ...notification,
+                status: 'read',
+                readBy: [
+                  ...(notification.readBy || []),
+                  currentUserEmail,
+                ],
+              };
+            }
 
- const markAllReadMutation = useMutation({
-  mutationFn: () =>
-    apiRequest(`/notifications/mark-all-read`, { method: 'POST' }),
+            return notification;
+          });
+        }
+      );
+    },
+  });
 
-  onMutate: async () => {
-    await queryClient.cancelQueries({ queryKey: ['notifications'] });
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
 
-    const previous = queryClient.getQueryData<Notification[]>([
-      'notifications',
-    ]);
+    await refetch();
 
-    queryClient.setQueryData<Notification[]>(['notifications'], (old) =>
-      old?.map((n) => ({
-        ...n,
-        read: true,
-        status: 'read',
-      })) || []
-    );
+    setRefreshing(false);
+  }, [refetch]);
 
-    return { previous };
-  },
+  const getIcon = (type: NotificationType) => {
+    switch (type) {
+      case 'task':
+        return (
+          <CheckCircle2
+            size={20}
+            color={Colors.success}
+          />
+        );
 
-  onError: (_err, _vars, context) => {
-    queryClient.setQueryData(['notifications'], context?.previous);
-  },
+      case 'schedule':
+        return (
+          <AlertCircle
+            size={20}
+            color={Colors.warning}
+          />
+        );
 
-  // ❌ REMOVE INVALIDATE
-});
+      case 'message':
+      case 'direct':
+        return (
+          <Info
+            size={20}
+            color={Colors.info}
+          />
+        );
 
-  const markRead = (id: string) => markReadMutation.mutate(id);
-  const markAllRead = () => markAllReadMutation.mutate();
+      default:
+        return (
+          <Bell
+            size={20}
+            color={Colors.primary}
+          />
+        );
+    }
+  };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const getIconBg = (type: NotificationType) => {
+    switch (type) {
+      case 'task':
+        return Colors.successLight;
 
-  const formatTime = (iso: string) => {
-    const date = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      case 'schedule':
+        return Colors.warningLight;
 
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
+      case 'message':
+      case 'direct':
+        return Colors.infoLight;
+
+      default:
+        return Colors.surfaceAlt;
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    if (!timestamp) return '';
+
+    const date = new Date(timestamp);
+
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
-  const renderNotification = ({ item }: { item: Notification }) => {
-    const Icon = ICON_MAP[item.type] ?? Info;
-    const color = COLOR_MAP[item.type] ?? Colors.textSecondary;
+  const renderItem = ({ item }: { item: Notification }) => {
+    const isRead =
+      item.status === 'read' ||
+      item.readBy?.includes(currentUserEmail);
 
     return (
       <TouchableOpacity
-        style={[styles.card, !item.read && styles.cardUnread]}
-        onPress={() => markRead(item.id)}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
+        style={[
+          styles.notificationCard,
+          !isRead && styles.unreadCard,
+        ]}
+        onPress={() => {
+          if (!isRead) {
+            markReadMutation.mutate(item.id);
+          }
+        }}
       >
-        <View style={[styles.icon, { backgroundColor: `${color}18` }]}>
-          <Icon color={color} size={20} />
+        <View
+          style={[
+            styles.iconContainer,
+            {
+              backgroundColor: getIconBg(item.type),
+            },
+          ]}
+        >
+          {getIcon(item.type)}
         </View>
 
-        <View style={styles.body}>
-          <View style={styles.row}>
-            <Text
-              style={[styles.title, !item.read && styles.titleUnread]}
-              numberOfLines={1}
-            >
+        <View style={styles.contentContainer}>
+          <View style={styles.titleRow}>
+            <Text style={styles.notificationTitle}>
               {item.title}
             </Text>
-            <Text style={styles.time}>{formatTime(item.timestamp)}</Text>
+
+            {!isRead && <View style={styles.unreadDot} />}
           </View>
 
-          <Text style={styles.message} numberOfLines={2}>
-            {item.message}
+          <Text style={styles.notificationMessage}>
+            {item.content}
           </Text>
 
-          <View style={styles.pill}>
-            <Text style={[styles.pillText, { color }]}>
-              {item.type}
+          <View style={styles.bottomRow}>
+            <Text style={styles.timestamp}>
+              {formatTime(item.timestamp)}
             </Text>
+
+            {!isRead && (
+              <View style={styles.readButton}>
+                <Eye size={14} color={Colors.primary} />
+
+                <Text style={styles.readButtonText}>
+                  Mark Read
+                </Text>
+              </View>
+            )}
           </View>
         </View>
-
-        {!item.read && <View style={styles.dot} />}
       </TouchableOpacity>
     );
   };
 
+  if (isLoading && !refreshing) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator
+          size="large"
+          color={Colors.primary}
+        />
+
+        <Text style={styles.loadingText}>
+          Loading notifications...
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {unreadCount > 0 && (
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.markAll}
-            onPress={markAllRead}
-          >
-            <CheckCheck color={Colors.primary} size={18} />
-            <Text style={styles.markAllText}>Mark all as read</Text>
-          </TouchableOpacity>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top + 10,
+        },
+      ]}
+    >
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>
+            Notifications
+          </Text>
 
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unreadCount} new</Text>
-          </View>
+          <Text style={styles.subtitle}>
+            {unreadCount > 0
+              ? `${unreadCount} unread notifications`
+              : 'All caught up'}
+          </Text>
         </View>
-      )}
 
+        {unreadCount > 0 && (
+          <TouchableOpacity
+            style={styles.markAllButton}
+            onPress={() =>
+              markAllReadMutation.mutate()
+            }
+          >
+            <CheckCheck
+              size={18}
+              color="#FFFFFF"
+            />
+
+            <Text style={styles.markAllText}>
+              Mark all
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* LIST */}
       <FlatList
-        data={notifications}
-        extraData={notifications}   // 🔥 important fix
-        renderItem={renderNotification}
+        data={unreadNotifications}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        ItemSeparatorComponent={() => <View style={styles.sep} />}
+        renderItem={renderItem}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Bell
+              size={48}
+              color={Colors.textTertiary}
+            />
+
+            <Text style={styles.emptyText}>
+              No unread notifications
+            </Text>
+          </View>
+        }
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
   },
 
-  markAll: {
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     flexDirection: 'row',
-    gap: 8,
-    backgroundColor: Colors.infoLight,
-    padding: 8,
-    borderRadius: 10,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+
+  subtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+
+  markAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
   },
 
   markAllText: {
-    color: Colors.primary,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
 
-  badge: {
-    backgroundColor: Colors.error,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-
-  list: {
+  listContent: {
     paddingHorizontal: 16,
     paddingBottom: 30,
   },
 
-  card: {
+  notificationCard: {
     flexDirection: 'row',
-    padding: 14,
     backgroundColor: Colors.surface,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+
+  unreadCard: {
+    backgroundColor: Colors.infoLight,
+    borderColor: Colors.primary,
+  },
+
+  iconContainer: {
+    width: 46,
+    height: 46,
     borderRadius: 14,
-    gap: 12,
-  },
-
-  cardUnread: {
-    backgroundColor: '#F0F7FF',
-  },
-
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  body: { flex: 1 },
+  contentContainer: {
+    flex: 1,
+    marginLeft: 14,
+  },
 
-  row: {
+  titleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
 
-  title: { fontSize: 14, fontWeight: '600', color: Colors.text },
-
-  titleUnread: { fontWeight: '700' },
-
-  time: { fontSize: 11, color: Colors.textTertiary },
-
-  message: { fontSize: 13, color: Colors.textSecondary },
-
-  pill: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.surfaceAlt,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 6,
+  notificationTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+    flex: 1,
   },
 
-  pillText: { fontSize: 11, fontWeight: '600' },
-
-  dot: {
+  unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.secondary,
-    marginTop: 6,
+    backgroundColor: Colors.primary,
+    marginLeft: 8,
   },
 
-  sep: { height: 8 },
+  notificationMessage: {
+    marginTop: 6,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 19,
+  },
+
+  timestamp: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+  },
+
+  bottomRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  readButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  readButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+  },
+
+  emptyText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: Colors.textTertiary,
+  },
+
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    marginTop: 14,
+    color: Colors.textSecondary,
+  },
 });

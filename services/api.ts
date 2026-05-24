@@ -1,15 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
  // export const API_BASE_URL = 'http://192.168.31.13:5002/api';
- // export const API_BASE_URL = 'http://192.168.0.107:5000/api';
-// export const API_BASE_URL = 'http://localhost:5000/api';
- // export const API_BASE_URL = 'https://task.se7eninc.com/api';
-  //export const API_BASE_URL = 'http://192.168.0.103:5002/api';
-  // export const API_BASE_URL = 'http://192.168.31.250:5002/api';
-  // export const API_BASE_URL = 'http://10.143.207.17:5002/api';
- // export const API_BASE_URL = 'http://192.168.0.107:5000/api';
-// export const API_BASE_URL = 'http://localhost:5000/api';
- export const API_BASE_URL = 'http://192.168.31.130:5002/api';
+  export const API_BASE_URL = 'https://task.se7eninc.com/api';
+ //export const API_BASE_URL = 'http://192.168.31.131:5002/api';
  
 
 async function getAuthToken(): Promise<string | null> {

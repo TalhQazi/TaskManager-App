@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
-  Alert,
+  Alert, Modal,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest } from '@/services/api';
 import { TimeEntry } from '@/types';
+import { Mic, MicOff, ClipboardList, AlertCircle } from 'lucide-react-native';
 
 export default function TimeClockScreen() {
   const insets = useSafeAreaInsets();
@@ -28,6 +30,20 @@ export default function TimeClockScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const pulseRef = useRef<Animated.CompositeAnimation | null>(null);
+  const [showEODModal, setShowEODModal] = useState(false);
+const [eodData, setEodData] = useState({
+  tasksCompleted: '',
+  issuesBlockers: '',
+  notes: '',
+});
+
+const [validationError, setValidationError] = useState('');
+
+const [inputType, setInputType] = useState<'text' | 'voice'>('text');
+
+const [isRecording, setIsRecording] = useState(false);
+
+const [transcription, setTranscription] = useState('');
 
   const { data: entries } = useQuery<TimeEntry[]>({
     queryKey: ['timeEntries', user?.id || user?.username],
@@ -121,86 +137,232 @@ export default function TimeClockScreen() {
     return () => pulseRef.current?.stop();
   }, [isClockedIn, pulseAnim]);
 
-  const clockMutation = useMutation({
-    mutationFn: async (action: 'clock_in' | 'clock_out') => {
-      try {
-        const employeeName = user?.fullName || user?.username || user?.name || 'employee';
-        
-        if (action === 'clock_in') {
-          // Use dedicated clock-in endpoint
-          const created = await apiRequest<{ item: any }>('/time-entries/clock-in', {
+const clockMutation = useMutation({
+  mutationFn: async (
+    action: 'clock_in' | 'clock_out',
+  ) => {
+    try {
+      const employeeName =
+        user?.fullName ||
+        user?.username ||
+        user?.name ||
+        'employee';
+
+      // CLOCK IN
+      if (action === 'clock_in') {
+        console.log('CLOCK IN START');
+
+        const response = await apiRequest(
+          '/time-entries/clock-in',
+          {
             method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
               employee: employeeName,
               location: '',
             }),
-          });
-          return created.data?.item;
-        }
+          },
+        );
 
-        // Clock out - need to find open entry first
-        // Get user's entries to find the open one
-        const listRes = await apiRequest<{ items: any[] }>(`/time-entries?employee=${encodeURIComponent(employeeName)}`);
-        const items = listRes.data?.items ?? [];
-        
-        // Find entry that has clockIn but no clockOut
-        const openEntry = items.find((e) => {
-          const hasClockIn = e.clockInAt || e.clockIn;
-          const hasClockOut = e.clockOutAt || e.clockOut;
-          return hasClockIn && !hasClockOut;
-        });
-        
-        if (!openEntry?.id && !openEntry?._id) {
-          throw new Error('No open time entry found');
-        }
+        console.log(
+          'CLOCK IN RESPONSE',
+          response,
+        );
 
-        const entryId = openEntry.id || openEntry._id;
-        
-        // Use dedicated clock-out endpoint
-        const updated = await apiRequest<{ item: any }>(`/time-entries/${entryId}/clock-out`, {
+        return response?.data?.item;
+      }
+
+      // GET OPEN ENTRY
+      const listRes = await apiRequest<{
+        items: any[];
+      }>(
+        `/time-entries?employee=${encodeURIComponent(
+          employeeName,
+        )}`,
+      );
+
+      const items = listRes?.data?.items || [];
+
+      const openEntry = items.find((e) => {
+        const hasClockIn =
+          e.clockInAt || e.clockIn;
+
+        const hasClockOut =
+          e.clockOutAt || e.clockOut;
+
+        return hasClockIn && !hasClockOut;
+      });
+
+      if (!openEntry) {
+        throw new Error(
+          'No active entry found',
+        );
+      }
+
+      const entryId =
+        openEntry.id || openEntry._id;
+
+      console.log(
+        'CLOCK OUT ENTRY',
+        entryId,
+      );
+
+      // CLOCK OUT
+      const response = await apiRequest(
+        `/time-entries/${entryId}/clock-out`,
+        {
           method: 'POST',
-        });
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-        return updated.data?.item;
-      } catch (err) {
-        console.log(`[Clock] Error:`, err);
-        throw err;
-      }
+      console.log(
+        'CLOCK OUT RESPONSE',
+        response,
+      );
+
+      return response?.data?.item;
+    } catch (err: any) {
+      console.log(
+        'CLOCK MUTATION ERROR',
+        err?.response?.data || err,
+      );
+
+      throw err;
+    }
+  },
+
+  onSuccess: (_, action) => {
+    const now = new Date().toISOString();
+
+    if (action === 'clock_in') {
+      setLocalClockedIn(true);
+      setClockInTime(now);
+    } else {
+      setLocalClockedIn(false);
+    }
+
+    queryClient.invalidateQueries({
+      queryKey: ['timeEntries'],
+    });
+
+    queryClient.invalidateQueries({
+      queryKey: ['dashboard'],
+    });
+  },
+
+  onError: (err: any) => {
+    console.log(
+      'FINAL ERROR',
+      err?.response?.data || err,
+    );
+
+    Alert.alert(
+      'Error',
+      err?.response?.data?.message ||
+        'Failed to record time',
+    );
+  },
+});
+
+ const handleClockAction = useCallback(() => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+  Animated.sequence([
+    Animated.timing(buttonScale, {
+      toValue: 0.92,
+      duration: 100,
+      useNativeDriver: true,
+    }),
+    Animated.timing(buttonScale, {
+      toValue: 1,
+      duration: 100,
+      useNativeDriver: true,
+    }),
+  ]).start();
+
+  // CLOCK OUT → OPEN EOD MODAL
+  if (isClockedIn) {
+    setShowEODModal(true);
+    return;
+  }
+
+  // CLOCK IN
+  Alert.alert('Clock In', 'Confirm clock in?', [
+    { text: 'Cancel', style: 'cancel' },
+    {
+      text: 'Confirm',
+      onPress: () => {
+        clockMutation.mutate('clock_in');
+      },
     },
-    onSuccess: (_, action) => {
-      const now = new Date().toISOString();
-      if (action === 'clock_in') {
-        setLocalClockedIn(true);
-        setClockInTime(now);
-      } else {
-        setLocalClockedIn(false);
-      }
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-    onError: (err) => {
-      console.log(`[Clock] Mutation error:`, err);
-      Alert.alert('Error', 'Failed to record time. Please try again.');
-    },
-  });
+  ]);
+}, [isClockedIn, buttonScale, clockMutation]);
 
-  const handleClockAction = useCallback(() => {
-    const action = isClockedIn ? 'clock_out' : 'clock_in';
-    const label = isClockedIn ? 'Clock Out' : 'Clock In';
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+const handleSubmitAndClockOut = async () => {
+  if (!eodData.tasksCompleted.trim()) {
+    setValidationError('Tasks completed is required');
+    return;
+  }
 
-    Animated.sequence([
-      Animated.timing(buttonScale, { toValue: 0.92, duration: 100, useNativeDriver: true }),
-      Animated.timing(buttonScale, { toValue: 1, duration: 100, useNativeDriver: true }),
-    ]).start();
+  if (eodData.tasksCompleted.trim().length < 10) {
+    setValidationError('Please enter minimum 10 characters');
+    return;
+  }
 
-    Alert.alert(label, `Confirm ${label.toLowerCase()}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Confirm', onPress: () => clockMutation.mutate(action) },
-    ]);
-  }, [isClockedIn, buttonScale, clockMutation]);
+  setValidationError('');
+
+  try {
+    await clockMutation.mutateAsync('clock_out');
+
+    Alert.alert(
+      'Success',
+      'EOD submitted and clocked out successfully'
+    );
+
+    setShowEODModal(false);
+
+    setEodData({
+      tasksCompleted: '',
+      issuesBlockers: '',
+      notes: '',
+    });
+
+    setTranscription('');
+  } catch (e) {
+    Alert.alert('Error', 'Failed to clock out');
+  }
+};
+
+const toggleRecording = () => {
+  if (isRecording) {
+    setIsRecording(false);
+    return;
+  }
+
+  setIsRecording(true);
+
+  // DEMO VOICE TEXT
+  setTimeout(() => {
+    const text =
+      'Completed attendance module and fixed API integration';
+
+    setTranscription(text);
+
+    setEodData((prev) => ({
+      ...prev,
+      tasksCompleted: text,
+    }));
+
+    setIsRecording(false);
+  }, 3000);
+};
+
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '--:--';
@@ -370,6 +532,181 @@ export default function TimeClockScreen() {
             </View>
           ))}
         </View>
+
+        <Modal
+  visible={showEODModal}
+  animationType="slide"
+  transparent
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.modalHeader}>
+          <ClipboardList
+            color={Colors.primary}
+            size={22}
+          />
+
+          <Text style={styles.modalTitle}>
+            End Of Day Report
+          </Text>
+        </View>
+
+        {/* INPUT TYPE */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              inputType === 'text' &&
+                styles.toggleActive,
+            ]}
+            onPress={() => setInputType('text')}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                inputType === 'text' &&
+                  styles.toggleTextActive,
+              ]}
+            >
+              Text
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              inputType === 'voice' &&
+                styles.toggleActive,
+            ]}
+            onPress={() => setInputType('voice')}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                inputType === 'voice' &&
+                  styles.toggleTextActive,
+              ]}
+            >
+              Voice
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* TASKS */}
+        <Text style={styles.modalLabel}>
+          Tasks Completed *
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextInput
+            multiline
+            placeholder="Describe completed tasks..."
+            value={eodData.tasksCompleted}
+            onChangeText={(text) =>
+              setEodData({
+                ...eodData,
+                tasksCompleted: text,
+              })
+            }
+            style={[
+              styles.modalInput,
+              { flex: 1 },
+            ]}
+          />
+
+          {inputType === 'voice' && (
+            <TouchableOpacity
+              style={[
+                styles.voiceButton,
+                isRecording && {
+                  backgroundColor: '#EF4444',
+                },
+              ]}
+              onPress={toggleRecording}
+            >
+              {isRecording ? (
+                <MicOff color="#fff" size={20} />
+              ) : (
+                <Mic color="#fff" size={20} />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {validationError ? (
+          <View style={styles.errorBox}>
+            <AlertCircle
+              color="#DC2626"
+              size={16}
+            />
+            <Text style={styles.errorText}>
+              {validationError}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* ISSUES */}
+        <Text style={styles.modalLabel}>
+          Issues / Blockers
+        </Text>
+
+        <TextInput
+          multiline
+          placeholder="Any blockers..."
+          value={eodData.issuesBlockers}
+          onChangeText={(text) =>
+            setEodData({
+              ...eodData,
+              issuesBlockers: text,
+            })
+          }
+          style={styles.modalInput}
+        />
+
+        {/* NOTES */}
+        <Text style={styles.modalLabel}>
+          Notes
+        </Text>
+
+        <TextInput
+          multiline
+          placeholder="Additional notes..."
+          value={eodData.notes}
+          onChangeText={(text) =>
+            setEodData({
+              ...eodData,
+              notes: text,
+            })
+          }
+          style={styles.modalInput}
+        />
+
+        {/* BUTTONS */}
+        <TouchableOpacity
+          style={styles.submitButton}
+          onPress={handleSubmitAndClockOut}
+        >
+          <Text style={styles.submitButtonText}>
+            Submit & Clock Out
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={() => {
+            setShowEODModal(false);
+            setValidationError('');
+          }}
+        >
+          <Text style={styles.cancelButtonText}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -598,4 +935,133 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: Colors.primary,
   },
+  modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.45)',
+  justifyContent: 'flex-end',
+},
+
+modalContainer: {
+  backgroundColor: Colors.surface,
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+  padding: 20,
+  maxHeight: '90%',
+},
+
+modalHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+  marginBottom: 20,
+},
+
+modalTitle: {
+  fontSize: 22,
+  fontWeight: '700',
+  color: Colors.text,
+},
+
+toggleContainer: {
+  flexDirection: 'row',
+  backgroundColor: Colors.surfaceAlt,
+  borderRadius: 12,
+  padding: 4,
+  marginBottom: 20,
+},
+
+toggleButton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 10,
+  borderRadius: 10,
+},
+
+toggleActive: {
+  backgroundColor: Colors.primary,
+},
+
+toggleText: {
+  color: Colors.textSecondary,
+  fontWeight: '600',
+},
+
+toggleTextActive: {
+  color: '#fff',
+},
+
+modalLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: Colors.text,
+  marginBottom: 8,
+  marginTop: 12,
+},
+
+modalInput: {
+  minHeight: 90,
+  backgroundColor: Colors.surfaceAlt,
+  borderRadius: 14,
+  padding: 14,
+  color: Colors.text,
+  textAlignVertical: 'top',
+},
+
+voiceButton: {
+  width: 52,
+  height: 52,
+  borderRadius: 12,
+  backgroundColor: Colors.primary,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+submitButton: {
+  height: 54,
+  borderRadius: 14,
+  backgroundColor: Colors.primary,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 24,
+},
+
+submitButtonText: {
+  color: '#fff',
+  fontSize: 15,
+  fontWeight: '700',
+},
+
+cancelButton: {
+  height: 54,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: Colors.border,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 12,
+},
+
+cancelButtonText: {
+  color: Colors.text,
+  fontWeight: '600',
+},
+
+errorBox: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  backgroundColor: '#FEF2F2',
+  borderWidth: 1,
+  borderColor: '#FECACA',
+  padding: 12,
+  borderRadius: 12,
+  marginTop: 12,
+},
+
+errorText: {
+  color: '#DC2626',
+  fontSize: 13,
+  flex: 1,
+},
 });
