@@ -16,14 +16,16 @@ import {
   Users,
   ClipboardCheck,
   Clock,
-  CheckCircle2,
-  Hourglass,
-  TrendingUp,
-  Calendar,
-  ChevronRight,
   Award,
-  Briefcase,
   Sparkles,
+  FolderRoot,
+  Car,
+  MapPin,
+  Bug,
+  ClipboardList,
+  UserCog,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Colors from '@/constants/colors';
@@ -35,7 +37,31 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Animated Circular Progress Chart Component
+const GRID_PADDING = 20;
+const GRID_GAP = 8;
+const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
+
+type TeamLeadMapping = { teamLead: string; user: string; allowOverrideAdminAssignments: boolean; };
+
+// Unified dashboard summary API response schema layout matching your web portal
+interface DashboardSummary {
+  activeTasks: number;
+  dueToday: number;
+  overdueTasks: number;
+  employeesWorking: number;
+  employeeTotal: number;
+  hoursLoggedToday: number;
+  avgHoursPerEmployee: number;
+  vehicleTotal: number;
+  patentFiled: number;
+  patentPending: number;
+  websiteActive: number;
+  websiteFuture: number;
+  projectTotal: number;
+  pendingBugs: number;
+  companyTotal: number;
+}
+
 interface CircularChartData {
   label: string;
   value: number;
@@ -43,10 +69,9 @@ interface CircularChartData {
   gradientColors?: [string, string];
 }
 
-function AnimatedCircularProgressChart({ data }: { data: CircularChartData[] }) {
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-  const size = 200;
-  const strokeWidth = 28;
+function AnimatedCircularProgressChart({ data, totalTasks }: { data: CircularChartData[]; totalTasks: number }) {
+  const size = 180;
+  const strokeWidth = 24;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
@@ -56,16 +81,12 @@ function AnimatedCircularProgressChart({ data }: { data: CircularChartData[] }) 
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       ...data.map((_, index) =>
         Animated.timing(animatedValues[index], {
           toValue: 1,
           duration: 1200,
-          delay: index * 150,
+          delay: index * 100,
           useNativeDriver: true,
         })
       ),
@@ -75,954 +96,376 @@ function AnimatedCircularProgressChart({ data }: { data: CircularChartData[] }) 
   let currentAngle = 0;
 
   return (
-    <Animated.View style={[chartStyles.container, { opacity: fadeAnim }]}>
-      <Svg width={size} height={size}>
-        <Defs>
-          {data.map((item, idx) => (
-            <SvgLinearGradient key={`grad-${idx}`} id={`grad-${idx}`} x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor={item.gradientColors?.[0] || item.color} stopOpacity="1" />
-              <Stop offset="100%" stopColor={item.gradientColors?.[1] || item.color} stopOpacity="1" />
-            </SvgLinearGradient>
-          ))}
-        </Defs>
-        {/* Background circle with proper styling */}
-        <SvgCircle
-          cx={center}
-          cy={center}
-          r={radius}
-          stroke={Colors.background}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-        />
-        {/* Subtle background ring */}
-        <SvgCircle
-          cx={center}
-          cy={center}
-          r={radius}
-          stroke="rgba(0,0,0,0.03)"
-          strokeWidth={strokeWidth - 2}
-          fill="transparent"
-        />
-        {data.map((item, index) => {
-          const percentage = total > 0 ? item.value / total : 0;
-          const strokeDasharray = `${circumference * percentage} ${circumference}`;
-          const rotation = currentAngle * 360;
-          currentAngle += percentage;
+    <View style={chartStyles.container}>
+      <Animated.View style={{ opacity: fadeAnim }}>
+        <Svg width={size} height={size}>
+          <Defs>
+            {data.map((item, idx) => (
+              <SvgLinearGradient key={`grad-${idx}`} id={`grad-${idx}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                <Stop offset="0%" stopColor={item.gradientColors?.[0] || item.color} stopOpacity="1" />
+                <Stop offset="100%" stopColor={item.gradientColors?.[1] || item.color} stopOpacity="1" />
+              </SvgLinearGradient>
+            ))}
+          </Defs>
+          <SvgCircle cx={center} cy={center} r={radius} stroke={Colors.background || '#0d1117'} strokeWidth={strokeWidth} fill="transparent" />
+          <SvgCircle cx={center} cy={center} r={radius} stroke="rgba(0,0,0,0.03)" strokeWidth={strokeWidth - 2} fill="transparent" />
+          {data.map((item, index) => {
+            const percentage = totalTasks > 0 ? item.value / totalTasks : 0;
+            const strokeDasharray = `${circumference * percentage} ${circumference}`;
+            const rotation = currentAngle * 360;
+            currentAngle += percentage;
 
-          const animatedStrokeDashoffset = animatedValues[index].interpolate({
-            inputRange: [0, 1],
-            outputRange: [circumference, circumference * (1 - percentage)],
-          });
+            const animatedStrokeDashoffset = animatedValues[index].interpolate({
+              inputRange: [0, 1],
+              outputRange: [circumference, circumference * (1 - percentage)],
+            });
 
-          return (
-            <AnimatedCircle
-              key={index}
-              cx={center}
-              cy={center}
-              r={radius}
-              stroke={`url(#grad-${index})`}
-              strokeWidth={strokeWidth}
-              fill="transparent"
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={animatedStrokeDashoffset}
-              strokeLinecap="round"
-              transform={`rotate(${rotation - 90}, ${center}, ${center})`}
-            />
-          );
-        })}
-      </Svg>
+            return (
+              <AnimatedCircle
+                key={index}
+                cx={center}
+                cy={center}
+                r={radius}
+                stroke={`url(#grad-${index})`}
+                strokeWidth={strokeWidth}
+                fill="transparent"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={animatedStrokeDashoffset}
+                strokeLinecap="round"
+                transform={`rotate(${rotation - 90}, ${center}, ${center})`}
+              />
+            );
+          })}
+        </Svg>
+      </Animated.View>
       <View style={chartStyles.center}>
-        <Animated.Text style={[chartStyles.totalValue, { opacity: animatedValues[0] }]}>
-          {total}
-        </Animated.Text>
-        <Text style={chartStyles.totalLabel}>Total Tasks</Text>
+        <Text style={chartStyles.totalValue}>{totalTasks}</Text>
+        <Text style={chartStyles.totalLabel}>Active Tasks</Text>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
 const AnimatedCircle = Animated.createAnimatedComponent(SvgCircle);
 
 const chartStyles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    backgroundColor: 'transparent',
-  },
+  container: { alignItems: 'center', justifyContent: 'center' },
   center: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    backgroundColor: Colors.surface || '#21262d',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 4,
   },
-  totalLabel: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 2,
-  },
-  totalValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: Colors.text,
-  },
+  totalLabel: { fontSize: 10, color: Colors.textTertiary || '#8b949e', marginTop: 2 },
+  totalValue: { fontSize: 26, fontWeight: '700', color: Colors.text || '#fff' },
 });
 
-// Animated Stat Card Component
-function AnimatedStatCard({ 
+function FixedStatCard({ 
   icon: Icon, 
   value, 
   label, 
   colors, 
-  onPress,
-  index 
+  onPress 
 }: { 
   icon: any; 
-  value: number; 
+  value: number | string; 
   label: string; 
   colors: [string, string]; 
   onPress: () => void;
-  index: number;
 }) {
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-  const translateYAnim = useRef(new Animated.Value(30)).current;
+  return (
+    <View style={styles.fixedStatCard}>
+      <TouchableOpacity 
+        activeOpacity={0.85} 
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
+      >
+        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.cardGradient}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconContainer}>
+              <Icon size={15} color={Colors.surface || '#21262d'} />
+            </View>
+            <Text style={styles.cardValue}>{value}</Text>
+          </View>
+          <Text style={styles.cardLabel} numberOfLines={1}>{label}</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 8,
-        tension: 40,
-        delay: index * 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 500,
-        delay: index * 100,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateYAnim, {
-        toValue: 0,
-        friction: 8,
-        tension: 40,
-        delay: index * 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [index]);
+function CollapsibleTeamRow({ teamLead, mappings }: { teamLead: string; mappings: TeamLeadMapping[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const animationController = useRef(new Animated.Value(0)).current;
 
-  const handlePress = () => {
+  const toggleLayout = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPress();
+    const toValue = expanded ? 0 : 1;
+    setExpanded(!expanded);
+    Animated.timing(animationController, { toValue, duration: 200, useNativeDriver: false }).start();
   };
 
+  const heightInterpolate = animationController.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, mappings.length * 40 + 8],
+  });
+
   return (
-    <Animated.View
-      style={[
-        styles.statCard,
-        {
-          transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
-          opacity: opacityAnim,
-        },
-      ]}
-    >
-      <TouchableOpacity activeOpacity={0.85} onPress={handlePress}>
-        <LinearGradient
-          colors={colors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardGradient}
-        >
-          <View style={styles.statIconBg}>
-            <Icon size={22} color={Colors.surface} />
+    <View style={styles.teamRowContainer}>
+      <TouchableOpacity style={styles.teamRowHeader} onPress={toggleLayout} activeOpacity={0.7}>
+        <View style={styles.teamRowInfo}>
+          <View style={styles.teamRowIconBg}><Users size={14} color={Colors.primary || '#1f6feb'} /></View>
+          <View>
+            <Text style={styles.teamRowLeadName}>{teamLead}</Text>
+            <Text style={styles.teamRowSub}>{mappings.length} members</Text>
           </View>
-          <Text style={styles.statValue}>{value}</Text>
-          <Text style={styles.statLabel}>{label}</Text>
-        </LinearGradient>
+        </View>
+        {expanded ? <ChevronUp size={14} color={Colors.textTertiary || '#8b949e'} /> : <ChevronDown size={14} color={Colors.textTertiary || '#8b949e'} />}
       </TouchableOpacity>
-    </Animated.View>
+      
+      <Animated.View style={{ height: heightInterpolate, overflow: 'hidden' }}>
+        <View style={styles.teamChildrenList}>
+          {mappings.map((mapping, idx) => (
+            <View key={idx} style={styles.teamChildItem}>
+              <Text style={styles.teamChildName}>• {mapping.user}</Text>
+              {mapping.allowOverrideAdminAssignments && (
+                <View style={styles.overrideTag}><Text style={styles.overrideTagText}>Override</Text></View>
+              )}
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+    </View>
   );
 }
-
-// Animated Employee Item Component
-function AnimatedEmployeeItem({ employee, onPress, index }: { employee: any; onPress: () => void; index: number }) {
-  const translateX = useRef(new Animated.Value(50)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(translateX, {
-        toValue: 0,
-        damping: 15,
-        mass: 1,
-        stiffness: 150,
-        delay: index * 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 400,
-        delay: index * 50,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [index]);
-
-  return (
-    <Animated.View
-      style={{
-        transform: [{ translateX }],
-        opacity,
-      }}
-    >
-      <TouchableOpacity
-        style={styles.employeeItem}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPress();
-        }}
-        activeOpacity={0.7}
-      >
-        <LinearGradient
-          colors={[Colors.primaryLight, Colors.primary]}
-          style={styles.employeeAvatar}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.avatarText}>
-            {(employee.name || 'U')
-              .split(' ')
-              .map((n: string) => n[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase()}
-          </Text>
-        </LinearGradient>
-        <View style={styles.employeeInfo}>
-          <Text style={styles.employeeName}>{employee.name || 'Unknown'}</Text>
-          <Text style={styles.employeeRole}>{employee.role || employee.department || 'Staff'}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: employee.status === 'active' ? Colors.successLight : Colors.warningLight },
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: employee.status === 'active' ? Colors.success : Colors.warning },
-            ]}
-          />
-          <Text
-            style={[
-              styles.statusText,
-              { color: employee.status === 'active' ? Colors.success : Colors.warning },
-            ]}
-          >
-            {employee.status === 'active' ? 'Active' : 'Offline'}
-          </Text>
-        </View>
-        <ChevronRight size={16} color={Colors.textTertiary} strokeWidth={1.5} />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-// Types
-type ApiEmployeeItem = {
-  id: string;
-  name?: string;
-  email?: string;
-  phone?: string;
-  role?: string;
-  department?: string;
-  status?: string;
-  location?: string;
-  company?: string;
-};
-
-type ApiTaskItem = {
-  id: string;
-  title?: string;
-  description?: string;
-  assignee?: string;
-  priority?: string;
-  status?: string;
-  dueDate?: string;
-  createdAt?: string;
-  location?: string;
-};
-
-type ApiScheduleItem = {
-  id: string;
-  day?: string;
-  title?: string;
-  assignee?: string;
-  location?: string;
-  startTime?: string;
-  endTime?: string;
-  type?: string;
-  date?: string;
-  status?: string;
-};
 
 export default function ManagerHomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const headerFadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(headerFadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const { data: employees = [], isLoading: employeesLoading, refetch: refetchEmployees } = useQuery<ApiEmployeeItem[]>({
-    queryKey: ['managerEmployees'],
+  // Central summary data query integration
+  const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery<DashboardSummary>({
+    queryKey: ['dashboardSummary'],
     queryFn: async () => {
-      const res = await apiRequest<{ items?: ApiEmployeeItem[] }>('/employees');
-      return res.data?.items || [];
+      const res = await apiRequest<DashboardSummary>('/dashboard/summary');
+      return res.data;
     },
   });
 
-  const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useQuery<ApiTaskItem[]>({
-    queryKey: ['managerTasks'],
+  const { data: teamMappings = [] } = useQuery<TeamLeadMapping[]>({
+    queryKey: ['teamLeadMappings'],
     queryFn: async () => {
-      const res = await apiRequest<{ items?: ApiTaskItem[] }>('/tasks');
-      return res.data?.items || [];
-    },
+      try {
+        const res = await apiRequest<{ items?: TeamLeadMapping[] }>('/team-lead-mappings');
+        return res.data?.items || [];
+      } catch { return []; }
+    }
   });
 
-  const { data: schedules = [], isLoading: shiftsLoading, refetch: refetchSchedules } = useQuery<ApiScheduleItem[]>({
-    queryKey: ['managerSchedules'],
-    queryFn: async () => {
-      const res = await apiRequest<{ items?: ApiScheduleItem[] }>('/schedules');
-      return res.data?.items || [];
-    },
-  });
+  // Calculate dynamic scope parameters based directly on summary statistics payload
+  const metrics = useMemo(() => {
+    const activeTasks = summary?.activeTasks ?? 0;
+    const overdueTasks = summary?.overdueTasks ?? 0;
+    const dueToday = summary?.dueToday ?? 0;
 
-  const [refreshing, setRefreshing] = useState(false);
+    // Standard baseline task metric tracking calculation
+    const completedTasks = Math.max(0, activeTasks - overdueTasks);
+    const completionRate = activeTasks > 0 ? Math.round((completedTasks / activeTasks) * 100) : 100;
 
-  const onRefresh = useCallback(async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setRefreshing(true);
-    await Promise.all([refetchEmployees(), refetchTasks(), refetchSchedules()]);
-    setRefreshing(false);
-  }, [refetchEmployees, refetchTasks, refetchSchedules]);
-
-  const taskStats = useMemo(() => {
-    const pending = tasks.filter((t) => t.status === 'pending').length;
-    const inProgress = tasks.filter((t) => t.status === 'in-progress' || t.status === 'in_progress').length;
-    const completed = tasks.filter((t) => t.status === 'completed').length;
-    const overdue = tasks.filter((t) => t.status === 'overdue').length;
-    const total = tasks.length;
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    return { pending, inProgress, completed, overdue, total, completionRate };
-  }, [tasks]);
+    return {
+      activeTasks,
+      overdueTasks,
+      dueToday,
+      remainingActive: Math.max(0, activeTasks - overdueTasks - dueToday),
+      completionRate: Math.max(0, Math.min(completionRate, 100))
+    };
+  }, [summary]);
 
   const chartData = useMemo<CircularChartData[]>(() => {
     return [
-      { label: 'Completed', value: taskStats.completed, color: '#22C55E', gradientColors: ['#22C55E', '#16A34A'] },
-      { label: 'In Progress', value: taskStats.inProgress, color: '#3B82F6', gradientColors: ['#3B82F6', '#2563EB'] },
-      { label: 'Pending', value: taskStats.pending, color: '#F59E0B', gradientColors: ['#F59E0B', '#D97706'] },
-      { label: 'Overdue', value: taskStats.overdue, color: '#EF4444', gradientColors: ['#EF4444', '#DC2626'] },
+      { label: 'Overdue', value: metrics.overdueTasks, color: '#EF4444', gradientColors: ['#EF4444', '#DC2626'] },
+      { label: 'Due Today', value: metrics.dueToday, color: '#F59E0B', gradientColors: ['#F59E0B', '#D97706'] },
+      { label: 'Active Progress', value: metrics.remainingActive, color: '#3B82F6', gradientColors: ['#3B82F6', '#2563EB'] },
     ].filter((item) => item.value > 0);
-  }, [taskStats]);
+  }, [metrics]);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  };
+  const teamsByLead = useMemo(() => {
+    const grouped: Record<string, TeamLeadMapping[]> = {};
+    teamMappings.forEach(mapping => {
+      if (!grouped[mapping.teamLead]) grouped[mapping.teamLead] = [];
+      grouped[mapping.teamLead].push(mapping);
+    });
+    return grouped;
+  }, [teamMappings]);
 
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [100, 70],
-    extrapolate: 'clamp',
-  });
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchSummary()]);
+    setRefreshing(false);
+  }, [refetchSummary]);
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 60, 80],
-    outputRange: [1, 0.5, 0],
-    extrapolate: 'clamp',
-  });
-
-  // Show loading screen when any data is loading initially
-  if ((employeesLoading || tasksLoading || shiftsLoading) && !refreshing) {
+  if (summaryLoading && !refreshing) {
     return (
-      <View style={styles.container}>
-        <Animated.View style={[styles.header, { opacity: headerFadeAnim }]}>
-          <View style={styles.greetingWrap}>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.userName}>{user?.fullName || 'Manager'}</Text>
-          </View>
-        </Animated.View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading dashboard...</Text>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.primary || '#1f6feb'} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.header, { height: headerHeight, opacity: headerFadeAnim }]}>
-        <Animated.View style={[styles.headerContent, { opacity: headerOpacity }]}>
-          <View style={styles.greetingWrap}>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.userName}>{user?.fullName || user?.name || 'Manager'}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.notificationButton}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-          >
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationCount}>3</Text>
-            </View>
-            <Clock size={22} color={Colors.textTertiary} />
-          </TouchableOpacity>
-        </Animated.View>
-      </Animated.View>
+      {/* Main Header */}
+      <View style={styles.header}>
+        <Text style={styles.greeting}>Welcome back,</Text>
+        <Text style={styles.userName}>{user?.fullName || 'Manager'}</Text>
+      </View>
 
-      <Animated.ScrollView
-        style={styles.content}
+      <ScrollView
+        style={styles.scrollBody}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-        })}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing || employeesLoading || tasksLoading || shiftsLoading}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
-        }
+        contentContainerStyle={{ paddingHorizontal: GRID_PADDING }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary || '#1f6feb'} />}
       >
-        {/* Top 3 Cards with Animation */}
-        <View style={styles.statsGrid}>
-          <AnimatedStatCard
-            icon={Users}
-            value={employees.length}
-            label="Total Employees"
-            colors={['#1B3C73', '#2A4F8C']}
-            onPress={() => router.push('/(manager)/team' as any)}
-            index={0}
-          />
-          <AnimatedStatCard
-            icon={Hourglass}
-            value={taskStats.inProgress}
-            label="Pending Tasks"
-            colors={['#F59E0B', '#D97706']}
-            onPress={() => router.push('/(manager)/tasks' as any)}
-            index={1}
-          />
-          <AnimatedStatCard
-            icon={CheckCircle2}
-            value={taskStats.completed}
-            label="Completed Tasks"
-            colors={['#22C55E', '#16A34A']}
-            onPress={() => router.push('/(manager)/tasks' as any)}
-            index={2}
-          />
+        <Text style={styles.sectionHeading}>Dashboard Summary</Text>
+        
+        {/* RIGID METRIC 3x3 MATRIX GRID CONTAINER */}
+        <View style={styles.matrixGrid}>
+          {/* Row 1 */}
+          <FixedStatCard icon={FolderRoot} value={summary?.projectTotal ?? 0} label="Projects" colors={['#7C3AED', '#6D28D9']} onPress={() => router.push('/(manager)/tasks')} />
+          <FixedStatCard icon={ClipboardCheck} value={metrics.activeTasks} label="Tasks" colors={['#22C55E', '#15803D']} onPress={() => router.push('/(manager)/tasks')} />
+          <FixedStatCard icon={ClipboardList} value={metrics.dueToday} label="Due Today" colors={['#F59E0B', '#B45309']} onPress={() => router.push('/(manager)/tasks')} />
+
+          {/* Row 2 */}
+          <FixedStatCard icon={ClipboardList} value={metrics.overdueTasks} label="Overdue" colors={['#EF4444', '#B91C1C']} onPress={() => router.push('/(manager)/tasks')} />
+          <FixedStatCard icon={Clock} value={`${summary?.hoursLoggedToday ?? 0}h`} label="Hours Logged" colors={['#10B981', '#047857']} onPress={() => router.push('/(manager)/tasks')} />
+          <FixedStatCard icon={Users} value={summary?.employeeTotal ?? 0} label="Employees" colors={['#06B6D4', '#0E7490']} onPress={() => router.push('/(manager)/team')} />
+
+          {/* Row 3 */}
+          <FixedStatCard icon={MapPin} value={summary?.companyTotal ?? 0} label="Companies" colors={['#0D9488', '#0F766E']} onPress={() => router.push('/(manager)/companies')} />
+          <FixedStatCard icon={Car} value={summary?.vehicleTotal ?? 0} label="Vehicles" colors={['#F97316', '#C2410C']} onPress={() => router.push('/(manager)/vehicles')} />
+          <FixedStatCard icon={Bug} value={summary?.pendingBugs ?? 0} label="Bugs" colors={['#E11D48', '#BE123C']} onPress={() => router.push('/(manager)/bug')} />
         </View>
 
-        {/* Completion Rate Banner with Animation */}
-        <Animated.View style={[styles.completionBanner, { opacity: headerFadeAnim }]}>
-          <LinearGradient
-            colors={['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)']}
-            style={styles.completionGradient}
-          >
-            <View style={styles.completionLeft}>
-              <View style={styles.awardIconBg}>
-                <Award size={24} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.completionTitle}>Task Completion Rate</Text>
-                <Text style={styles.completionRate}>{taskStats.completionRate}% Complete</Text>
-              </View>
-            </View>
-            <View style={styles.completionBarContainer}>
-              <Animated.View 
-                style={[
-                  styles.completionBar, 
-                  { 
-                    width: `${taskStats.completionRate}%`,
-                    transform: [{
-                      scaleX: headerFadeAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, 1]
-                      })
-                    }]
-                  }
-                ]} 
-              />
-            </View>
-          </LinearGradient>
-        </Animated.View>
-
-        {/* Task Overview with Circular Chart */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleWrapper}>
-              <Sparkles size={18} color={Colors.primary} />
-              <Text style={styles.sectionTitle}>Task Overview</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/(manager)/tasks' as any);
-              }}
-              style={styles.viewAllButton}
-            >
-              <Text style={styles.viewAll}>View All</Text>
-              <ChevronRight size={14} color={Colors.secondary} strokeWidth={2} />
-            </TouchableOpacity>
+        {/* Task Completion Progress Metric Box */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.bannerHeader}>
+            <View style={styles.awardBg}><Award size={14} color={Colors.primary || '#1f6feb'} /></View>
+            <Text style={styles.bannerTitle}>Task Progress Flow: {metrics.completionRate}% On Schedule</Text>
           </View>
-          <View style={styles.taskOverviewCard}>
-            <AnimatedCircularProgressChart data={chartData} />
-
-            {/* Legend */}
-            <View style={styles.legendContainer}>
-              {taskStats.completed > 0 && (
-                <View style={styles.legendItem}>
-                  <LinearGradient colors={['#22C55E', '#16A34A']} style={styles.legendDot} />
-                  <Text style={styles.legendLabel}>Completed</Text>
-                  <Text style={styles.legendPercentage}>
-                    {Math.round((taskStats.completed / (taskStats.total || 1)) * 100)}%
-                  </Text>
-                </View>
-              )}
-              {taskStats.inProgress > 0 && (
-                <View style={styles.legendItem}>
-                  <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.legendDot} />
-                  <Text style={styles.legendLabel}>In Progress</Text>
-                  <Text style={styles.legendPercentage}>
-                    {Math.round((taskStats.inProgress / (taskStats.total || 1)) * 100)}%
-                  </Text>
-                </View>
-              )}
-              {taskStats.pending > 0 && (
-                <View style={styles.legendItem}>
-                  <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.legendDot} />
-                  <Text style={styles.legendLabel}>Pending</Text>
-                  <Text style={styles.legendPercentage}>
-                    {Math.round((taskStats.pending / (taskStats.total || 1)) * 100)}%
-                  </Text>
-                </View>
-              )}
-              {taskStats.overdue > 0 && (
-                <View style={styles.legendItem}>
-                  <LinearGradient colors={['#EF4444', '#DC2626']} style={styles.legendDot} />
-                  <Text style={styles.legendLabel}>Overdue</Text>
-                  <Text style={styles.legendPercentage}>
-                    {Math.round((taskStats.overdue / (taskStats.total || 1)) * 100)}%
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Quick Stats */}
-            <View style={styles.quickStatsRow}>
-              <View style={styles.quickStat}>
-                <Briefcase size={18} color={Colors.textTertiary} />
-                <Text style={styles.quickStatLabel}>Total Tasks</Text>
-                <Text style={styles.quickStatValue}>{taskStats.total}</Text>
-              </View>
-              <View style={styles.quickStatDivider} />
-              <View style={styles.quickStat}>
-                <TrendingUp size={18} color={Colors.textTertiary} />
-                <Text style={styles.quickStatLabel}>Completion</Text>
-                <Text style={styles.quickStatValue}>{taskStats.completionRate}%</Text>
-              </View>
-            </View>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${metrics.completionRate}%` }]} />
           </View>
         </View>
 
-        {/* Employees List */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleWrapper}>
-              <Users size={18} color={Colors.primary} />
-              <Text style={styles.sectionTitle}>Employees</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/(manager)/team' as any);
-              }}
-              style={styles.viewAllButton}
-            >
-              <Text style={styles.viewAll}>See All</Text>
-              <ChevronRight size={14} color={Colors.secondary} strokeWidth={2} />
-            </TouchableOpacity>
+        {/* Analytics Breakdown */}
+        <View style={styles.analyticsSection}>
+          <View style={styles.analyticsHeader}>
+            <Sparkles size={14} color={Colors.primary || '#1f6feb'} />
+            <Text style={styles.analyticsTitle}>Task Analytics</Text>
           </View>
-          <View style={styles.employeeList}>
-            {employees.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No employees found</Text>
-              </View>
+          <View style={styles.chartBox}>
+            <AnimatedCircularProgressChart data={chartData} totalTasks={metrics.activeTasks} />
+          </View>
+        </View>
+
+        {/* Corporate Operations Team Framework allocations */}
+        <View style={styles.structureSection}>
+          <View style={styles.analyticsHeader}>
+            <UserCog size={14} color={Colors.primary || '#1f6feb'} />
+            <Text style={styles.analyticsTitle}>Team Structural Layouts</Text>
+          </View>
+          <View style={styles.structureBox}>
+            {Object.keys(teamsByLead).length === 0 ? (
+              <Text style={styles.emptyText}>No configuration records available.</Text>
             ) : (
-              employees.slice(0, 5).map((employee, index) => (
-                <AnimatedEmployeeItem
-                  key={employee.id}
-                  employee={employee}
-                  onPress={() => router.push('/(manager)/team' as any)}
-                  index={index}
-                />
+              Object.entries(teamsByLead).map(([lead, members]) => (
+                <CollapsibleTeamRow key={lead} teamLead={lead} mappings={members} />
               ))
             )}
           </View>
         </View>
 
-        <View style={{ height: 20 }} />
-      </Animated.ScrollView>
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background || '#0d1117' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background || '#0d1117' },
   header: {
-    backgroundColor: Colors.background,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingTop: Platform.OS === 'ios' ? 60 : 44,
     paddingHorizontal: 16,
+    paddingBottom: 14,
+    backgroundColor: Colors.surface || '#21262d',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderBottomColor: 'rgba(0,0,0,0.03)',
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-    paddingHorizontal: 4,
-  },
-  notificationCount: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  greeting: {
-    fontSize: 14,
-    color: Colors.textTertiary,
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginTop: 2,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  greetingWrap: {
-    paddingTop: 0,
-    paddingBottom: 0,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  cardGradient: {
-    padding: 14,
-    alignItems: 'center',
-    height: 110,
-    justifyContent: 'center',
-  },
-  statIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.surface,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  completionBanner: {
-    marginTop: 20,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  completionGradient: {
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
-  },
-  completionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 10,
-  },
-  awardIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  completionTitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.textTertiary,
-    marginBottom: 2,
-  },
-  completionRate: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  completionBarContainer: {
-    height: 6,
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  completionBar: {
-    height: '100%',
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
-  },
-  section: {
-    marginTop: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  sectionTitleWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  viewAll: {
-    fontSize: 13,
-    color: Colors.secondary,
-    fontWeight: '500',
-  },
-  taskOverviewCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  legendContainer: {
+  greeting: { fontSize: 13, color: Colors.textTertiary || '#8b949e' },
+  userName: { fontSize: 20, fontWeight: '700', color: Colors.text || '#fff', marginTop: 1 },
+  scrollBody: { flex: 1 },
+  sectionHeading: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary || '#c9d1d9', marginTop: 16, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  matrixGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 16,
-    marginTop: 20,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.02)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 16,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-  legendPercentage: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
-    marginLeft: 4,
-  },
-  quickStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    gap: GRID_GAP,
     width: '100%',
   },
-  quickStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
+  fixedStatCard: {
+    width: CARD_WIDTH,
+  borderRadius: 14,
+  overflow: 'hidden',
+  backgroundColor: Colors.surface || '#21262d',
+  elevation: 4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.12,
+  shadowRadius: 8,
   },
-  quickStatLabel: {
-    fontSize: 11,
-    color: Colors.textTertiary,
-    fontWeight: '500',
-  },
-  quickStatValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  quickStatDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  employeeList: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 8,
-  },
-  employeeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  employeeAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.surface,
-  },
-  employeeInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  employeeName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  employeeRole: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 1,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-    marginRight: 8,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  emptyState: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textTertiary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 40,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 16,
-  },
+  cardGradient: { padding: 14,
+  height: 110,
+  justifyContent: 'space-between', },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  iconContainer: {  width: 28,
+  height: 28,
+  borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  cardValue: { fontSize: 20,
+  fontWeight: '800',
+  color: '#fff', },
+  cardLabel: { fontSize: 12,
+  fontWeight: '600',
+  color: '#fff', },
+  bannerContainer: { marginTop: 16, padding: 12, backgroundColor: Colors.surface || '#21262d', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.02)' },
+  bannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  awardBg: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(59, 130, 246, 0.05)', alignItems: 'center', justifyContent: 'center' },
+  bannerTitle: { fontSize: 11, fontWeight: '600', color: Colors.text || '#fff' },
+  progressBarBg: { height: 5, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 2.5, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: Colors.primary || '#1f6feb' },
+  analyticsSection: { marginTop: 16 },
+  analyticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  analyticsTitle: { fontSize: 13, fontWeight: '600', color: Colors.text || '#fff' },
+  chartBox: { backgroundColor: Colors.surface || '#21262d', borderRadius: 12, padding: 14, alignItems: 'center' },
+  structureSection: { marginTop: 16 },
+  structureBox: { backgroundColor: Colors.surface || '#21262d', borderRadius: 12, padding: 10, gap: 6 },
+  teamRowContainer: { borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)', borderRadius: 8, overflow: 'hidden' },
+  teamRowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 8, backgroundColor: 'rgba(0,0,0,0.01)' },
+  teamRowInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  teamRowIconBg: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(59, 130, 246, 0.05)', alignItems: 'center', justifyContent: 'center' },
+  teamRowLeadName: { fontSize: 12, fontWeight: '600', color: Colors.text || '#fff' },
+  teamRowSub: { fontSize: 10, color: Colors.textTertiary || '#8b949e' },
+  teamChildrenList: { paddingHorizontal: 10, paddingBottom: 6 },
+  teamChildItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 32 },
+  teamChildName: { fontSize: 11, color: Colors.textSecondary || '#c9d1d9' },
+  overrideTag: { backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
+  overrideTagText: { fontSize: 8, color: '#D97706', fontWeight: '600' },
+  emptyText: { fontSize: 11, color: Colors.textTertiary || '#8b949e', textAlign: 'center', padding: 10 }
 });

@@ -205,16 +205,16 @@ export default function MessagesScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: /*insets.top*/0 }]}>
       <View style={styles.header}>
-        <TouchableOpacity
+       {/* <TouchableOpacity
           style={styles.hamburgerBtn}
           onPress={openSidebar}
           activeOpacity={0.7}
           testID="messages-hamburger"
         >
           <Menu color={Colors.surface} size={22} />
-        </TouchableOpacity>
+        </TouchableOpacity>*/}
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity 
           style={styles.composeBtn}

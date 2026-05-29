@@ -51,7 +51,7 @@ const SOCKET_URL = 'https://task.se7eninc.com';
 
 export default function TaskDetailScreen() {
   const socketRef = useRef<Socket | null>(null);
-  const params = useLocalSearchParams<{ taskId?: string | string[] }>();
+  const params = useLocalSearchParams<{ taskId?: string | string[] }>(); 
   const taskId = Array.isArray(params.taskId) ? params.taskId[0] : params.taskId;
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -544,11 +544,11 @@ const documentAttachments = attachmentsArray
         {/* Task Title & Meta */}
         <View style={styles.topSection}>
           <View style={styles.metaRow}>
-            <StatusBadge status={task.status} size="medium" />
-            <PriorityIndicator priority={task.priority} />
+            <StatusBadge status={task?.status} size="medium" />
+            <PriorityIndicator priority={task?.priority} />
           </View>
-          <Text style={styles.title}>{task.title}</Text>
-          <Text style={styles.description}>{task.description}</Text>
+          <Text style={styles.title}>{task?.title}</Text>
+          <Text style={styles.description}>{task?.description}</Text>
         </View>
 
         {/* Task Details Card */}
@@ -557,7 +557,7 @@ const documentAttachments = attachmentsArray
           <View style={styles.detailRow}>
             <MapPin color={Colors.textTertiary} size={16} />
             <Text style={styles.detailLabel}>Location</Text>
-            <Text style={styles.detailValue}>{task.location || task.category || 'Not specified'}</Text>
+            <Text style={styles.detailValue}>{task?.location || task?.category || 'Not specified'}</Text>
           </View>
           <View style={styles.detailDivider} />
 
@@ -566,7 +566,7 @@ const documentAttachments = attachmentsArray
             <CalendarDays color={Colors.textTertiary} size={16} />
             <Text style={styles.detailLabel}>Assigned</Text>
             <Text style={styles.detailValue}>
-              {task.assignedDate ? new Date(task.assignedDate).toLocaleDateString() : 'N/A'}
+              {task?.assignedDate ? new Date(task.assignedDate).toLocaleDateString() : 'N/A'}
             </Text>
           </View>
           <View style={styles.detailDivider} />
@@ -575,7 +575,7 @@ const documentAttachments = attachmentsArray
           <View style={styles.detailRow}>
             <Clock color={Colors.textTertiary} size={16} />
             <Text style={styles.detailLabel}>Due Date</Text>
-            <Text style={styles.detailValue}>{task.dueDate || 'No due date'}</Text>
+            <Text style={styles.detailValue}>{task?.dueDate || 'No due date'}</Text>
           </View>
           <View style={styles.detailDivider} />
 
@@ -585,7 +585,7 @@ const documentAttachments = attachmentsArray
             <Text style={styles.detailLabel}>Assignees</Text>
           </View>
           <View style={styles.assigneesList}>
-            {task.assignees && task.assignees.length > 0 ? (
+            {task?.assignees && task.assignees.length > 0 ? (
               task.assignees.map((assignee, idx) => (
                 <View key={idx} style={styles.assigneeChip}>
                   <Text style={styles.assigneeText}>{assignee}</Text>
@@ -607,11 +607,11 @@ const documentAttachments = attachmentsArray
             onPress={() => setShowStatusDropdown(!showStatusDropdown)}
           >
             <View style={[styles.statusDot, { backgroundColor: 
-              task.status === 'completed' ? '#22C55E' : 
-              task.status === 'in_progress' ? '#3B82F6' : '#F59E0B'
+              task?.status === 'completed' ? '#22C55E' : 
+              task?.status === 'in_progress' ? '#3B82F6' : '#F59E0B'
             }]} />
             <Text style={styles.currentStatusText}>
-              {task.status.replace('_', ' ').toUpperCase()}
+              {task?.status?.replace('_', ' ')?.toUpperCase()}
             </Text>
           </TouchableOpacity>
 
@@ -623,19 +623,19 @@ const documentAttachments = attachmentsArray
                   key={option.key}
                   style={[
                     styles.statusOption,
-                    task.status === option.key && styles.statusOptionActive
+                    task?.status === option.key && styles.statusOptionActive
                   ]}
                   onPress={() => handleStatusChange(option.key)}
-                  disabled={statusMutation.isPending || task.status === option.key}
+                  disabled={statusMutation.isPending || task?.status === option.key}
                 >
                   <View style={[styles.statusDot, { backgroundColor: option.color }]} />
                   <Text style={[
                     styles.statusOptionText,
-                    task.status === option.key && styles.statusOptionTextActive
+                    task?.status === option.key && styles.statusOptionTextActive
                   ]}>
                     {option.label}
                   </Text>
-                  {task.status === option.key && (
+                  {task?.status === option.key && (
                     <CheckCircle2 color={option.color} size={16} style={styles.statusCheck} />
                   )}
                 </TouchableOpacity>
@@ -645,7 +645,7 @@ const documentAttachments = attachmentsArray
 
           {/* Quick Action Buttons */}
           <View style={styles.quickActions}>
-            {task.status === 'pending' && (
+            {task?.status === 'pending' && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.startBtn]}
                 onPress={() => handleStatusChange('in_progress')}
@@ -655,7 +655,7 @@ const documentAttachments = attachmentsArray
                 <Text style={styles.actionBtnText}>Start Task</Text>
               </TouchableOpacity>
             )}
-            {task.status === 'in_progress' && (
+            {task?.status === 'in_progress' && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.completeBtn]}
                 onPress={() => handleStatusChange('completed')}
@@ -665,7 +665,7 @@ const documentAttachments = attachmentsArray
                 <Text style={styles.actionBtnText}>Mark Complete</Text>
               </TouchableOpacity>
             )}
-            {task.status === 'completed' && (
+            {task?.status === 'completed' && (
               <View style={styles.completedBanner}>
                 <CheckCircle2 color={Colors.success} size={20} />
                 <Text style={styles.completedText}>Task Completed</Text>
@@ -700,7 +700,7 @@ const documentAttachments = attachmentsArray
   ) : comments?.length === 0 ? (
     <Text style={styles.noAssigneesText}>No comments yet.</Text>
   ) : (
-    comments.map((comment: any) => (
+    comments?.map((comment: any) => (
       <View key={comment.id || comment._id} style={styles.commentContainer}>
         <View style={styles.commentHeader}>
           <Text style={styles.commentAuthor}>{comment.authorUsername}</Text>

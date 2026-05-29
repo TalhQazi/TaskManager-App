@@ -1,22 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import ManagerHeader from '@/components/ManagerHeader';
 import ManagerFixedSidebar from '@/components/ManagerFixedSidebar';
 
 export default function ManagerLayout() {
-  const insets = useSafeAreaInsets();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <View style={styles.root}>
-      <ManagerHeader />
+      
+      {/* HEADER WITH MENU BUTTON */}
+      <ManagerHeader onMenuPress={() => setSidebarOpen(true)} />
+
+      {/* MAIN CONTENT (NO PUSH, NO MARGIN) */}
       <View style={styles.body}>
-        <ManagerFixedSidebar />
-        <View style={[styles.content, { paddingBottom: insets.bottom }]}>
-          <Stack screenOptions={{ headerShown: false }} />
-        </View>
+        <Stack screenOptions={{ headerShown: false }} />
       </View>
+
+      {/* OVERLAY SIDEBAR */}
+      <ManagerFixedSidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
     </View>
   );
 }
@@ -24,12 +32,9 @@ export default function ManagerLayout() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: '#f8fafc',
   },
   body: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  content: {
     flex: 1,
   },
 });

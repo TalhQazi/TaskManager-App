@@ -23,7 +23,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inTabs = firstSegment === '(tabs)';
     const inManager = firstSegment === '(manager)';
     const inPublic = firstSegment === '' || firstSegment === 'login';
-    const inAuthedNonTabs = firstSegment === 'schedule' || firstSegment === 'notifications';
+    const inAuthedNonTabs = firstSegment === 'schedule';
+    const isNotifications = firstSegment === 'notifications';
 
     const role = user?.role;
 
@@ -33,7 +34,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (isAuthenticated && role === 'manager' && (inTabs || inAuthedNonTabs)) {
+    
+
+    if (isAuthenticated && role === 'manager' && (inTabs || (inAuthedNonTabs && !isNotifications))) {
       router.replace('/(manager)/home' as any);
       return;
     }

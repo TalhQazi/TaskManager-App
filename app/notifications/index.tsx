@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery ,useMutation, useQueryClient} from '@tanstack/react-query';
 import { Bell, ClipboardList, Calendar, MessageSquare, Info, CheckCheck } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { apiRequest } from '@/services/api';
@@ -30,7 +30,7 @@ const COLOR_MAP: Record<Notification['type'], string> = {
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const [readOverrides, setReadOverrides] = useState<Record<string, boolean>>({});
-
+ const queryClient = useQueryClient();
   const { data: apiNotifications = [] } = useQuery<Notification[]>({
     queryKey: ['notifications'],
     queryFn: async () => {
