@@ -1,925 +1,1013 @@
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  StyleSheet,
   View,
   Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
   TextInput,
-  ActivityIndicator,
-  Alert,
-  Image,
+  TouchableOpacity,
+  FlatList,
   Modal,
+  Image,
+  ScrollView,
+  ActivityIndicator,
+  SafeAreaView,
+  Platform,
   Dimensions,
-} from 'react-native';
+  KeyboardAvoidingView,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
 
 import {
   Bug,
   Upload,
   X,
-  Maximize2,
+  ZoomIn,
   ChevronLeft,
   ChevronRight,
-  Search,
-  Filter,
-} from 'lucide-react-native';
+  MapPin,
+  User,
+  Calendar,
+  Layers,
+  RefreshCw,
+} from "lucide-react-native";
+import Colors from "@/constants/colors";
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import * as DocumentPicker from 'expo-document-picker';
+type BugStatus = "open" | "closed";
 
-import Colors from '@/constants/colors';
-import { apiRequest } from '@/services/api';
-
-// --- Type Defs ---
-type BugStatus = 'open' | 'closed';
-type StatusFilter = 'all' | 'open' | 'closed';
-
-interface BugItem {
+type BugItem = {
   id: string;
   title: string;
   description: string;
-  status: BugStatus;
+  status?: BugStatus;
   taskTitle?: string;
   createdByUsername?: string;
   createdByRole?: string;
   createdAt?: string;
   source?: { panel?: string; path?: string };
   attachments?: { fileName?: string; url?: string; mimeType?: string; size?: number }[];
-}
-
-interface LocalFile {
-  name: string;
-  uri: string;
-  type: string;
-  size?: number;
-}
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Helper to convert file URI to base64 DataURL for payload compatibility
-const fileToDataUrl = async (uri: string): Promise<string> => {
-  try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    throw new Error('Failed to parse file payload');
-  }
 };
 
-export default function ManagerBugsScreen() {
-  const queryClient = useQueryClient();
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+type StatusFilter = "all" | "open" | "closed";
 
-  // Modal Views UI States
-  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
-  const [selected, setSelected] = useState<BugItem | null>(null);
-  const [submitOpen, setSubmitOpen] = useState(false);
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-  // Manual Form Input States
-  const [submitTitle, setSubmitTitle] = useState('');
-  const [submitDesc, setSubmitDesc] = useState('');
-  const [submitFiles, setSubmitFiles] = useState<LocalFile[]>([]);
+function toText(v: unknown) {
+  return typeof v === "string" ? v : "";
+}
 
-  // --- React Query Data Fetch Pipeline ---
-  const { data: bugs = [], isLoading, refetch } = useQuery<BugItem[]>({
-    queryKey: ['managerBugs'],
-    queryFn: async () => {
-      // Adjusted wrapper signature matching your application structure template
-      const res = await apiRequest<{ items?: any[] }>('/bugs', { method: 'GET' });
-      const rawList = res.data?.items || [];
-      
-      return rawList.map((x: any) => ({
-        id: String(x.id || x._id || ''),
-        title: String(x.title || ''),
-        description: String(x.description || ''),
-        status: (x.status === 'closed' ? 'closed' : 'open') as BugStatus,
-        taskTitle: x.taskTitle ? String(x.taskTitle) : undefined,
-        createdByUsername: x.createdByUsername ? String(x.createdByUsername) : undefined,
-        createdByRole: x.createdByRole ? String(x.createdByRole) : undefined,
-        createdAt: x.createdAt ? String(x.createdAt) : undefined,
-        source: x.source && typeof x.source === 'object' ? x.source : undefined,
-        attachments: Array.isArray(x.attachments) ? x.attachments : [],
-      }));
-    },
-  });
-
-  // --- Mutations ---
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: BugStatus }) => {
-      return await apiRequest(`/bugs/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        data: { status },
-      });
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['managerBugs'] });
-      if (selected && selected.id === variables.id) {
-        setSelected({ ...selected, status: variables.status });
-      }
-      Alert.alert('Status Updated', `Issue marked as ${variables.status}`);
-    },
-    onError: (err: any) => {
-      Alert.alert('Error', err?.message || 'Failed to rewrite ticket parameters.');
-    },
-  });
-
-  const createBugMutation = useMutation({
-    mutationFn: async (payload: { title: string; description: string; attachments: any[]; source: any }) => {
-      return await apiRequest('/bugs', {
-        method: 'POST',
-        data: payload,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['managerBugs'] });
-      Alert.alert('Success', 'Bug report submitted successfully!');
-      setSubmitOpen(false);
-      setSubmitTitle('');
-      setSubmitDesc('');
-      setSubmitFiles([]);
-    },
-    onError: (err: any) => {
-      Alert.alert('Submission Error', err?.message || 'Could not commit bug parameters.');
-    },
-  });
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
-
-  // --- Filtering Filter Logic ---
-  const filteredBugs = bugs.filter((bug) => {
-    if (statusFilter !== 'all' && bug.status !== statusFilter) return false;
-    if (!searchQuery.trim()) return true;
-    
-    const q = searchQuery.toLowerCase();
-    return (
-      bug.title.toLowerCase().includes(q) ||
-      bug.description.toLowerCase().includes(q) ||
-      bug.createdByUsername?.toLowerCase().includes(q) ||
-      bug.source?.path?.toLowerCase().includes(q)
-    );
-  });
-
-  const openCount = bugs.filter((b) => b.status === 'open').length;
-
-  const handlePickDocument = async () => {
-    if (submitFiles.length >= 5) {
-      Alert.alert('Limit Reached', 'You can upload up to 5 screenshots max.');
-      return;
-    }
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'image/*',
-        multiple: false,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setSubmitFiles((prev) => [
-          ...prev,
-          {
-            name: asset.name,
-            uri: asset.uri,
-            type: asset.mimeType || 'image/jpeg',
-            size: asset.size,
-          },
-        ]);
-      }
-    } catch {
-      Alert.alert('Error', 'Failed to retrieve asset path');
-    }
-  };
-
-  const handleFormSubmit = async () => {
-    if (!submitTitle.trim() || !submitDesc.trim()) {
-      Alert.alert('Validation Error', 'Title and description fields are strictly required.');
-      return;
-    }
-    try {
-      const base64Attachments = await Promise.all(
-        submitFiles.map(async (file) => ({
-          fileName: file.name,
-          url: await fileToDataUrl(file.uri),
-          mimeType: file.type,
-          size: file.size || 0,
-        }))
-      );
-
-      createBugMutation.mutate({
-        title: submitTitle.trim(),
-        description: submitDesc.trim(),
-        attachments: base64Attachments,
-        source: { panel: 'manager-mobile', path: '/mobile-bugs-dashboard' },
-      });
-    } catch {
-      Alert.alert('Error', 'Failed to compress images for upload assets.');
-    }
-  };
-
-  // --- Core Layout Loading Screen Engine ---
-  if (isLoading && !refreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Bug Tracker</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading tickets...</Text>
-        </View>
-      </View>
-    );
+// Safely resolve either raw inline Base64 data strings or proxied asset paths
+function resolveAttachmentUrl(urlPath: string | undefined): string {
+  const urlString = String(urlPath || "");
+  if (urlString.startsWith("data:")) {
+    return urlString; // Use raw base64 data string directly
   }
+  return toProxiedUrl(urlString) ?? ""; // Route standard relative path strings through secure API proxy
+}
+
+export default function ManagerBugs() {
+  
+
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [items, setItems] = useState<BugItem[]>([]);
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  // Lightbox
+  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
+
+  // View dialog
+  const [viewOpen, setViewOpen] = useState(false);
+  const [selected, setSelected] = useState<BugItem | null>(null);
+  const [updating, setUpdating] = useState(false);
+
+  // Submit dialog
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitTitle, setSubmitTitle] = useState("");
+  const [submitDesc, setSubmitDesc] = useState("");
+  const [submitFiles, setSubmitFiles] = useState<{ uri: string; base64: string; name: string; type: string }[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+
+  const load = async () => {
+    const res = await apiFetch<{ items?: any[] }>("/api/bugs");
+    const list = Array.isArray(res?.items) ? res.items : [];
+    const mapped: BugItem[] = list
+      .map((x: any) => ({
+        id: String(x.id || x._id || ""),
+        title: toText(x.title),
+        description: toText(x.description),
+        status: (x.status === "closed" ? "closed" : "open") as BugStatus,
+        taskTitle: toText(x.taskTitle),
+        createdByUsername: toText(x.createdByUsername),
+        createdByRole: toText(x.createdByRole),
+        createdAt: toText(x.createdAt),
+        source: x.source && typeof x.source === "object" ? x.source : undefined,
+        attachments: Array.isArray(x.attachments) ? x.attachments : [],
+      }))
+      .filter((x) => Boolean(x.id));
+    setItems(mapped);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setApiError(null);
+        await load();
+      } catch (e) {
+        if (!mounted) return;
+        setApiError(e instanceof Error ? e.message : "Failed to load bugs");
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const filtered = useMemo(() => {
+    let list = items;
+    if (statusFilter !== "all") list = list.filter((b) => b.status === statusFilter);
+    const query = q.trim().toLowerCase();
+    if (!query) return list;
+    return list.filter((b) => {
+      const where = `${b.title} ${b.description} ${b.taskTitle || ""} ${b.createdByUsername || ""} ${b.source?.path || ""}`.toLowerCase();
+      return where.includes(query);
+    });
+  }, [items, q, statusFilter]);
+
+  const openCount = items.filter((b) => b.status === "open").length;
+
+  const openBug = async (b: BugItem) => {
+    setSelected(b);
+    setViewOpen(true);
+    try {
+      const res = await apiFetch<{ item: BugItem }>(`/api/bugs/${encodeURIComponent(b.id)}`);
+      if (res?.item) setSelected((prev) => (prev?.id === b.id ? { ...prev, ...res.item } : prev));
+    } catch { /* ignore */ }
+  };
+
+  const updateStatus = async (next: BugStatus) => {
+    if (!selected) return;
+    try {
+      setUpdating(true);
+      const res = await apiFetch<{ item?: any }>(`/api/bugs/${encodeURIComponent(selected.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: next }),
+      });
+      const merged: BugItem = {
+        ...selected,
+        status: (res?.item?.status === "closed" ? "closed" : "open") as BugStatus,
+      };
+      setSelected(merged);
+      setItems((prev) => prev.map((x) => (x.id === merged.id ? { ...x, status: merged.status } : x)));
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : "Failed to update bug");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    if (submitFiles.length >= 5) return;
+
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      setSubmitError("Permission to access camera roll is required.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: 5 - submitFiles.length,
+      base64: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets) {
+      const selectedImages = result.assets.map((asset) => {
+        const filename = asset.uri.split("/").pop() || "upload.jpg";
+        const extension = filename.split(".").pop();
+        const mimeType = asset.mimeType || `image/${extension === "png" ? "png" : "jpeg"}`;
+        return {
+          uri: asset.uri,
+          base64: `data:${mimeType};base64,${asset.base64}`,
+          name: filename,
+          type: mimeType,
+        };
+      });
+      setSubmitFiles((p) => [...p, ...selectedImages].slice(0, 5));
+    }
+  };
+
+  const removeFile = (i: number) => {
+    setSubmitFiles((p) => p.filter((_, idx) => idx !== i));
+  };
+
+  const resetSubmit = () => {
+    setSubmitTitle("");
+    setSubmitDesc("");
+    setSubmitFiles([]);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+  };
+
+  const handleSubmit = async () => {
+    if (!submitTitle.trim() || !submitDesc.trim()) {
+      setSubmitError("Title and description are required.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      setSubmitError(null);
+      
+      const attachments = submitFiles.map((f) => ({
+        fileName: f.name,
+        url: f.base64,
+        mimeType: f.type,
+        size: 0,
+      }));
+
+      await apiFetch("/api/bugs", {
+        method: "POST",
+        body: JSON.stringify({
+          title: submitTitle.trim(),
+          description: submitDesc.trim(),
+          attachments,
+          source: { panel: "manager", path: `Mobile App (${Platform.OS})` },
+        }),
+      });
+
+      setSubmitSuccess("Bug report submitted successfully!");
+      await load();
+      setTimeout(() => {
+        setSubmitOpen(false);
+        resetSubmit();
+      }, 1200);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Failed to submit bug report.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const statusTabs: { label: string; value: StatusFilter }[] = [
+    { label: `All (${items.length})`, value: "all" },
+    { label: `Open (${openCount})`, value: "open" },
+    { label: `Closed (${items.length - openCount})`, value: "closed" },
+  ];
 
   return (
-    <View style={styles.container}>
-      {/* Top Header Panel Row */}
+    <SafeAreaView style={styles.container}>
+      {/* Header Area */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Bug Tracker</Text>
-          <Text style={styles.subtitle}>
-            {openCount > 0 ? `${openCount} Open issues require review` : 'All systems clear'}
-          </Text>
+        <View style={styles.headerTitleContainer}>
+          <Bug size={24} color={Colors.golden} style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Bug Reports</Text>
+        </View>
+        <Text style={styles.headerSubtitle}>
+          {openCount > 0 ? `${openCount} open bug${openCount !== 1 ? "s" : ""}.` : "No open bugs."}
+        </Text>
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={[styles.btn, styles.btnOutline, { flex: 1 }]} onPress={() => void load()}>
+            <RefreshCw size={14} color={Colors.surface}  style={{ marginRight: 6 }} />
+            <Text style={styles.btnOutlineText}>Refresh</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btn, styles.btnPrimary, { flex: 1.3 }]} onPress={() => { resetSubmit(); setSubmitOpen(true); }}>
+            <Text style={styles.btnPrimaryText}>+ Report Bug</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Primary Context Action */}
-      <TouchableOpacity style={styles.primaryActionButton} onPress={() => setSubmitOpen(true)}>
-        <Bug size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-        <Text style={styles.primaryActionText}>Report New Bug</Text>
-      </TouchableOpacity>
-
-      {/* Filter and Inputs Wrapper Panel */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={20} color={Colors.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by title, author, context..."
-            placeholderTextColor={Colors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
+      {apiError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{apiError}</Text>
         </View>
+      )}
 
-        {/* Segmented Tab Filter Selection Row */}
-        <View style={styles.tabBarRow}>
-          {(['all', 'open', 'closed'] as StatusFilter[]).map((filterOpt) => (
-            <TouchableOpacity
-              key={filterOpt}
-              onPress={() => setStatusFilter(filterOpt)}
-              style={[styles.tabItem, statusFilter === filterOpt && styles.tabItemActive]}
-            >
-              <Text style={[styles.tabLabel, statusFilter === filterOpt && styles.tabLabelActive]}>
-                {filterOpt.toUpperCase()}
+      {/* Control Panel (Search + Status Tabs) */}
+      <View style={styles.searchCard}>
+        <TextInput
+          placeholder="Search bugs..."
+          placeholderTextColor="#64748b"
+          style={styles.searchInput}
+          value={q}
+          onChangeText={setQ}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+          {statusTabs.map((tab) => {
+            const isActive = statusFilter === tab.value;
+            return (
+              <TouchableOpacity
+                key={tab.value}
+                onPress={() => setStatusFilter(tab.value)}
+                style={[styles.tabButton, isActive && styles.tabButtonActive]}
+              >
+                <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Primary Data List Component */}
+      {loading ? (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#0284c7" />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No bugs found.</Text>
+            </View>
+          }
+          renderItem={({ item: b }) => {
+            const isOpen = b.status !== "closed";
+            return (
+              <TouchableOpacity style={styles.bugCard} onPress={() => openBug(b)}>
+                <View style={styles.cardHeaderRow}>
+                  <View style={[styles.badge, isOpen ? styles.badgeOpen : styles.badgeClosed]}>
+                    <Text style={[styles.badgeText, isOpen ? styles.badgeTextOpen : styles.badgeTextClosed]}>
+                      {isOpen ? "Open" : "Closed"}
+                    </Text>
+                  </View>
+                  <View style={styles.metaRowElement}>
+                    <MapPin size={12} color="#64748b" style={{ marginRight: 3 }} />
+                    <Text style={styles.metaRowText} numberOfLines={1}>
+                      {b.source?.path || b.source?.panel || "System"}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.cardTitle}>{b.title}</Text>
+                
+                {b.taskTitle ? (
+                  <View style={styles.taskBadge}>
+                    <Layers size={11} color="#0284c7" style={{ marginRight: 4 }} />
+                    <Text style={styles.taskBadgeText} numberOfLines={1}>Task: {b.taskTitle}</Text>
+                  </View>
+                ) : null}
+
+                <Text style={styles.cardDesc} numberOfLines={2}>{b.description}</Text>
+
+                <View style={styles.cardFooter}>
+                  <View style={styles.metaRowElement}>
+                    <User size={12} color="#64748b" style={{ marginRight: 4 }} />
+                    <Text style={styles.footerUserData}>
+                      {b.createdByUsername || "Anonymous"}
+                      {b.createdByRole ? ` (${b.createdByRole})` : ""}
+                    </Text>
+                  </View>
+                  <View style={styles.metaRowElement}>
+                    <Calendar size={12} color="#64748b" style={{ marginRight: 4 }} />
+                    <Text style={styles.metaRowText}>
+                      {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "-"}
+                    </Text>
+                  </View>
+                </View>
+                {b.attachments && b.attachments.length > 0 ? (
+                  <Text style={styles.attachmentMiniIndicator}>📎 {b.attachments.length} Attachment(s)</Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
+
+      {/* View Details Dialog Modal */}
+      <Modal visible={viewOpen} animationType="slide" transparent={true} onRequestClose={() => setViewOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={2}>{selected?.title || "Bug Details"}</Text>
+              <Text style={styles.modalSubtitle}>
+                {selected?.source?.path || selected?.source?.panel || "No source data"}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+            </View>
 
-      {/* Ticket List View Container */}
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing || isLoading} onRefresh={onRefresh} />}
-      >
-        {filteredBugs.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No matching bug issues cataloged.</Text>
-          </View>
-        ) : (
-          filteredBugs.map((bug) => (
-            <TouchableOpacity key={bug.id} style={styles.bugCard} onPress={() => setSelected(bug)}>
-              <View style={styles.bugCardHeader}>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    { backgroundColor: bug.status === 'closed' ? `${Colors.success}15` : `${Colors.error}15` },
-                  ]}
-                >
-                  <Text style={[styles.statusText, { color: bug.status === 'closed' ? Colors.success : Colors.error }]}>
-                    {bug.status}
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={true}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.badge, selected?.status !== "closed" ? styles.badgeOpen : styles.badgeClosed]}>
+                  <Text style={[styles.badgeText, selected?.status !== "closed" ? styles.badgeTextOpen : styles.badgeTextClosed]}>
+                    {selected?.status === "closed" ? "Closed" : "Open"}
                   </Text>
                 </View>
-                <Text style={styles.metaTracePath} numberOfLines={1}>
-                  {bug.source?.path?.split('/').pop() || bug.source?.panel || 'System'}
-                </Text>
+                {selected?.createdByUsername ? (
+                  <Text style={styles.metaRowText}>
+                    By {selected.createdByUsername} {selected.createdByRole ? `(${selected.createdByRole})` : ""}
+                  </Text>
+                ) : null}
               </View>
 
-              <Text style={styles.bugName} numberOfLines={1}>{bug.title}</Text>
-              <Text style={styles.bugDescription} numberOfLines={2}>{bug.description}</Text>
-
-              <View style={styles.detailsRow}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Author</Text>
-                  <Text style={styles.detailValue}>{bug.createdByUsername || 'System'}</Text>
+              {selected?.taskTitle ? (
+                <View style={[styles.taskBadge, { marginTop: 10 }]}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#0284c7" }}>Linked Task: {selected.taskTitle}</Text>
                 </View>
-                {bug.createdAt && (
-                  <View style={[styles.detailItem, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.detailLabel}>Date</Text>
-                    <Text style={styles.detailValue}>{new Date(bug.createdAt).toLocaleDateString()}</Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-        <View style={{ height: 30 }} />
-      </ScrollView>
+              ) : null}
 
-      {/* --- Ticket Detail View Drawer Drawer Modal --- */}
-      <Modal visible={!!selected} animationType="slide" transparent>
-        <View style={styles.modalBlurBackground}>
-          <View style={styles.modalBottomContainer}>
-            <View style={styles.modalDragHandle} />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
-              <Text style={styles.modalViewTitle}>{selected?.title}</Text>
-              <Text style={styles.modalViewPathSub}>{selected?.source?.path || 'Global Scope'}</Text>
-
-              <View style={styles.inlineMetaRow}>
-                <Text style={styles.metaAuthorText}>
-                  Posted by {selected?.createdByUsername || 'System'} ({selected?.createdByRole || 'User'})
-                </Text>
+              <View style={styles.descContainer}>
+                <Text style={styles.fullDescText}>{selected?.description}</Text>
               </View>
 
-              <Text style={styles.fieldSectionLabel}>Description</Text>
-              <View style={styles.descriptionContentCard}>
-                <Text style={styles.descriptionContentText}>{selected?.description}</Text>
-              </View>
-
-              {/* Attachments Mapping */}
-              {selected?.attachments && selected.attachments.length > 0 && (
+              {selected?.attachments && selected.attachments.length > 0 ? (
                 <View style={{ marginTop: 16 }}>
-                  <Text style={styles.fieldSectionLabel}>Screenshots ({selected.attachments.length})</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                    {selected.attachments.map((att, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.attachmentThumbnailWrapper}
-                        onPress={() => {
-                          const allImgUrls = selected.attachments!.map((a) => a.url || '');
-                          setLightbox({ urls: allImgUrls, index });
-                        }}
-                      >
-                        <Image source={{ uri: att.url }} style={styles.thumbnailImage} />
-                        <View style={styles.thumbnailZoomBadge}>
-                          <Maximize2 size={12} color="#FFFFFF" />
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.modalFooterRow}>
-              <TouchableOpacity style={styles.footerCancelButton} onPress={() => setSelected(null)}>
-                <Text style={styles.footerCancelButtonText}>Dismiss</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.footerActionButton,
-                  { backgroundColor: selected?.status === 'closed' ? Colors.error : Colors.success },
-                ]}
-                disabled={updateStatusMutation.isPending}
-                onPress={() =>
-                  selected &&
-                  updateStatusMutation.mutate({
-                    id: selected.id,
-                    status: selected.status === 'closed' ? 'open' : 'closed',
-                  })
-                }
-              >
-                {updateStatusMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.footerActionButtonText}>
-                    {selected?.status === 'closed' ? 'Reopen Ticket' : 'Resolve Issue'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* --- Bug Creation Sheet Modal Form --- */}
-      <Modal visible={submitOpen} animationType="slide" transparent>
-        <View style={styles.modalBlurBackground}>
-          <View style={styles.modalBottomContainer}>
-            <View style={styles.modalDragHandle} />
-            <Text style={styles.modalViewTitle}>File Bug Report</Text>
-            <Text style={styles.modalViewPathSub}>Provide operational logs or diagnostic details.</Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
-              <Text style={styles.fieldSectionLabel}>Issue Summary *</Text>
-              <TextInput
-                placeholder="Brief summary of the defect..."
-                placeholderTextColor={Colors.textTertiary}
-                style={styles.formInputText}
-                value={submitTitle}
-                onChangeText={setSubmitTitle}
-              />
-
-              <Text style={styles.fieldSectionLabel}>Detailed Reproduction Steps *</Text>
-              <TextInput
-                placeholder="What parameters caused this error?"
-                placeholderTextColor={Colors.textTertiary}
-                style={[styles.formInputText, styles.formInputTextMultiline]}
-                multiline
-                numberOfLines={3}
-                value={submitDesc}
-                onChangeText={setSubmitDesc}
-              />
-
-              <Text style={styles.fieldSectionLabel}>Attach Previews (Max 5)</Text>
-              <View style={styles.formFilePreviewsGrid}>
-                {submitFiles.map((file, i) => (
-                  <View key={i} style={styles.formImageFrameBox}>
-                    <Image source={{ uri: file.uri }} style={styles.formThumbnailPhoto} />
-                    <TouchableOpacity
-                      style={styles.removeFileOverlayButton}
-                      onPress={() => setSubmitFiles((p) => p.filter((_, idx) => idx !== i))}
-                    >
-                      <X size={12} color="#FFFFFF" />
-                    </TouchableOpacity>
+                  <Text style={styles.sectionLabel}>Attachments ({selected.attachments.length})</Text>
+                  <View style={styles.imageGrid}>
+                    {selected.attachments.map((att, i) => {
+                      const src = resolveAttachmentUrl(att.url);
+                      const allUrls = selected.attachments!.map(a => resolveAttachmentUrl(a.url));
+                      
+                      return (
+                        <TouchableOpacity key={i} style={styles.gridImageWrapper} onPress={() => setLightbox({ urls: allUrls, index: i })}>
+                          <Image source={{ uri: src }} style={styles.gridImage} />
+                          <View style={styles.zoomOverlay}>
+                            <ZoomIn size={16} color="#ffffff" />
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                ))}
-
-                {submitFiles.length < 5 && (
-                  <TouchableOpacity style={styles.filePickerTriggerBox} onPress={handlePickDocument}>
-                    <Upload size={20} color={Colors.textTertiary} />
-                    <Text style={styles.pickerHintLabel}>Add Image</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+                </View>
+              ) : null}
             </ScrollView>
 
-            <View style={styles.modalFooterRow}>
-              <TouchableOpacity
-                style={styles.footerCancelButton}
-                onPress={() => {
-                  setSubmitOpen(false);
-                  setSubmitFiles([]);
-                }}
-                disabled={createBugMutation.isPending}
-              >
-                <Text style={styles.footerCancelButtonText}>Cancel</Text>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => setViewOpen(false)} disabled={updating}>
+                <Text style={styles.btnOutlineText}>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.footerActionButton, { backgroundColor: Colors.primary }]}
-                onPress={handleFormSubmit}
-                disabled={createBugMutation.isPending}
-              >
-                {createBugMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.footerActionButtonText}>Commit Ticket</Text>
-                )}
-              </TouchableOpacity>
+              {selected?.status === "closed" ? (
+                <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => void updateStatus("open")} disabled={updating}>
+                  <Text style={styles.btnPrimaryText}>Reopen</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[styles.btn, styles.btnDanger]} onPress={() => void updateStatus("closed")} disabled={updating}>
+                  <Text style={styles.btnPrimaryText}>Mark Closed</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* --- Screen Fullscreen Carousel Lightbox --- */}
-      {lightbox && (
-        <Modal visible={true} transparent animationType="fade">
+      {/* Submit Form Dialog Modal */}
+      <Modal visible={submitOpen} animationType="slide" transparent={true} onRequestClose={() => setSubmitOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.headerTitleContainer}>
+                <Bug size={18} color="#0284c7" style={{ marginRight: 6 }} />
+                <Text style={styles.modalTitle}>Report a Bug</Text>
+              </View>
+              <Text style={styles.modalSubtitle}>Describe the issue you encountered. Screenshots are helpful.</Text>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Title <Text style={{ color: "#ef4444" }}>*</Text></Text>
+                <TextInput
+                  placeholder="Brief summary of the issue"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.formInput}
+                  value={submitTitle}
+                  onChangeText={setSubmitTitle}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Description <Text style={{ color: "#ef4444" }}>*</Text></Text>
+                <TextInput
+                  placeholder="Steps to reproduce, expected vs actual behavior..."
+                  placeholderTextColor="#94a3b8"
+                  multiline={true}
+                  numberOfLines={4}
+                  style={[styles.formInput, styles.formTextArea]}
+                  value={submitDesc}
+                  onChangeText={setSubmitDesc}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Screenshots (up to 5)</Text>
+                <View style={styles.pickerRow}>
+                  {submitFiles.map((file, i) => (
+                    <View key={i} style={styles.previewImageContainer}>
+                      <Image source={{ uri: file.uri }} style={styles.previewImage} />
+                      <TouchableOpacity style={styles.removeImageBadge} onPress={() => removeFile(i)}>
+                        <X size={10} color="#ffffff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {submitFiles.length < 5 ? (
+                    <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
+                      <Upload size={18} color="#64748b" />
+                      <Text style={styles.imagePickerText}>Add</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {submitError && <Text style={styles.formError}>{submitError}</Text>}
+              {submitSuccess && <Text style={styles.formSuccess}>{submitSuccess}</Text>}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => { resetSubmit(); setSubmitOpen(false); }} disabled={submitting}>
+                <Text style={styles.btnOutlineText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => void handleSubmit()} disabled={submitting}>
+                <Text style={styles.btnPrimaryText}>{submitting ? "Submitting..." : "Submit Report"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Native Full-Screen Lightbox Paginated Viewer */}
+      {lightbox ? (
+        <Modal visible={true} transparent={true} animationType="fade">
           <View style={styles.lightboxContainer}>
-            <TouchableOpacity style={styles.lightboxCloseButton} onPress={() => setLightbox(null)}>
-              <X size={24} color="#FFFFFF" />
+            <TouchableOpacity style={styles.lightboxClose} onPress={() => setLightbox(null)}>
+              <X size={24} color="#ffffff" />
             </TouchableOpacity>
 
-            <View style={styles.lightboxImageFrame}>
-              {lightbox.urls.length > 1 && lightbox.index > 0 && (
-                <TouchableOpacity
-                  style={[styles.navButtonBase, styles.navButtonLeft]}
-                  onPress={() => setLightbox((p) => (p ? { ...p, index: p.index - 1 } : null))}
-                >
-                  <ChevronLeft size={28} color="#FFFFFF" />
-                </TouchableOpacity>
-              )}
+            {lightbox.urls.length > 1 ? (
+              <Text style={styles.lightboxCounter}>
+                {lightbox.index + 1} / {lightbox.urls.length}
+              </Text>
+            ) : null}
 
-              <Image source={{ uri: lightbox.urls[lightbox.index] }} style={styles.lightboxMainImage} />
+            {lightbox.urls.length > 1 && lightbox.index > 0 ? (
+              <TouchableOpacity
+                style={[styles.lightboxNav, { left: 16 }]}
+                onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index - 1 } : null)}
+              >
+                <ChevronLeft size={28} color="#ffffff" />
+              </TouchableOpacity>
+            ) : null}
 
-              {lightbox.urls.length > 1 && lightbox.index < lightbox.urls.length - 1 && (
-                <TouchableOpacity
-                  style={[styles.navButtonBase, styles.navButtonRight]}
-                  onPress={() => setLightbox((p) => (p ? { ...p, index: p.index + 1 } : null))}
-                >
-                  <ChevronRight size={28} color="#FFFFFF" />
-                </TouchableOpacity>
-              )}
-            </View>
+            <Image
+              source={{ uri: lightbox.urls[lightbox.index] }}
+              style={styles.lightboxImage}
+              resizeMode="contain"
+            />
+
+            {lightbox.urls.length > 1 && lightbox.index < lightbox.urls.length - 1 ? (
+              <TouchableOpacity
+                style={[styles.lightboxNav, { right: 16 }]}
+                onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index + 1 } : null)}
+              >
+                <ChevronRight size={28} color="#ffffff" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </Modal>
-      )}
-    </View>
+      ) : null}
+    </SafeAreaView>
   );
 }
 
-// --- Styled Token Design Alignment ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: Colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.text,
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textTertiary,
+  headerIcon: {
+    marginRight: 8,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: Colors.golden ,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#64748b",
     marginTop: 4,
   },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  actionRow: {
+    flexDirection: "row",
     gap: 8,
+    marginTop: 12,
   },
-  loadingText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  btn: {
+    height: 40,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
   },
-  primaryActionButton: {
-    flexDirection: 'row',
-    backgroundColor: Colors.primary,
-    marginHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  primaryActionText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    gap: 10,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+  btnOutline: {
+    backgroundColor: Colors.background,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#cbd5e1",
+  },
+  btnOutlineText: {
+    color: Colors.surface ,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  btnPrimary: {
+    backgroundColor: "#0284c7",
+  },
+  btnPrimaryText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  btnDanger: {
+    backgroundColor: "#ef4444",
+  },
+  errorBanner: {
+    margin: 16,
+    padding: 12,
+    backgroundColor: "#fee2e2",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fca5a5",
+  },
+  errorText: {
+    color: "#b91c1c",
+    fontSize: 13,
+  },
+  searchCard: {
+    backgroundColor: Colors.background,
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  tabBarRow: {
-    flexDirection: 'row',
-    backgroundColor: Colors.borderLight,
+    height: 40,
+    backgroundColor: "#f1f5f9",
     borderRadius: 8,
-    padding: 2,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: Colors.text ,
   },
-  tabItem: {
-    flex: 1,
+  tabsContainer: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 10,
+    paddingBottom: 2,
+  },
+  tabButton: {
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 6,
+    backgroundColor: "#f1f5f9",
   },
-  tabItemActive: {
-    backgroundColor: Colors.surface,
+  tabButtonActive: {
+    backgroundColor: "#0284c7",
   },
-  tabLabel: {
+  tabButtonText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
+    fontWeight: "500",
+    color: "#475569",
   },
-  tabLabelActive: {
-    color: Colors.primary,
+  tabButtonTextActive: {
+    color: "#ffffff",
   },
-  content: {
+  loaderContainer: {
     flex: 1,
-    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    marginTop: 8,
+  listContent: {
+    padding: 16,
+    gap: 12,
+  },
+  emptyContainer: {
+    paddingVertical: 40,
+    alignItems: "center",
   },
   emptyText: {
+    color: "#64748b",
     fontSize: 14,
-    color: Colors.textTertiary,
+    fontStyle: "italic",
   },
   bugCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  bugCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  metaTracePath: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    fontWeight: '500',
-    maxWidth: '60%',
-  },
-  bugName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  bugDescription: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-  },
-  detailItem: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 11,
-    color: Colors.textTertiary,
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text,
-  },
-
-  // Modal Structural Blueprint Styles
-  modalBlurBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalBottomContainer: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 34,
-    maxHeight: SCREEN_HEIGHT * 0.82,
-  },
-  modalDragHandle: {
-    width: 36,
-    height: 5,
-    backgroundColor: Colors.border,
-    borderRadius: 2.5,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  modalViewTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  modalViewPathSub: {
-    fontSize: 13,
-    color: Colors.textTertiary,
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  inlineMetaRow: {
-    marginBottom: 12,
-  },
-  metaAuthorText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  fieldSectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  descriptionContentCard: {
     backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 6,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgeOpen: {
+    backgroundColor: "#e0f2fe",
+  },
+  badgeClosed: {
+    backgroundColor: "#f1f5f9",
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  badgeTextOpen: {
+    color: "#0369a1",
+  },
+  badgeTextClosed: {
+    color: "#475569",
+  },
+  metaRowElement: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  metaRowText: {
+    fontSize: 11,
+    color: Colors.surface,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.surface ,
+    lineHeight: 20,
+  },
+  taskBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  taskBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0284c7",
+  },
+  cardDesc: {
+    fontSize: 13,
+    color: Colors.textTertiary,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  footerUserData: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.surface,
+  },
+  attachmentMiniIndicator: {
+    fontSize: 11,
+    color: "#0284c7",
+    fontWeight: "600",
+    backgroundColor: "#f0f9ff",
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "85%",
+    paddingBottom: Platform.OS === "ios" ? 34 : 24,
+  },
+  modalHeader: {
+    padding: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: Colors.surface ,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  modalBody: {
+    padding: 16,
+  },
+  descContainer: {
+    backgroundColor: "#f8fafc",
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: "#e2e8f0",
+    marginTop: 12,
   },
-  descriptionContentText: {
-    fontSize: 14,
-    color: Colors.text,
+  fullDescText: {
+    fontSize: 13,
+    color: "#1e293b",
     lineHeight: 20,
   },
-  attachmentThumbnailWrapper: {
-    marginRight: 8,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: Colors.border,
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.surface ,
+    marginBottom: 8,
   },
-  thumbnailImage: {
-    width: 80,
-    height: 80,
-  },
-  thumbnailZoomBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    padding: 4,
-    borderRadius: 4,
-  },
-  modalFooterRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-    paddingTop: 12,
-  },
-  footerCancelButton: {
-    flex: 1,
-    backgroundColor: Colors.borderLight,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerCancelButtonText: {
-    color: Colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  footerActionButton: {
-    flex: 1.5,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerActionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-
-  // Input Elements
-  formInputText: {
-    backgroundColor: Colors.background,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: Colors.text,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  formInputTextMultiline: {
-    minHeight: 70,
-    textAlignVertical: 'top',
-  },
-  formFilePreviewsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  imageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    marginTop: 4,
   },
-  formImageFrameBox: {
-    width: 60,
-    height: 60,
+  gridImageWrapper: {
+    width: (SCREEN_WIDTH - 40) / 2,
+    aspectRatio: 1.5,
     borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#cbd5e1",
+    position: "relative",
   },
-  formThumbnailPhoto: {
-    width: '100%',
-    height: '100%',
+  gridImage: {
+    width: "100%",
+    height: "100%",
   },
-  removeFileOverlayButton: {
-    position: 'absolute',
+  zoomOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  formGroup: {
+    marginBottom: 14,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  formInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    color: Colors.text ,
+  },
+  formTextArea: {
+    height: 100,
+    paddingTop: 8,
+    textAlignVertical: "top",
+  },
+  pickerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 4,
+  },
+  previewImageContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 6,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    position: "relative",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  removeImageBadge: {
+    position: "absolute",
     top: 2,
     right: 2,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: "rgba(0,0,0,0.7)",
     borderRadius: 10,
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  filePickerTriggerBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: Colors.textTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
+  imagePickerButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#cbd5e1",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
   },
-  pickerHintLabel: {
+  imagePickerText: {
     fontSize: 9,
-    color: Colors.textTertiary,
-    marginTop: 2,
-    fontWeight: '500',
+    fontWeight: "500",
+    color: "#64748b",
   },
-
-  // Fullscreen Lightbox Properties
+  formError: {
+    fontSize: 12,
+    color: "#ef4444",
+    fontWeight: "500",
+  },
+  formSuccess: {
+    fontSize: 12,
+    color: "#16a34a",
+    fontWeight: "500",
+  },
   lightboxContainer: {
     flex: 1,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  lightboxCloseButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 8,
-    borderRadius: 24,
-    zIndex: 10,
-  },
-  lightboxImageFrame: {
+  lightboxImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.7,
-    justifyContent: 'center',
-    alignItems: 'center',
+    height: SCREEN_HEIGHT * 0.8,
   },
-  lightboxMainImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+  lightboxClose: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 50 : 20,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 20,
   },
-  navButtonBase: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 12,
+  lightboxCounter: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 56 : 26,
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+    fontWeight: "600",
   },
-  navButtonLeft: {
-    left: 16,
-  },
-  navButtonRight: {
-    right: 16,
+  lightboxNav: {
+    position: "absolute",
+    top: "50%",
+    transform: [{ translateY: -20 }],
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 24,
   },
 });

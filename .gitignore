@@ -8,3 +8,9 @@ node_modules/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Ignore your specific backup/old files
+bk.tsx
+old_layout.tsx
+_contacts.tsx
+ClearHireOnboardingForm.tsx.expo/

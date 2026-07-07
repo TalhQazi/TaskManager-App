@@ -1,35 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
+  TouchableOpacity,
   ActivityIndicator,
+  Modal,
   Alert,
-} from 'react-native';
+} from "react-native";
+import { Calendar, Plus, Trash2, ChevronDown } from "lucide-react-native";
 
-import {
-  Calendar,
-  Plus,
-  Trash2,
-} from 'lucide-react-native';
+// --- API & State Toast Imports ---
+// Replace paths with your exact workspace directory layout structures
+import { createLeaveRequest, deleteLeaveRequest, getMyLeaveRequests } from "@/lib/admin/apiClient";
 
-import apiRequest from '@/services/api';
-
-type LeaveType =
-  | 'pto'
-  | 'vacation'
-  | 'sick'
-  | 'holiday'
-  | 'unpaid'
-  | 'other';
-
-type LeaveStatus =
-  | 'pending'
-  | 'approved'
-  | 'rejected';
+type LeaveType = "pto" | "vacation" | "sick" | "holiday" | "unpaid" | "other";
+type LeaveStatus = "pending" | "approved" | "rejected";
 
 type LeaveRequestItem = {
   id: string;
@@ -40,552 +28,366 @@ type LeaveRequestItem = {
   status: LeaveStatus;
   reason?: string;
   exemptFromEOD?: boolean;
+  createdAt?: string;
 };
 
 function toDateInputValue(d: Date) {
   const year = d.getFullYear();
-  const month = String(
-    d.getMonth() + 1,
-  ).padStart(2, '0');
-
-  const day = String(
-    d.getDate(),
-  ).padStart(2, '0');
-
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-export default function LeaveRequestsScreen() {
+// --- Native Render Badge Layout Component ---
+function StatusBadge({ status }: { status: LeaveStatus }) {
+  if (status === "approved") {
+    return (
+      <View style={[styles.badge, { backgroundColor: "#16a34a30", borderColor: "#16a34a60" }]}>
+        <Text style={[styles.badgeText, { color: "#4ade80" }]}>Approved</Text>
+      </View>
+    );
+  }
+  if (status === "rejected") {
+    return (
+      <View style={[styles.badge, { backgroundColor: "#dc262630", borderColor: "#dc262660" }]}>
+        <Text style={[styles.badgeText, { color: "#f87171" }]}>Rejected</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.badge, { backgroundColor: "#27272a50", borderColor: "#3f3f46" }]}>
+      <Text style={[styles.badgeText, { color: "#a1a1aa" }]}>Pending</Text>
+    </View>
+  );
+}
+
+export default function EmployeeLeaveRequestsScreen() {
   const today = useMemo(() => new Date(), []);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [items, setItems] = useState<LeaveRequestItem[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [type, setType] = useState<LeaveType>("pto");
+  const [startDate, setStartDate] = useState(toDateInputValue(today));
+  const [endDate, setEndDate] = useState(toDateInputValue(today));
+  const [reason, setReason] = useState("");
 
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [showTypePicker, setShowTypePicker] = useState(false);
 
-  const [items, setItems] = useState<
-    LeaveRequestItem[]
-  >([]);
-
-  const [type, setType] =
-    useState<LeaveType>('pto');
-
-  const [startDate, setStartDate] =
-    useState(toDateInputValue(today));
-
-  const [endDate, setEndDate] =
-    useState(toDateInputValue(today));
-
-  const [reason, setReason] =
-    useState('');
-
-  const loadRequests = async () => {
+  const load = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      const res = await apiRequest<any>(
-        '/leave-requests/me',
-      );
-
-      setItems(res.data.items || []);
-    } catch (error: any) {
-      Alert.alert(
-        'Error',
-        error?.message ||
-          'Failed to load requests',
-      );
+      const res = await getMyLeaveRequests();
+      setItems(res.items || []);
+    } catch (e) {
+     // Alert.alert("Error", e instanceof Error ? e.message : "Failed to load leave requests");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRequests();
+    void load();
   }, []);
 
-  const submitLeave = async () => {
+  const onSubmit = async () => {
+    if (!startDate || !endDate) {
+      Alert.alert("Validation", "Please verify your start and end date periods are completed.");
+      return;
+    }
     try {
       setSubmitting(true);
-
-      await apiRequest(
-        '/leave-requests',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            type,
-            startDate,
-            endDate,
-            reason,
-            exemptFromEOD: true,
-          }),
-        },
-      );
-
-      Alert.alert(
-        'Success',
-        'Leave request submitted',
-      );
-
-      setReason('');
-
-      loadRequests();
-    } catch (error: any) {
-      Alert.alert(
-        'Error',
-        error?.message ||
-          'Failed to submit request',
-      );
+      await createLeaveRequest({
+        type,
+        startDate,
+        endDate,
+        reason,
+        exemptFromEOD: true,
+      });
+      Alert.alert("Success", "Leave request submitted successfully.");
+      setReason("");
+      await load();
+    } catch (e) {
+     // Alert.alert("Error", e instanceof Error ? e.message : "Failed to submit leave request");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const deleteRequest = async (
-    id: string,
-  ) => {
-    try {
-      await apiRequest(
-        `/leave-requests/${id}`,
+  const onDelete = (id: string) => {
+    Alert.alert(
+      "Confirm Delete",
+      "Are you sure you want to withdraw and delete this pending request?",
+      [
+        { text: "Cancel", style: "cancel" },
         {
-          method: 'DELETE',
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteLeaveRequest(id);
+              await load();
+            } catch (e) {
+             // Alert.alert("Error", e instanceof Error ? e.message : "Failed to delete leave request");
+            }
+          },
         },
-      );
-
-      Alert.alert(
-        'Success',
-        'Request deleted',
-      );
-
-      loadRequests();
-    } catch (error: any) {
-      Alert.alert(
-        'Error',
-        error?.message ||
-          'Delete failed',
-      );
-    }
-  };
-
-  const renderStatus = (
-    status: LeaveStatus,
-  ) => {
-    if (status === 'approved') {
-      return (
-        <View
-          style={[
-            styles.badge,
-            styles.greenBadge,
-          ]}
-        >
-          <Text style={styles.badgeText}>
-            Approved
-          </Text>
-        </View>
-      );
-    }
-
-    if (status === 'rejected') {
-      return (
-        <View
-          style={[
-            styles.badge,
-            styles.redBadge,
-          ]}
-        >
-          <Text style={styles.badgeText}>
-            Rejected
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <View
-        style={[
-          styles.badge,
-          styles.grayBadge,
-        ]}
-      >
-        <Text style={styles.badgeText}>
-          Pending
-        </Text>
-      </View>
+      ]
     );
   };
 
+  const formatLocaleDateStr = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>
-            Leave Requests
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Request leave and track status
-          </Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        
+        {/* Screen Header Title Segment */}
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.mainHeading}>Leave Requests</Text>
+            <Text style={styles.subHeading}>Request PTO/leave and track approval status.</Text>
+          </View>
+          <Calendar color="#a1a1aa" size={24} />
         </View>
 
-        <Calendar
-          size={24}
-          color="#666"
-        />
-      </View>
+        {/* Create Request Module Card Form */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderBar}>
+            <Plus color="#ffffff" size={18} style={{ marginRight: 8 }} />
+            <View>
+              <Text style={styles.cardTitleText}>Create Request</Text>
+              <Text style={styles.cardDescriptionText}>Submit a new leave request (admin will approve/reject).</Text>
+            </View>
+          </View>
 
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Plus
-            size={18}
-            color="#2563eb"
-          />
-
-          <Text style={styles.cardTitle}>
-            Create Request
-          </Text>
-        </View>
-
-        <Text style={styles.label}>
-          Leave Type
-        </Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-          style={{ marginBottom: 16 }}
-        >
-          {[
-            'pto',
-            'vacation',
-            'sick',
-            'holiday',
-            'unpaid',
-            'other',
-          ].map((item) => (
-            <TouchableOpacity
-              key={item}
-              style={[
-                styles.typeButton,
-                type === item &&
-                  styles.activeType,
-              ]}
-              onPress={() =>
-                setType(item as LeaveType)
-              }
-            >
-              <Text
-                style={[
-                  styles.typeText,
-                  type === item &&
-                    styles.activeTypeText,
-                ]}
+          <View style={styles.cardContent}>
+            
+            {/* Custom Dropdown Picker Element */}
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Type</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.customPickerTrigger}
+                onPress={() => setShowTypePicker(true)}
               >
-                {item.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Text style={styles.pickerValueText}>{type.toUpperCase()}</Text>
+                <ChevronDown color="#71717a" size={16} />
+              </TouchableOpacity>
+            </View>
 
-        <Text style={styles.label}>
-          Start Date
-        </Text>
-
-        <TextInput
-          value={startDate}
-          onChangeText={setStartDate}
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-        />
-
-        <Text style={styles.label}>
-          End Date
-        </Text>
-
-        <TextInput
-          value={endDate}
-          onChangeText={setEndDate}
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-        />
-
-        <Text style={styles.label}>
-          Reason
-        </Text>
-
-        <TextInput
-          value={reason}
-          onChangeText={setReason}
-          style={[
-            styles.input,
-            {
-              height: 100,
-              textAlignVertical: 'top',
-            },
-          ]}
-          multiline
-          placeholder="Reason..."
-        />
-
-        <TouchableOpacity
-          style={styles.submitButton}
-          onPress={submitLeave}
-          disabled={submitting}
-        >
-          <Text
-            style={styles.submitButtonText}
-          >
-            {submitting
-              ? 'Submitting...'
-              : 'Submit Request'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          My Requests
-        </Text>
-
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color="#2563eb"
-            style={{ marginTop: 20 }}
-          />
-        ) : items.length === 0 ? (
-          <Text style={styles.emptyText}>
-            No leave requests yet
-          </Text>
-        ) : (
-          items.map((item) => (
-            <View
-              key={item.id}
-              style={styles.requestItem}
-            >
-              <View style={{ flex: 1 }}>
-                <View
-                  style={styles.requestTop}
-                >
-                  <Text
-                    style={
-                      styles.requestType
-                    }
-                  >
-                    {item.type.toUpperCase()}
-                  </Text>
-
-                  {renderStatus(
-                    item.status,
-                  )}
-                </View>
-
-                <Text
-                  style={styles.requestDate}
-                >
-                  {new Date(
-                    item.startDate,
-                  ).toLocaleDateString()}
-                  {' - '}
-                  {new Date(
-                    item.endDate,
-                  ).toLocaleDateString()}
-                </Text>
-
-                {!!item.reason && (
-                  <Text
-                    style={
-                      styles.requestReason
-                    }
-                  >
-                    {item.reason}
-                  </Text>
-                )}
+            {/* Date Range Inputs */}
+            <View style={styles.gridRow}>
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Start Date</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={startDate}
+                  onChangeText={setStartDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#71717a"
+                />
               </View>
 
-              {item.status ===
-                'pending' && (
-                <TouchableOpacity
-                  onPress={() =>
-                    deleteRequest(
-                      item.id,
-                    )
-                  }
-                >
-                  <Trash2
-                    size={20}
-                    color="red"
-                  />
-                </TouchableOpacity>
-              )}
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>End Date</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={endDate}
+                  onChangeText={setEndDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#71717a"
+                />
+              </View>
             </View>
-          ))
-        )}
-      </View>
 
-      <View style={{ height: 40 }} />
-    </ScrollView>
+            {/* Optional Reason Context Textarea */}
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Reason (optional)</Text>
+              <TextInput
+                style={[styles.textInput, styles.textAreaInput]}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                value={reason}
+                onChangeText={setReason}
+                placeholder="Write your primary structural context reason here..."
+                placeholderTextColor="#71717a"
+              />
+            </View>
+
+            {/* Submit Control Action Button */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.primarySubmitBtn, submitting && styles.disabledBtn]}
+              disabled={submitting}
+              onPress={onSubmit}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Submit Request</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Existing Leave Requests Log Module */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderBar}>
+            <View>
+              <Text style={styles.cardTitleText}>My Requests</Text>
+              <Text style={styles.cardDescriptionText}>Pending requests can be deleted before approval.</Text>
+            </View>
+          </View>
+
+          <View style={[styles.cardContent, { padding: 12 }]}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#3b82f6" style={{ marginVertical: 20 }} />
+            ) : items.length === 0 ? (
+              <Text style={styles.emptyStateText}>No leave requests filed yet.</Text>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {items.map((r) => (
+                  <View key={r.id} style={styles.requestItemRow}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <div style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <Text style={styles.requestTypeName}>{r.type}</Text>
+                        <StatusBadge status={r.status} />
+                        {r.exemptFromEOD && (
+                          <View style={[styles.badge, styles.outlineBadge]}>
+                            <Text style={styles.outlineBadgeText}>EOD Exempt</Text>
+                          </View>
+                        )}
+                      </div>
+                      
+                      <Text style={styles.requestTimeText}>
+                        {formatLocaleDateStr(r.startDate)} - {formatLocaleDateStr(r.endDate)}
+                      </Text>
+                      
+                      {r.reason ? <Text style={styles.requestReasonText}>{r.reason}</Text> : null}
+                    </View>
+
+                    {r.status === "pending" && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.deleteActionButton}
+                        onPress={() => onDelete(r.id)}
+                      >
+                        <Trash2 color="#f87171" size={15} style={{ marginRight: 4 }} />
+                        <Text style={styles.deleteBtnText}>Delete</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+
+      </ScrollView>
+
+      {/* Type Picker Bottom Action Sheet Overlay */}
+      <Modal visible={showTypePicker} transparent animationType="slide">
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowTypePicker(false)}
+        >
+          <View style={styles.bottomSheetContainer}>
+            <Text style={styles.sheetHeading}>Select Leave Category Type</Text>
+            {([
+              { key: "pto", label: "Paid Time Off (PTO)" },
+              { key: "vacation", label: "Vacation Leave" },
+              { key: "sick", label: "Sick Leave" },
+              { key: "holiday", label: "Holiday Exemption" },
+              { key: "unpaid", label: "Unpaid Leave" },
+              { key: "other", label: "Other Reasons" },
+            ] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.sheetItem, type === opt.key && styles.activeSheetItem]}
+                onPress={() => {
+                  setType(opt.key);
+                  setShowTypePicker(false);
+                }}
+              >
+                <Text style={[styles.sheetItemText, type === opt.key && styles.activeSheetItemText]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
+// --- Matte Deep Dark Structural Layout Stylesheet Configuration ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f7fb',
-  },
+  container: { flex: 1, backgroundColor: "#09090b" },
+  scrollContainer: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
+  
+  // Header Elements Configuration Styles 
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 12 },
+  mainHeading: { color: "#ffffff", fontSize: 24, fontWeight: "bold", letterSpacing: -0.5 },
+  subHeading: { color: "#a1a1aa", fontSize: 13, marginTop: 4 },
 
-  header: {
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  // Base Structural Atomic Components Cards Architecture 
+  card: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, marginBottom: 16, overflow: "hidden" },
+  cardHeaderBar: { padding: 16, backgroundColor: "#1c1c1f", borderBottomWidth: 1, borderBottomColor: "#27272a", flexDirection: "row", alignItems: "flex-start" },
+  cardTitleText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+  cardDescriptionText: { color: "#a1a1aa", fontSize: 12, marginTop: 2, maxWidth: "95%" },
+  cardContent: { padding: 16 },
 
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111',
-  },
+  // Form Field Component Layout Grid Rules 
+  formGroup: { marginBottom: 14, gap: 6 },
+  gridRow: { flexDirection: "row", gap: 12 },
+  formLabel: { color: "#e4e4e7", fontSize: 13, fontWeight: "500" },
+  
+  // Custom Selector Dropdown Replacement components 
+  customPickerTrigger: { height: 42, backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pickerValueText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
 
-  subtitle: {
-    marginTop: 4,
-    color: '#666',
-  },
+  // Native Inputs Base Styling Definitions 
+  textInput: { height: 42, backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, color: "#ffffff", fontSize: 13 },
+  textAreaInput: { height: 80, paddingTop: 10, paddingBottom: 10 },
 
-  card: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 14,
-    padding: 16,
-  },
+  // Form Button Actions 
+  primarySubmitBtn: { height: 44, backgroundColor: "#3b82f6", borderRadius: 6, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  submitBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
+  disabledBtn: { opacity: 0.5 },
 
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
-  },
+  // Requests Feed Components Rows Layout mapping 
+  emptyStateText: { color: "#71717a", fontSize: 13, textAlign: "center", paddingVertical: 16 },
+  requestItemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderColor: "#27272a", borderWidth: 1, borderRadius: 8, backgroundColor: "#1c1c1f", gap: 12 },
+  requestTypeName: { color: "#ffffff", fontSize: 14, fontWeight: "600", textTransform: "capitalize" },
+  requestTimeText: { color: "#71717a", fontSize: 12 },
+  requestReasonText: { color: "#e4e4e7", fontSize: 13, marginTop: 2 },
+  
+  // Atomic Native Badge Layout Structures 
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  badgeText: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
+  outlineBadge: { borderColor: "#27272a", backgroundColor: "transparent" },
+  outlineBadgeText: { color: "#a1a1aa", fontSize: 10, fontWeight: "600" },
 
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111',
-  },
+  // Destructive Delete Actions Button Component 
+  deleteActionButton: { flexDirection: "row", alignItems: "center", height: 32, paddingHorizontal: 10, borderColor: "#27272a", borderWidth: 1, borderRadius: 6, backgroundColor: "#09090b" },
+  deleteBtnText: { color: "#f87171", fontSize: 12, fontWeight: "500" },
 
-  label: {
-    marginBottom: 8,
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-
-  typeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#eee',
-    marginRight: 10,
-  },
-
-  activeType: {
-    backgroundColor: '#2563eb',
-  },
-
-  typeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#444',
-  },
-
-  activeTypeText: {
-    color: '#fff',
-  },
-
-  submitButton: {
-    backgroundColor: '#2563eb',
-    height: 50,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-
-  submitButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 20,
-    color: '#777',
-  },
-
-  requestItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-
-  requestTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 6,
-  },
-
-  requestType: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  requestDate: {
-    color: '#666',
-    fontSize: 13,
-    marginBottom: 4,
-  },
-
-  requestReason: {
-    fontSize: 13,
-    color: '#222',
-  },
-
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-
-  greenBadge: {
-    backgroundColor: '#16a34a',
-  },
-
-  redBadge: {
-    backgroundColor: '#dc2626',
-  },
-
-  grayBadge: {
-    backgroundColor: '#777',
-  },
-
-  badgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  // Native Picker Bottom Sheets Modal Fallbacks
+  modalOverlay: { flex: 1, backgroundColor: "#00000060", justifyContent: "flex-end" },
+  bottomSheetContainer: { backgroundColor: "#18181b", borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 20, borderTopWidth: 1, borderTopColor: "#27272a" },
+  sheetHeading: { color: "#ffffff", fontSize: 15, fontWeight: "600", marginBottom: 12 },
+  sheetItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#27272a" },
+  activeSheetItem: { backgroundColor: "#1c1c1f" },
+  sheetItemText: { color: "#a1a1aa", fontSize: 14 },
+  activeSheetItemText: { color: "#3b82f6", fontWeight: "600" },
 });

@@ -1,51 +1,38 @@
 import React from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Slot } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Colors from '@/constants/colors';
-import Sidebar from '@/components/Sidebar';
+
+import Sidebar from '@/components/Sidebar'; 
 import Header from '@/components/Header';
+import Colors from '@/constants/colors';
+import { SidebarProvider } from '@/contexts/SidebarContext'; // Use your generated provider
 
 export default function TabLayout() {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isLargeScreen = width >= 768;
-
   return (
-    <View style={styles.container}>
-      {/* Permanent Sidebar */}
-      <Sidebar />
-
-      {/* Main Content Area - shifted right for sidebar */}
-      <View style={[
-        styles.content,
-        {
-          paddingBottom: insets.bottom,
-          marginLeft: isLargeScreen ? 280 : 0,
-        },
-      ]}>
-        {/* Persistent Header */}
+    <SidebarProvider>
+      <View style={styles.container}> 
+        {/* Persistent Header (openSidebar works out of the box inside here) */}
         <Header />
 
-        {/* Screen Content */}
-        <View style={styles.screenContent}>
+        {/* Main Content Area */}
+        <View style={styles.content}>
           <Slot />
         </View>
+
+        {/* Sidebar Overlay (No props needed, reads from hook inside) */}
+        <Sidebar />
       </View>
-    </View>
+    </SidebarProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
   },
   content: {
     flex: 1,
-    backgroundColor: Colors.surface,
-  },
-  screenContent: {
-    flex: 1,
+    backgroundColor: Colors.surface || '#ffffff',
   },
 });

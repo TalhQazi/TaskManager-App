@@ -1,8 +1,8 @@
 import React, { useMemo, useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, router } from "expo-router";
-import { Bell, Menu } from "lucide-react-native";
+import { Bell, Menu, LogOut } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 import Colors from "@/constants/colors";
@@ -16,7 +16,7 @@ import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 interface HeaderSettings {
   backgroundType: "color" | "image";
   colorConfig: {
-    from: string;
+    from: string; 
     via: string;
     to: string;
   };
@@ -37,9 +37,10 @@ interface HeaderSettings {
 export default function ManagerHeader({ onMenuPress }: any) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, logout } = useAuth(); // Extracted logout here
 
   const [tokenReady, setTokenReady] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   // load token once
   useEffect(() => {
@@ -103,17 +104,52 @@ export default function ManagerHeader({ onMenuPress }: any) {
       ]
     : [Colors.primary, Colors.primary, Colors.primaryDark || Colors.primary];
 
-  // AVATAR
+  // AVATAR RESOLUTION PIPELINE
   const avatarRaw =
     userSettings?.item?.avatarDataUrl ||
     userSettings?.item?.avatarUrl ||
     null;
 
-  const avatarUrl = avatarRaw
-    ? avatarRaw.startsWith("http")
+  const avatarUrl = useMemo(() => {
+    if (!avatarRaw) return null;
+    return avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")
       ? avatarRaw
-      : `https://task.se7eninc.com${avatarRaw}`
-    : null;
+      : `https://task.se7eninc.com${avatarRaw}`;
+  }, [avatarRaw]);
+
+  // Pass S3 asset target URLs through authorization stream to avoid 403 errors
+  const resolvedAvatarUri = useMemo(() => {
+    if (!avatarUrl) return null;
+    if (avatarUrl.startsWith("data:")) return avatarUrl; // Use base64 string directly
+    return tokenReady ? toProxiedUrl(avatarUrl) : null;
+  }, [avatarUrl, tokenReady]);
+
+  // Reset rendering error context fallback if a completely new URI layout is generated
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [resolvedAvatarUri]);
+
+  // Safe logout handler with alert prompt
+  const handleLogout = () => {
+    Alert.alert(
+      "Confirm Logout",
+      "Are you sure you want to sign out of your account?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Logout", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              console.error("Logout failed:", error);
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   const headerHeight = headerSettings?.height || 72;
 
@@ -156,10 +192,11 @@ export default function ManagerHeader({ onMenuPress }: any) {
         </TouchableOpacity>
 
         <Text style={styles.title} numberOfLines={1}>
-          {title}
+          {/*title*/}
         </Text>
 
         <View style={styles.right}>
+          {/* NOTIFICATIONS BUTTON */}
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => router.push("/(manager)/notifications" as any)}
@@ -167,12 +204,33 @@ export default function ManagerHeader({ onMenuPress }: any) {
             <Bell color="#fff" size={20} />
           </TouchableOpacity>
 
+          {/* LOGOUT BUTTON */}
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={handleLogout}
+          >
+            <LogOut color="#fff" size={20} />
+          </TouchableOpacity>
+
+          {/* AVATAR PROFILE BUTTON */}
           <TouchableOpacity
             style={styles.avatarButton}
             onPress={() => router.push("/(manager)/profile" as any)}
           >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            {resolvedAvatarUri && !avatarLoadError ? (
+              <Image 
+                source={{ 
+                  uri: resolvedAvatarUri,
+                  headers: {
+                    Accept: "image/*"
+                  }
+                }} 
+                style={styles.avatarImage}
+                onError={(e) => {
+                  console.warn("Header avatar failed to load:", e.nativeEvent.error);
+                  setAvatarLoadError(true);
+                }}
+              />
             ) : (
               <Text style={styles.avatarText}>{initials}</Text>
             )}
@@ -188,7 +246,7 @@ const styles = StyleSheet.create({
     width: "100%",
     justifyContent: "flex-end",
     position: "relative",
-    overflow: "hidden",
+    overflow: "hidden",backgroundColor:Colors.background
   },
   gradientBackground: {
     ...StyleSheet.absoluteFillObject,

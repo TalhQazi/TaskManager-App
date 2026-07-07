@@ -35,7 +35,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       if (!me?.id) {
         throw new Error('Failed to load user profile');
       }
-
+      
+      const apiRole = String(me.role || '').toLowerCase();
       const mappedUser: User = {
         id: me.id,
         email: me.email || fallbackEmail || '',
@@ -46,10 +47,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         department: me.department || '',
         company: me.company || '',
         hireDate: me.hireDate || '',
-       // role: String(me.role || '').toLowerCase() === 'manager' ? 'manager' : 'employee',
-        role:
+      
+       /* role:
   String(me.role || '').toLowerCase() === 'manager'
     ? 'manager'
+    : 'employee',*/
+    role:
+  apiRole === 'super-admin' 
+    ? 'super-admin' 
+    : apiRole === 'admin' 
+    ? 'admin' 
+    : apiRole === 'manager' 
+    ? 'manager' 
     : 'employee',
       };
 

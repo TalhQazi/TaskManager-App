@@ -1,508 +1,728 @@
-import { useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
+  StyleSheet,
   View,
   Text,
-  StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  RefreshControl,
   TextInput,
+  FlatList,
+  Modal,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
   ActivityIndicator,
-} from 'react-native';
-import { Search, MessageSquare, User, Plus } from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import Colors from '@/constants/colors';
-import { apiRequest } from '@/services/api';
+  ScrollView,
+  Dimensions
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import {
+  Plus,
+  Search,
+  Send,
+  ArrowLeft,
+  MessageCircle,
+  User,
+  Archive,
+  Bookmark,
+  Paperclip,
+  Download,
+  Smile,
+  X
+} from "lucide-react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSocket } from "@/contexts/SocketContext";
 
-interface User {
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
+import Colors from "@/constants/colors";
+
+
+
+interface Employee {
   id: string;
-  fullName?: string;
-  name?: string;
+  _id?: string;
+  name: string;
+  initials: string;
   email: string;
   role: string;
-  jobTitle?: string;
-  department?: string;
+  department: string;
+  status: string;
+  avatarUrl?: string;
+  milestoneLevel?: string;
+  milestoneLabel?: string;
+  current_status?: "AVAILABLE" | "LUNCH" | "BREAK";
+  lunch_start_time?: string | null;
+  lunch_expected_end?: string | null;
+  break_start_time?: string | null;
 }
 
-interface Conversation {
+interface Message {
   id: string;
-  participantId: string;
-  participantName: string;
-  participantRole: string;
-  lastMessage: string;
-  lastMessageTime: string;
+  sender: string;
+  senderAvatar: string;
+  recipient: string;
+  content: string;
+  timestamp: string;
+  type: "direct" | "broadcast";
+  status: "sent" | "delivered" | "read";
+  createdAt?: string;
+  attachment?: { fileName?: string; url?: string; mimeType?: string; size?: number };
+}
+
+type MessageApi = Omit<Message, "id"> & {
+  _id: string;
+};
+
+interface Conversation {
+  employee: Employee;
+  lastMessage: Message | null;
   unreadCount: number;
 }
 
-export default function MessagesScreen() {
-  const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showContacts, setShowContacts] = useState(false);
+function normalizeMessage(m: any): Message {
+  return {
+    id: String(m._id || m.id || ""),
+    sender: m.sender || "",
+    senderAvatar: m.senderAvatar || "",
+    recipient: m.recipient || "",
+    content: m.content || "",
+    timestamp: m.timestamp || m.createdAt || new Date().toISOString(),
+    type: m.type || "direct",
+    status: m.status || "sent",
+    createdAt: m.createdAt,
+    attachment: m.attachment,
+  };
+}
 
-  // Fetch conversations using existing endpoint
-  const { data: conversations = [], isLoading: conversationsLoading, refetch: refetchConversations } = useQuery<Conversation[]>({
-    queryKey: ['conversations'],
+function getInitials(name: string): string {
+  return String(name || "")
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+const COMMON_EMOJIS = ["😀", "😂", "🥰", "👍", "🔥", "🙏", "❤️", "✨", "🙌", "🎉", "😎", "🚀"];
+
+export default function Messages({ route, navigation }: any) {
+    const { user, isLoading: authLoading } = useAuth();
+    console.log(user);
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<"list" | "conversation" | "employees">("list");
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [nowTime, setNowTime] = useState(Date.now());
+
+  // Local Storage State Management (Ported from localStorage to AsyncStorage)
+  const [archivedConversations, setArchivedConversations] = useState<Set<string>>(new Set());
+  const [bookmarkedConversations, setBookmarkedConversations] = useState<Set<string>>(new Set());
+
+  const [listFilter, setListFilter] = useState<"all" | "archived" | "bookmarked">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+  const [newMessageContent, setNewMessageContent] = useState("");
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
+
+  const flatListRef = useRef<FlatList>(null);
+
+  // Sync Timer Clock
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Load Persisted Sync State on Mount
+  useEffect(() => {
+    const loadSavedData = async () => {
+      try {
+        const savedArchived = await AsyncStorage.getItem("manager-messaging-archived");
+        const savedBookmarked = await AsyncStorage.getItem("manager-messaging-bookmarked");
+        if (savedArchived) setArchivedConversations(new Set(JSON.parse(savedArchived)));
+        if (savedBookmarked) setBookmarkedConversations(new Set(JSON.parse(savedBookmarked)));
+      } catch (e) {
+        console.error("Failed to load local storage state variables", e);
+      }
+    };
+    loadSavedData();
+  }, []);
+
+  // Handle route params for deep navigation checks (Replacing web route location states)
+  useEffect(() => {
+    if (route?.params?.selectedEmployee) {
+      startConversation(route.params.selectedEmployee);
+    }
+  }, [route?.params]);
+
+  const toggleArchive = async (employeeId: string) => {
+    const next = new Set(archivedConversations);
+    if (next.has(employeeId)) next.delete(employeeId);
+    else next.add(employeeId);
+    setArchivedConversations(next);
+    await AsyncStorage.setItem("manager-messaging-archived", JSON.stringify([...next]));
+  };
+
+  const toggleBookmark = async (employeeId: string) => {
+    const next = new Set(bookmarkedConversations);
+    if (next.has(employeeId)) next.delete(employeeId);
+    else next.add(employeeId);
+    setBookmarkedConversations(next);
+    await AsyncStorage.setItem("manager-messaging-bookmarked", JSON.stringify([...next]));
+  };
+
+  const { socket } = useSocket();
+ 
+  const currentUser = user?.fullName?.trim() || user?.username?.trim() || "";
+
+  // Queries matching TanStack React Query Configuration
+  const employeesQuery = useQuery({
+    queryKey: ["employees"],
     queryFn: async () => {
-      const userId = 'current-user'; // Backend will identify from auth token
-      const res = await apiRequest<{ items?: any[] }>(`/messages/conversations/${userId}`);
-      // Map backend response to frontend format
-      return res.data?.items?.map((conv: any) => ({
-        id: conv.id || `${conv.employee?.id}`,
-        participantId: conv.employee?.id || conv.employee?.name,
-        participantName: conv.employee?.name || 'Unknown',
-        participantRole: conv.employee?.department || 'Employee',
-        lastMessage: conv.lastMessage?.content || 'No messages',
-        lastMessageTime: conv.lastMessage?.timestamp || conv.lastMessage?.createdAt,
-        unreadCount: conv.unreadCount || 0,
-      })) || [];
+      const res = await apiFetch<{ items: Employee[] }>("/api/employees");
+      return res.items;
     },
   });
 
-  // Fetch all users for contacts list
-  const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<User[]>({
-    queryKey: ['chatUsers'],
+  const conversationsQuery = useQuery({
+    queryKey: ["conversations", currentUser],
     queryFn: async () => {
-      const res = await apiRequest<{ items?: User[] }>('/employees');
-      return res.data?.items || [];
+      const res = await apiFetch<{ items?: any[] }>(
+        `/api/messages/conversations/${encodeURIComponent(currentUser)}`
+      );
+      return (res.items ?? []).map((c) => ({
+        employee: c.employee,
+        lastMessage: c.lastMessage,
+        unreadCount: c.unreadCount,
+      }));
     },
-    enabled: showContacts,
   });
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([refetchConversations(), refetchUsers()]);
-    setRefreshing(false);
-  }, [refetchConversations, refetchUsers]);
+  const loadConversationMessages = async (employeeName: string) => {
+    try {
+      const res = await apiFetch<{ items?: MessageApi[] }>(
+        `/api/messages/conversation/${encodeURIComponent(currentUser)}/${encodeURIComponent(employeeName)}`
+      );
+      const msgs = res.items ?? [];
+      setConversationMessages(
+        msgs.map(normalizeMessage).sort((a, b) => a.id.localeCompare(b.id))
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-  const filteredUsers = users.filter((user) =>
-    (user.fullName || user.name || user.email)?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.jobTitle?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Real-time Event Socket Configurations
+  useEffect(() => {
+    if (!socket) return;
+    const handleNewMessage = (msg: any) => {
+      const normalized = normalizeMessage(msg);
+      if (!normalized.id) return;
+      void queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
+      if (
+        view === "conversation" &&
+        selectedEmployee &&
+        (normalized.sender === selectedEmployee.name || normalized.recipient === selectedEmployee.name)
+      ) {
+        setConversationMessages((prev) => {
+          if (prev.some((m) => m.id === normalized.id)) return prev;
+          return [...prev, normalized].sort((a, b) => a.id.localeCompare(b.id));
+        });
+      }
+    };
+    socket.on("new-message", handleNewMessage);
+    return () => { socket.off("new-message", handleNewMessage); };
+  }, [socket, view, selectedEmployee?.name]);
 
-  const formatTime = (timestamp: string) => {
-    if (!timestamp) return '';
+  useEffect(() => {
+    if (!socket) return;
+    const handleStatusUpdate = (payload: any) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      if (selectedEmployee && (selectedEmployee.id === payload.userId || selectedEmployee.name === payload.name)) {
+        setSelectedEmployee((prev: any) => prev ? { ...prev, ...payload } : null);
+      }
+    };
+    socket.on("status-update", handleStatusUpdate);
+    return () => { socket.off("status-update", handleStatusUpdate); };
+  }, [socket, selectedEmployee]);
+
+  // Polling fallback loop
+  useEffect(() => {
+    if (view !== "conversation" || !selectedEmployee) return;
+    const interval = setInterval(() => {
+      loadConversationMessages(selectedEmployee.name);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [view, selectedEmployee?.name]);
+
+  const startConversation = async (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setView("conversation");
+    await loadConversationMessages(employee.name);
+    try {
+      await apiFetch("/api/messages/mark-read", {
+        method: "POST",
+        body: JSON.stringify({ sender: employee.name, recipient: currentUser }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Mobile Attachment Picker (Replacing <input type="file" />)
+  const handleFilePick = async () => {
+    if (!selectedEmployee) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      setUploading(true);
+      const pickedFile = result.assets[0];
+
+      const fd = new FormData();
+      // Expo-specific FormData object structure injection rules for file fields
+      fd.append("file", {
+        uri: pickedFile.uri,
+        name: pickedFile.name,
+        type: pickedFile.mimeType || "application/octet-stream",
+      } as any);
+
+      const res = await apiFetch<{ attachment: any }>("/api/messages/upload", {
+        method: "POST",
+        body: fd,
+      });
+
+      const payload: Omit<Message, "id"> = {
+        sender: currentUser,
+        senderAvatar: getInitials(currentUser),
+        recipient: selectedEmployee.name,
+        content: newMessageContent.trim(),
+        timestamp: new Date().toISOString(),
+        type: "direct",
+        status: "sent",
+        attachment: res.attachment,
+      };
+
+      const msgRes = await apiFetch<{ item?: MessageApi }>("/api/messages", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (msgRes?.item) {
+        setConversationMessages((prev) => [...prev, normalizeMessage(msgRes.item)]);
+        setNewMessageContent("");
+        await queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
+      }
+    } catch (e) {
+      console.error("Attachment processing error", e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Cross-Platform Native File Downloader Integration
+  const downloadAttachment = async (url: string, fileName: string) => {
+    try {
+      const safeUrl = toProxiedUrl(url) || url;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      const downloadResult = await FileSystem.downloadAsync(safeUrl, fileUri);
+      if (downloadResult.status === 200) {
+        await Sharing.shareAsync(downloadResult.uri);
+      }
+    } catch (e) {
+      console.error("Download handling failed", e);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessageContent.trim() || !selectedEmployee) return;
+    setSending(true);
+    try {
+      const payload: Omit<Message, "id"> = {
+        sender: currentUser,
+        senderAvatar: getInitials(currentUser),
+        recipient: selectedEmployee.name,
+        content: newMessageContent.trim(),
+        timestamp: new Date().toISOString(),
+        type: "direct",
+        status: "sent",
+      };
+
+      const res = await apiFetch<{ item?: MessageApi }>("/api/messages", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (res?.item) {
+        setConversationMessages((prev) => [...prev, normalizeMessage(res.item)]);
+        setNewMessageContent("");
+        await queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Layout Dynamic Calculations
+  const getAvatarRingStyles = (empStatus: string | undefined) => {
+    if (empStatus === "LUNCH") return { borderColor: "#F59E0B", borderWidth: 2 };
+    if (empStatus === "BREAK") return { borderColor: "#8B5CF6", borderWidth: 2 };
+    return { borderColor: "transparent", borderWidth: 0 };
+  };
+
+  const getSubtitle = (emp: any) => {
+    if (emp.current_status === "LUNCH" && emp.lunch_start_time) {
+      const start = new Date(emp.lunch_start_time).getTime();
+      const expectedEnd = emp.lunch_expected_end ? new Date(emp.lunch_expected_end).getTime() : start + 30 * 60 * 1000;
+      const diff = expectedEnd - nowTime;
+      if (diff > 0) return `On Lunch (${Math.floor(diff / 60000)}m remaining)`;
+      return `Overdue Lunch (${Math.floor(-diff / 60000)}m overdue)`;
+    }
+    if (emp.current_status === "BREAK" && emp.break_start_time) {
+      const start = new Date(emp.break_start_time).getTime();
+      const diff = (start + 15 * 60 * 1000) - nowTime;
+      if (diff > 0) return `On Break (${Math.floor(diff / 60000)}m remaining)`;
+      return `Overdue Break (${Math.floor(-diff / 60000)}m overdue)`;
+    }
+    return emp.department || "No department";
+  };
+
+  const formatMessageTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    
-    if (isToday) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Dynamic Filtering Logic Configurations
+  const filteredConversations = useMemo(() => {
+    let list = conversationsQuery.data ?? [];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(c => c.employee.name.toLowerCase().includes(q));
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      ?.split(' ')
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || '?';
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role?.toLowerCase()) {
-      case 'admin':
-      case 'superadmin':
-        return Colors.error;
-      case 'manager':
-        return Colors.primary;
-      case 'employee':
-        return Colors.success;
-      default:
-        return Colors.textSecondary;
+    if (listFilter === "archived") {
+      return list.filter(c => archivedConversations.has(c.employee.id || c.employee._id || ""));
+    } else if (listFilter === "bookmarked") {
+      return list.filter(c => bookmarkedConversations.has(c.employee.id || c.employee._id || ""));
     }
-  };
+    return list.filter(c => !archivedConversations.has(c.employee.id || c.employee._id || ""));
+  }, [conversationsQuery.data, searchQuery, listFilter, archivedConversations, bookmarkedConversations]);
 
-  const handleChatPress = (userId: string, userName: string, userRole: string) => {
-    router.push({
-      pathname: '/(manager)/messages/chat',
-      params: { userId, userName, userRole },
-    });
-  };
+  const filteredEmployees = useMemo(() => {
+    const list = employeesQuery.data ?? [];
+    if (!employeeSearchQuery.trim()) return list;
+    const q = employeeSearchQuery.toLowerCase();
+    return list.filter(e => e.name.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q));
+  }, [employeesQuery.data, employeeSearchQuery]);
 
-  // Show loading screen when data is loading initially
-  if (conversationsLoading && !refreshing) {
+  // Loading Framework
+  if (conversationsQuery.isLoading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Messages</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading conversations...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (showContacts) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setShowContacts(false)} style={styles.backButton}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>New Chat</Text>
-          <View style={styles.placeholder} />
-        </View>
-
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBox}>
-            <Search size={20} color={Colors.textTertiary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search contacts..."
-              placeholderTextColor={Colors.textTertiary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-            />
-          </View>
-        </View>
-
-        <ScrollView
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing || usersLoading} onRefresh={onRefresh} />}
-        >
-          <Text style={styles.sectionTitle}>All Contacts ({filteredUsers.length})</Text>
-          
-          {filteredUsers.length === 0 ? (
-            <View style={styles.emptyState}>
-              <User size={48} color={Colors.textTertiary} />
-              <Text style={styles.emptyText}>No contacts found</Text>
-            </View>
-          ) : (
-            filteredUsers.map((user) => (
-              <TouchableOpacity
-                key={user.id}
-                style={styles.contactCard}
-                onPress={() => handleChatPress(user.id, user.fullName || user.name || user.email, user.role)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{getInitials(user.fullName || user.name || user.email)}</Text>
-                </View>
-                <View style={styles.contactInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.contactName}>{user.fullName || user.name || user.email}</Text>
-                    <View style={[styles.roleBadge, { backgroundColor: `${getRoleColor(user.role)}20` }]}>
-                      <Text style={[styles.roleText, { color: getRoleColor(user.role) }]}>
-                        {user.role}
-                      </Text>
-                    </View>
-                  </View>
-                  {user.jobTitle && (
-                    <Text style={styles.contactSubtitle}>{user.jobTitle}</Text>
-                  )}
-                  <Text style={styles.contactEmail}>{user.email}</Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-          <View style={{ height: 20 }} />
-        </ScrollView>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#007AFF" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      {/* HEADER BAR */}
       <View style={styles.header}>
-        <Text style={styles.title}>Messages</Text>
-        <TouchableOpacity style={styles.newChatButton} onPress={() => setShowContacts(true)}>
-          <Plus size={24} color={Colors.surface} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing || conversationsLoading} onRefresh={onRefresh} />}
-      >
-        {conversations.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MessageSquare size={64} color={Colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No messages yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Tap the + button to start a new chat
-            </Text>
-            <TouchableOpacity style={styles.startChatButton} onPress={() => setShowContacts(true)}>
-              <Text style={styles.startChatText}>Start New Chat</Text>
+        {view === "conversation" && selectedEmployee ? (
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => { setView("list"); setSelectedEmployee(null); }}>
+              <ArrowLeft color="#000" size={24} style={{ marginRight: 8 }} />
             </TouchableOpacity>
+            <View style={[styles.avatarContainer, getAvatarRingStyles(selectedEmployee.current_status)]}>
+              <Text style={styles.avatarFallback}>{getInitials(selectedEmployee.name)}</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={styles.headerTitle} numberOfLines={1}>{selectedEmployee.name}</Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>{getSubtitle(selectedEmployee)}</Text>
+            </View>
           </View>
         ) : (
-          <>
-            <Text style={styles.sectionTitle}>Recent Chats</Text>
-            {conversations.map((conversation) => (
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mainTitle}>Messages</Text>
+              <Text style={styles.headerSubtitle}>{conversationsQuery.data?.length || 0} active records</Text>
+            </View>
+            {view !== "conversation" && (
+              <TouchableOpacity style={styles.newConvBtn} onPress={() => setView("employees")}>
+                <Plus color={Colors.background} size={18} />
+                <Text style={styles.newConvText}>New</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* CONVERSATION LISTING BLOCK */}
+      {view === "list" && (
+        <View style={{ flex: 1 }}>
+          {/* List Filter Tabs */}
+          <View style={styles.tabContainer}>
+            {(["all", "archived", "bookmarked"] as const).map((filter) => (
               <TouchableOpacity
-                key={conversation.id}
-                style={styles.conversationCard}
-                onPress={() => handleChatPress(conversation.participantId, conversation.participantName, conversation.participantRole)}
-                activeOpacity={0.7}
+                key={filter}
+                style={[styles.tabButton, listFilter === filter && styles.activeTabButton]}
+                onPress={() => setListFilter(filter)}
               >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{getInitials(conversation.participantName)}</Text>
-                </View>
-                <View style={styles.conversationInfo}>
-                  <View style={styles.conversationHeader}>
-                    <Text style={styles.conversationName}>{conversation.participantName}</Text>
-                    <Text style={styles.timeText}>{formatTime(conversation.lastMessageTime)}</Text>
-                  </View>
-                  <View style={styles.messageRow}>
-                    <Text style={[styles.lastMessage, conversation.unreadCount > 0 && styles.unreadMessage]} numberOfLines={1}>
-                      {conversation.lastMessage}
-                    </Text>
-                    {conversation.unreadCount > 0 && (
-                      <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{conversation.unreadCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
+                <Text style={[styles.tabText, listFilter === filter && styles.activeTabText]}>
+                  {filter.toUpperCase()}
+                </Text>
               </TouchableOpacity>
             ))}
-          </>
-        )}
-        <View style={{ height: 20 }} />
-      </ScrollView>
-    </View>
+          </View>
+
+          {/* Search Inputs */}
+          <View style={styles.searchBox}>
+            <Search color="#8E8E93" size={16} style={{ marginRight: 6 }} />
+            <TextInput
+              style={styles.inputField}
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          {/* List Components View */}
+          <FlatList
+            data={filteredConversations}
+            keyExtractor={(item) => item.employee.id || item.employee._id || ""}
+            renderItem={({ item }) => {
+              const empId = item.employee.id || item.employee._id || "";
+              const isFav = bookmarkedConversations.has(empId);
+              return (
+                <View style={styles.conversationItem}>
+                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center" }} onPress={() => startConversation(item.employee)}>
+                    <View style={[styles.largeAvatar, getAvatarRingStyles(item.employee.current_status)]}>
+                      <Text style={{ color: "#FFF", fontWeight: "bold" }}>{getInitials(item.employee.name)}</Text>
+                      {item.unreadCount > 0 && <View style={styles.badgeDot} />}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={styles.empName}>{item.employee.name}</Text>
+                        {item.lastMessage && <Text style={styles.timeText}>{formatMessageTime(item.lastMessage.timestamp)}</Text>}
+                      </View>
+                      <Text style={styles.msgPreview} numberOfLines={1}>
+                        {item.lastMessage ? item.lastMessage.content : "Tap to open chat history..."}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {/* Action Item Controllers */}
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity onPress={() => toggleBookmark(empId)} style={styles.actionBtn}>
+                      <Bookmark color={isFav ? "#F59E0B" : "#8E8E93"} size={18} fill={isFav ? "#F59E0B" : "none"} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => toggleArchive(empId)} style={styles.actionBtn}>
+                      <Archive color="#8E8E93" size={18} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.centerContainer}>
+                <MessageCircle color="#AEAEB2" size={48} />
+                <Text style={styles.emptyText}>No matching logs found</Text>
+              </View>
+            }
+          />
+        </View>
+      )}
+
+      {/* CORE CHAT SCREEN DISPLAY MODULE */}
+      {view === "conversation" && selectedEmployee && (
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
+          <FlatList
+            ref={flatListRef}
+            data={conversationMessages}
+            keyExtractor={(item) => item.id}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            renderItem={({ item }) => {
+              const isMe = item.sender === currentUser;
+              return (
+                <View style={[styles.msgWrapper, isMe ? styles.msgRight : styles.msgLeft]}>
+                  <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                    {item.attachment?.url ? (
+                      <View style={{ marginBottom: 6 }}>
+                        {item.attachment.mimeType?.startsWith("image/") ? (
+                          <TouchableOpacity onPress={() => setPreview({ url: item.attachment!.url!, fileName: item.attachment!.fileName! })}>
+                            <Image source={{ uri: item.attachment.url }} style={styles.inlineImageAttachment} />
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity style={styles.fileDownloadRow} onPress={() => downloadAttachment(item.attachment!.url!, item.attachment!.fileName!)}>
+                            <Download color={isMe ? "#FFF" : "#000"} size={16} />
+                            <Text style={[styles.fileDownloadText, { color: isMe ? "#FFF" : "#000" }]} numberOfLines={1}>
+                              {item.attachment.fileName}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : null}
+                    {!!item.content?.trim() && (
+                      <Text style={{ color: isMe ? "#FFF" : "#000", fontSize: 15 }}>{item.content}</Text>
+                    )}
+                    <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.7)" : "#8E8E93" }]}>
+                      {formatMessageTime(item.timestamp)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }}
+          />
+
+          {/* Emoji Sheet View Alternate mapping */}
+          {showEmojiPicker && (
+            <View style={styles.emojiRowContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {COMMON_EMOJIS.map(emoji => (
+                  <TouchableOpacity key={emoji} onPress={() => setNewMessageContent(p => p + emoji)} style={{ padding: 10 }}>
+                    <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Interactive Chat Control Inputs */}
+          <View style={styles.inputToolbar}>
+            <TouchableOpacity style={styles.toolBtn} disabled={uploading} onPress={handleFilePick}>
+              {uploading ? <ActivityIndicator size="small" color="#007AFF" /> : <Paperclip color="#007AFF" size={22} />}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => setShowEmojiPicker(!showEmojiPicker)}>
+              <Smile color="#007AFF" size={22} />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.chatInput}
+              placeholder="Enter message text..."
+              value={newMessageContent}
+              onChangeText={setNewMessageContent}
+              multiline
+            />
+            <TouchableOpacity style={[styles.sendBtn, !newMessageContent.trim() && { opacity: 0.5 }]} disabled={!newMessageContent.trim() || sending} onPress={sendMessage}>
+              <Send color="#FFF" size={16} />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      )}
+
+      {/* EMPLOYEE SELECTOR MODAL WINDOW */}
+      <Modal visible={view === "employees"} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setView("list")}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Employee</Text>
+            <TouchableOpacity onPress={() => setView("list")}>
+              <X color="#000" size={24} />
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.searchBox, { margin: 16 }]}>
+            <Search color="#8E8E93" size={16} style={{ marginRight: 6 }} />
+            <TextInput
+              style={styles.inputField}
+              placeholder="Search by name or department..."
+              value={employeeSearchQuery}
+              onChangeText={setEmployeeSearchQuery}
+            />
+          </View>
+          <FlatList
+            data={filteredEmployees}
+            keyExtractor={(item) => item.id || item._id || ""}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.empRowItem} onPress={() => startConversation(item)}>
+                <View style={styles.largeAvatar}>
+                  <Text style={{ color: "#FFF" }}>{getInitials(item.name)}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: "600" }}>{item.name}</Text>
+                  <Text style={{ color: "#8E8E93", fontSize: 13 }}>{item.department || "General Staff"}</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      {/* LIGHTBOX FULLSCREEN IMAGE VIEWER */}
+      <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={styles.lightboxContainer}>
+          <TouchableOpacity style={styles.closeLightbox} onPress={() => setPreview(null)}>
+            <X color="#FFF" size={28} />
+          </TouchableOpacity>
+          {preview && (
+            <Image source={{ uri: preview.url }} style={styles.lightboxImage} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
+// StyleSheet Configurations reflecting original styles across mobile displays
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  backText: {
-    fontSize: 16,
-    color: Colors.primary,
-    fontWeight: '600' as const,
-  },
-  placeholder: {
-    width: 50,
-  },
-  newChatButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.textTertiary,
-    marginBottom: 12,
-    marginTop: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 100,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    color: Colors.text,
-    marginTop: 16,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textTertiary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: Colors.textTertiary,
-    marginTop: 12,
-  },
-  startChatButton: {
-    marginTop: 24,
-    backgroundColor: Colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-  },
-  startChatText: {
-    color: Colors.surface,
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  conversationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  contactCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.surface,
-  },
-  conversationInfo: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  contactInfo: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  conversationName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  timeText: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  contactName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
-    flex: 1,
-  },
-  roleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  roleText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    textTransform: 'capitalize',
-  },
-  contactSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  contactEmail: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 2,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  lastMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  unreadMessage: {
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  badge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  badgeText: {
-    color: Colors.surface,
-    fontSize: 12,
-    fontWeight: '700' as const,
-    paddingHorizontal: 6,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 16,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: { padding: 16, backgroundColor: Colors.background , borderBottomWidth: 1, borderColor: "#E5E5EA" },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  mainTitle: { fontSize: 28, fontWeight: "bold", color: Colors.surface  },
+  headerTitle: { fontSize: 17, fontWeight: "600", color: "#000" },
+  headerSubtitle: { fontSize: 13, color: "#8E8E93", marginTop: 2 },
+  newConvBtn: { flexDirection: "row", backgroundColor: Colors.golden , paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, alignItems: "center" },
+  newConvText: { color: Colors.background, fontWeight: "600", marginLeft: 4, fontSize: 14 },
+  avatarContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#007AFF", justifyContent: "center", alignItems: "center" },
+  avatarFallback: { color: "#FFF", fontWeight: "bold", fontSize: 12 },
+  tabContainer: { flexDirection: "row", padding: 8, backgroundColor: Colors.background },
+  tabButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12, marginRight: 8, backgroundColor: "#E5E5EA" },
+  activeTabButton: { backgroundColor: Colors.golden},
+  tabText: { fontSize: 12, fontWeight: "600", color: "#8E8E93" },
+  activeTabText: { color: Colors.background },
+  searchBox: { flexDirection: "row", marginHorizontal: 16, marginVertical: 8, padding: 8, backgroundColor: "#E5E5EA", borderRadius: 10, alignItems: "center" },
+  inputField: { flex: 1, fontSize: 15, padding: 0 },
+  conversationItem: { flexDirection: "row", padding: 16, backgroundColor: Colors.background, borderBottomWidth: 1, borderColor: "#E5E5EA", alignItems: "center" },
+  largeAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#8E8E93", justifyContent: "center", alignItems: "center", position: "relative" },
+  badgeDot: { position: "absolute", top: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: "#FF3B30", borderWidth: 2, borderColor: "#FFF" },
+  empName: { fontSize: 16, fontWeight: "600",color:Colors.surface },
+  timeText: { fontSize: 12, color: "#8E8E93" },
+  msgPreview: { fontSize: 14, color: "#8E8E93", marginTop: 4 },
+  actionRow: { flexDirection: "row", marginLeft: 8 },
+  actionBtn: { padding: 6, marginLeft: 4 },
+  centerContainer: { padding: 40, alignItems: "center", justifyContent: "center" },
+  emptyText: { color: "#8E8E93", marginTop: 12, fontSize: 15 },
+  msgWrapper: { flexDirection: "row", marginVertical: 4, paddingHorizontal: 12 },
+  msgLeft: { justifyContent: "flex-start" },
+  msgRight: { justifyContent: "flex-end" },
+  bubble: { maxWidth: "75%", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
+  bubbleMe: { backgroundColor: "#007AFF", borderBottomRightRadius: 0 },
+  bubbleThem: { backgroundColor: "#E5E5EA", borderBottomLeftRadius: 0 },
+  bubbleTime: { fontSize: 10, textAlign: "right", marginTop: 4 },
+  inputToolbar: { flexDirection: "row", padding: 12, backgroundColor: "#FFF",
+     alignItems: "center", borderTopWidth: 1, borderColor: "#E5E5EA",marginBottom:60 },
+  toolBtn: { padding: 4, marginRight: 8 },
+  chatInput: { flex: 1, backgroundColor: "#E5E5EA", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, fontSize: 15, maxHigh: 100 },
+  sendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#007AFF", justifyContent: "center", alignItems: "center", marginLeft: 8 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderColor: "#E5E5EA" },
+  modalTitle: { fontSize: 18, fontWeight: "bold" },
+  empRowItem: { flexDirection: "row", padding: 16, borderBottomWidth: 1, borderColor: "#E5E5EA", alignItems: "center" },
+  inlineImageAttachment: { width: 160, height: 120, borderRadius: 8, marginTop: 4 },
+  fileDownloadRow: { flexDirection: "row", alignItems: "center", padding: 6, backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 6 },
+  fileDownloadText: { fontSize: 13, marginLeft: 6, maxWidth: 120 },
+  emojiRowContainer: { height: 50, backgroundColor: "#F2F2F7", borderTopWidth: 1, borderColor: "#E5E5EA" },
+  lightboxContainer: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" },
+  closeLightbox: { position: "absolute", top: 40, right: 20, zIndex: 10 },
+  lightboxImage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height * 0.7 }
 });

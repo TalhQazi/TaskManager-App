@@ -1,40 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 
 import ManagerHeader from '@/components/ManagerHeader';
 import ManagerFixedSidebar from '@/components/ManagerFixedSidebar';
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
-export default function ManagerLayout() {
+
+function ManagerLayoutContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { uiTheme } = useTheme(); 
+
+  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
 
   return (
-    <View style={styles.root}>
-      
-      {/* HEADER WITH MENU BUTTON */}
+    <View style={styles.root} key={uiTheme?.theme}> 
       <ManagerHeader onMenuPress={() => setSidebarOpen(true)} />
 
-      {/* MAIN CONTENT (NO PUSH, NO MARGIN) */}
       <View style={styles.body}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ 
+          headerShown: false,
+          contentStyle: { backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#f8fafc' }
+        }} />
       </View>
 
-      {/* OVERLAY SIDEBAR */}
       <ManagerFixedSidebar
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => setSidebarOpen(false)} 
       />
-
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  body: {
-    flex: 1,
-  },
-});
+// 2. Main exported component providing the theme down to the content
+export default function ManagerLayout() {
+  return (
+    <ThemeProvider>
+      <ManagerLayoutContent />
+    </ThemeProvider>
+  );
+}
+
+const getThemedStyles = (uiTheme: any) => {
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#f8fafc',
+    },
+    body: {
+      flex: 1,
+    },
+  });
+};
