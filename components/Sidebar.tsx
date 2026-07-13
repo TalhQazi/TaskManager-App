@@ -8,6 +8,7 @@ import {
   Animated,
   TouchableWithoutFeedback,
   Modal,
+  Platform,
 } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
@@ -22,15 +23,22 @@ import {
   Bell,
   LogOut,
   ChevronRight,
-  X,Megaphone,
-  Clock3,
+  X,
+  Megaphone,
   Mail,
   DollarSign,
   ShoppingCart,
   Car,
-  
+  Bug,
+  FileText,
+  MapPin,
+  Calendar1,
+  Image,
+  Book,
+  Settings,
+  Clock10,
+  Settings2,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 
@@ -40,100 +48,35 @@ interface MenuItem {
   icon: React.ComponentType<{ color: string; size: number }>;
   label: string;
   route: string;
-  color: string;
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  {
-    icon: LayoutDashboard,
-    label: 'Dashboard',
-    route: '/(tabs)/home',
-    color: Colors.primary,
-  },
-  {
-    icon: ClipboardList,
-    label: 'My Tasks',
-    route: '/(tabs)/tasks',
-    color: Colors.warning,
-  },
-  {
-    icon: Clock,
-    label: 'Clock In',
-    route: '/(tabs)/clock',
-    color: Colors.success,
-  },
-  {
-    icon: MessageSquare,
-    label: 'Messages',
-    route: '/(tabs)/messages',
-    color: Colors.secondary,
-  },
-  {
-    icon: Calendar,
-    label: 'Schedule',
-    route: '/schedule',
-    color: '#8B5CF6',
-  },
-  {
-    icon: User,
-    label: 'Profile',
-    route: '/(tabs)/profile',
-    color: '#F97316',
-  },
-  {
-    icon: Bell,
-    label: 'Notifications',
-    route: '/notifications',
-    color: '#EC4899',
-  },
-  {
-  icon: Megaphone,
-  label: 'Announcements',
-  route: '/announcements',
-  color: '#8B5CF6',
-},
-{
-  label: 'Email Settings',
-  icon: Mail,
-  route: '/email-settings',
-  color: '#8B5CF6',
-},
-{
-  label: 'Leave Requests',
-  icon: Calendar,
-  route: '/leaverequest',
-  color: '#8B5CF6',
-},
-{
-  label: 'Payroll',
-  route: '/payroll',
-  icon: DollarSign,
-   color: '#8B5CF6',
-},
-{
-  label: 'Scrum Records',
-  route: '/scrum-records',
-  icon: ClipboardList,
-   color: '#8B5CF6',
-},
-{
-  label: 'Shopping Lists',
-  route: '/shoppinglists',
-  icon: ShoppingCart,
-   color: '#8B5CF6',
-},
-{
-  label: 'Travel Calender',
-  route: '/travelcalender',
-  icon: Car,
-   color: '#8B5CF6',
-}
-/*{
-    label: 'Attendance',
-    icon: Clock3,
-    route: '/attendance',
-     color: '#8B5CF6',
-  },*/
+  { icon: Megaphone, label: 'Announcements', route: '/announcements' },
+  { icon: Clock, label: 'Attendance', route: '/(tabs)/clock' },
+  { label: 'Bug Reports',icon: Bug, route: '/(tabs)/bug'},
+  { label: 'Company Information', icon: FileText, route: '/(tabs)/company-information'},
+  { label: 'Daily Itinerary', route: '/(tabs)/itinerary', icon: MapPin },
+  
+  { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
+  { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
+  { icon: Calendar1, label: 'Event', route: '/(tabs)/event' },
+  { icon: Image, label: 'Images', route: '/(tabs)/images' },
+  { label: 'Leave Requests', route: '/(tabs)/leaverequest', icon: Calendar },
+  { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' },
+  { label: 'My Notes', icon: Book, route: '/(tabs)/my-notes'},
+
+  { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
+  { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' },
+  { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
+  { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
+  { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shoppinglists' },
+  { label: 'Theme Engine', route: '/(tabs)/theme-engine', icon: Settings },
+  { label: 'Time Logs', route: '/(tabs)/time-logs', icon: Clock10 },
+  { icon: Car, label: 'Travel Calendar', route: '/(tabs)/travelcalender' },
+{ icon: Settings2, label: 'Setting', route: '/(tabs)/home' }
+  /*{ icon: Calendar, label: 'Schedule', route: '/schedule' },
+  { icon: User, label: 'Profile', route: '/(tabs)/profile' },*/
+  
 ];
 
 interface SidebarProps {
@@ -171,12 +114,12 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 250,
+          duration: 220,
           useNativeDriver: true,
         }),
         Animated.timing(backdropAnim, {
           toValue: 1,
-          duration: 250,
+          duration: 220,
           useNativeDriver: true,
         }),
       ]).start();
@@ -184,12 +127,12 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: -effectiveWidth,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
         Animated.timing(backdropAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start();
@@ -243,7 +186,7 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
           activeOpacity={0.7}
         >
           <View style={styles.closeButtonBg}>
-            <X color={Colors.textSecondary} size={20} />
+            <X color="#f4f4f5" size={18} />
           </View>
         </TouchableOpacity>
       )}
@@ -251,9 +194,6 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
       {/* Logo Section */}
       <View style={styles.logoSection}>
         <View style={styles.logoContainer}>
-          <View style={styles.logoIcon}>
-            <LayoutDashboard color="#FFFFFF" size={24} />
-          </View>
           <Text style={styles.logoText}>TaskManager</Text>
         </View>
         <Text style={styles.logoSubtitle}>Employee Portal</Text>
@@ -281,13 +221,15 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
 
       {/* Navigation Menu */}
       <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.menuHeader}>MAIN MENU</Text>
+        <Text style={styles.menuHeader}>Main Menu</Text>
         
-        {MENU_ITEMS.map((item) => {
+        {MENU_ITEMS.map((item,index) => {
           const isActive = isActiveRoute(item.route);
+          const itemIconColor = isActive ? "#ffd27a" : "#a1a1aa";
+
           return (
             <TouchableOpacity
-              key={item.label}
+              key={index}
               style={[
                 styles.menuItem,
                 isActive && styles.menuItemActive,
@@ -295,26 +237,17 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
               onPress={() => handleNavigate(item.route)}
               activeOpacity={0.8}
             >
-              <View style={[
-                styles.iconContainer,
-                isActive && { backgroundColor: `${item.color}20` },
-                !isActive && { backgroundColor: `${item.color}12` },
-              ]}>
-                <item.icon 
-                  color={isActive ? item.color : Colors.textSecondary} 
-                  size={20} 
-                />
+              <View style={styles.itemInnerLeftGroup}>
+                <item.icon color={itemIconColor} size={20} />
+                <Text style={[
+                  styles.menuLabel,
+                  isActive && styles.menuLabelActive,
+                ]}>
+                  {item.label}
+                </Text>
               </View>
-              <Text style={[
-                styles.menuLabel,
-                isActive && styles.menuLabelActive,
-              ]}>
-                {item.label}
-              </Text>
               {isActive && (
-                <View style={styles.activeIndicator}>
-                  <ChevronRight color={item.color} size={16} />
-                </View>
+                <ChevronRight color="#ffd27a" size={16} />
               )}
             </TouchableOpacity>
           );
@@ -330,22 +263,17 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
           onPress={handleLogout}
           activeOpacity={0.8}
         >
-          <View style={[styles.iconContainer, { backgroundColor: `${Colors.error}12` }]}>
-            <LogOut color={Colors.error} size={20} />
-          </View>
+          <LogOut color="#ef4444" size={20} />
           <Text style={styles.logoutLabel}>Sign Out</Text>
         </TouchableOpacity>
-
       </View>
     </View>
   );
 
-  // Large screen - permanent sidebar
   if (isLargeScreen) {
     return sidebarBody;
   }
 
-  // Mobile drawer using Modal for proper full-screen overlay
   return (
     <Modal
       visible={isOpen}
@@ -394,20 +322,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     zIndex: 10000,
-    elevation: 10000,
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     zIndex: 9998,
   },
   sidebar: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#133767',
+    borderRightWidth: 1,
+    borderRightColor: '#27272a',
   },
   closeButton: {
     position: 'absolute',
@@ -416,187 +341,159 @@ const styles = StyleSheet.create({
     zIndex: 10001,
   },
   closeButtonBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.background,
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#27272a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoSection: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#27272a',
+    marginBottom: 20,
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  logoIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
   logoText: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '800',
-    color: Colors.text,
-    letterSpacing: -0.5,
+    color: '#f4f4f5',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   logoSubtitle: {
     fontSize: 12,
     fontWeight: '500',
-    color: Colors.textTertiary,
+    color: '#71717a',
     marginTop: 2,
-    marginLeft: 56,
   },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 14,
     marginBottom: 24,
-    padding: 14,
-    backgroundColor: Colors.infoLight,
-    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#133767',
+    borderWidth: .1,
+    borderColor: '#ffffffd7',
+    borderRadius: 6,
     gap: 12,
   },
   avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.primary,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth:1,
+    borderColor:'#ffffff',
+    backgroundColor: '#133767',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#f4f4f5',
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    color: Colors.text,
+    color: '#f4f4f5',
     marginBottom: 2,
   },
   userRole: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
-    color: Colors.textSecondary,
+    color: '#71717a',
   },
   statusIndicator: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ECFDF5',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.success,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
   },
   menuContainer: {
     flex: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   menuHeader: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textTertiary,
-    letterSpacing: 1.5,
+    color: '#71717a',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 12,
-    marginLeft: 8,
-    marginTop: 4,
+    paddingHorizontal: 4,
   },
   menuItem: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 6,
     marginBottom: 4,
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  itemInnerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   menuItemActive: {
-    backgroundColor: Colors.infoLight,
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#133767',
+    borderColor: '#27272a',
   },
   menuLabel: {
-    flex: 1,
-    fontSize: 15,
+    color: '#a1a1aa',
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.textSecondary,
   },
   menuLabelActive: {
-    color: Colors.text,
+    color: '#ffd27a',
     fontWeight: '700',
   },
-  activeIndicator: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   bottomSection: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 8,
   },
   divider: {
     height: 1,
-    backgroundColor: Colors.borderLight,
+    backgroundColor: '#27272a',
     marginBottom: 12,
   },
   bottomItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 11,
+    borderRadius: 6,
     gap: 12,
     marginBottom: 8,
   },
   logoutLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.error,
-  },
-  versionText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 8,
+    color: '#ef4444',
   },
 });

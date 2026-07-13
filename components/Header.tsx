@@ -7,6 +7,7 @@ import {
   Image,
   ImageBackground,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,9 +15,11 @@ import {
   Bell,
   Menu,
   ChevronLeft,
+  LogOut,
 } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,7 +71,7 @@ export default function Header({
   const router = useRouter();
   const pathname = usePathname();
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { openSidebar } = useSidebar();
 
   const { width } = useWindowDimensions();
@@ -206,29 +209,25 @@ export default function Header({
 
     if (pathname.includes('/notifications'))
       return 'Notifications';
-   if (pathname.includes('/announcements'))
+    if (pathname.includes('/announcements'))
       return 'Announcements';
  
     if (pathname.includes('/email-settings '))
       return 'Email Settings';
 
-
-     if (pathname.includes('/leaverequest'))
+    if (pathname.includes('/leaverequest'))
       return 'Leave Request';
 
-      if (pathname.includes('/payroll'))
+    if (pathname.includes('/payroll'))
       return 'Payroll';
 
-        if (pathname.includes('/ scrum-records'))
+    if (pathname.includes('/ scrum-records'))
       return 'Scrum Records';
      
-         if (pathname.includes('/shoppinglists'))
+    if (pathname.includes('/shoppinglists'))
       return 'Shopping Lists';
-       if (pathname.includes('/travelcalender'))
+    if (pathname.includes('/travelcalender'))
       return 'Travel Calender';
-    
-        
-
 
     return 'TaskFlow';
   };
@@ -246,6 +245,15 @@ export default function Header({
       onBackPress();
     } else {
       router.back();
+    }
+  };
+
+  const handleLogoutPress = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    if (logout) {
+      await logout();
     }
   };
 
@@ -321,8 +329,8 @@ export default function Header({
 
       {/* CENTER */}
       <View style={styles.centerSection}>
-        <Text style={styles.pageTitle}>
-          {getPageTitle()}
+        <Text style={styles.pageTitle} numberOfLines={1}>
+          {/*getPageTitle()*/}
         </Text>
       </View>
 
@@ -369,6 +377,18 @@ export default function Header({
               {initials}
             </Text>
           </View>
+        </TouchableOpacity>
+
+        {/* LOGOUT */}
+        <TouchableOpacity
+          onPress={handleLogoutPress}
+          style={styles.iconButton}
+          activeOpacity={0.7}
+        >
+          <LogOut
+            color="#FFFFFF"
+            size={20}
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -497,19 +517,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    flex: 1,
+    flex: 1.2,
   },
 
   centerSection: {
-    flex: 2,
+    flex: 1.6,
     alignItems: 'center',
   },
 
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
+    gap: 10,
+    flex: 1.6,
     justifyContent: 'flex-end',
   },
 

@@ -1,543 +1,1231 @@
-import { useState, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
+  StyleSheet,
   View,
   Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
   TextInput,
+  TouchableOpacity,
+  ScrollView,
+  FlatList,
   Modal,
-  Platform,
+  Alert,
   ActivityIndicator,
-} from 'react-native';
-import { Search, Phone, Mail, ChevronRight, X, Clock, ClipboardCheck } from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
-import Colors from '@/constants/colors';
-import { apiRequest } from '@/services/api';
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+} from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Plus,
+  Search,
+  Phone,
+  Mail,
+  MapPin,
+  MoreHorizontal,
+  Users,
+  X,
+  ChevronDown,
+} from "lucide-react-native";
 
-type EmployeeStatus = 'active' | 'inactive' | 'on-leave';
+// Custom API, Sockets and Theme Context imports
+import { apiFetch, listResource } from "@/lib/admin/apiClient";
+import { useSocket } from "@/contexts/SocketContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import MilestoneBadge from "./MilestoneBadge";
 
+// --- Interfaces & Types ---
 interface Employee {
   id: string;
   name: string;
   email: string;
   phone: string;
+  category: string;
   role: string;
-  department: string;
-  status: EmployeeStatus;
+  company: string;
+  status: "active" | "inactive" | "on-leave";
+  payRate: string;
+  shift: string;
+  hireDate: string;
+  location: string;
+  joinDate: string;
+  avatar: string;
+  imageUrl?: string;
+  milestoneLevel?: string;
+  milestoneLabel?: string;
+  current_status?: "AVAILABLE" | "LUNCH" | "BREAK";
+  lunch_start_time?: string | null;
+  lunch_expected_end?: string | null;
+  break_start_time?: string | null;
 }
 
-type FilterType = 'all' | 'active' | 'on-leave';
+interface Company {
+  id: string;
+  name: string;
+  code?: string;
+  status: "active" | "inactive" | "suspended";
+}
 
-export default function ManagerTeamScreen() {
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [showProfileModal, setShowProfileModal] = useState(false);
+type EmployeeApi = Omit<Employee, "id"> & {
+  _id: string;
+};
+
+function normalizeEmployee(e: EmployeeApi): Employee {
+  return {
+    id: e._id,
+    name: e.name,
+    email: e.email,
+    phone: e.phone,
+    category: e.category,
+    role: e.role,
+    company: e.company,
+    status: e.status,
+    payRate: e.payRate,
+    shift: e.shift,
+    hireDate: e.hireDate,
+    location: e.location,
+    joinDate: e.joinDate,
+    avatar: e.avatar,
+    imageUrl: (e as any).avatarUrl || (e as any).imageUrl,
+    milestoneLevel: (e as any).milestoneLevel,
+    milestoneLabel: (e as any).milestoneLabel,
+    current_status: (e as any).current_status || "AVAILABLE",
+    lunch_start_time: (e as any).lunch_start_time || null,
+    lunch_expected_end: (e as any).lunch_expected_end || null,
+    break_start_time: (e as any).break_start_time || null,
+  };
+}
+
+const statusLabels = {
+  active: "Active",
+  inactive: "Inactive",
+  "on-leave": "On Leave",
+};
+
+// --- Validation Schemas ---
+const createEmployeeSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().min(1, "Email is required").email("Invalid email"),
+  phone: z.string().min(1, "Phone is required"),
+  category: z.string().optional().default(""),
+  role: z.string().min(1, "Role is required"),
+  company: z.string().optional().default(""),
+  status: z.enum(["active", "inactive", "on-leave"]),
+  payRate: z.string().optional().default(""),
+  shift: z.string().optional().default(""),
+  hireDate: z.string().optional().default(""),
+  location: z.string().min(1, "Location is required"),
+  joinDate: z.string().min(1, "Join date is required"),
+});
+
+type CreateEmployeeValues = z.infer<typeof createEmployeeSchema>;
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  const first = parts[0]?.[0] ?? "?";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "?" : "";
+  return (first + last).toUpperCase();
+}
+
+function formatStatusTime(timeStr?: string | null) {
+  if (!timeStr) return "";
+  try {
+    const date = new Date(timeStr);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return "";
+  }
+}
+
+export default function Employees() {
+  const localParams = useLocalSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  
+  // Theme context destruction
+  const { uiTheme ,updateTheme} = useTheme();
+  const { customColors, panelColors } = uiTheme;
+
+
+
+  // Resolve derived semantic theme values based on text background values
+  const isDarkBase = true;//panelColors.dashboardTextColor === "#ffffff" || panelColors.dashboardTextColor === "#F9FAFB";
+  const textMuted = isDarkBase ? "#94A3B8" : "#64748B";
+  const borderColor = isDarkBase ? "#334155" : "#E2E8F0";
+
+  const statusColors = {
+    active: "#10B981",
+    inactive: textMuted,
+    "on-leave": "#F59E0B",
+  };
+
+  // Modals Visibility
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const queryClient = useQueryClient();
+  const { socket } = useSocket();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: employees = [], isLoading, refetch } = useQuery<Employee[]>({
-    queryKey: ['managerEmployees'],
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+
+  useEffect(() => {
+  if (panelColors.dashboardBackground !== "#09090b") {
+    void updateTheme({
+      theme: "metallic-elite",
+      customColors: {
+        primary: "#ffd27a",
+        secondary: "#a1a1aa",
+        accent: "#ffd27a"
+      },
+      panelColors: {
+        headerBackground: "#09090b",
+        headerOverlayColor: "#000000",
+        headerOverlayOpacity: 0,
+        sidebarBackground: "#09090b",
+        dashboardBackground: "#09090b",     // Deep Premium Pitch Black Canvas
+        sidebarIconColor: "#ffd27a",
+        dashboardIconColor: "#ffd27a",
+        sidebarTextColor: "#ffffff",
+        dashboardCardBackground: "#18181b", // Sleek Zinc-900 elevated card panels
+        dashboardTextColor: "#ffffff",
+      }
+    });
+  }
+}, [panelColors.dashboardBackground]);
+
+
+  // --- Realtime Sync ---
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStatusUpdate = (payload: {
+      userId: string;
+      current_status: "AVAILABLE" | "LUNCH" | "BREAK";
+      lunch_start_time: string | null;
+      lunch_expected_end: string | null;
+      break_start_time: string | null;
+    }) => {
+      queryClient.setQueryData<Employee[]>(["employees"], (old) => {
+        if (!old) return old;
+        return old.map((emp) => {
+          if (emp.id === payload.userId) {
+            return {
+              ...emp,
+              current_status: payload.current_status,
+              lunch_start_time: payload.lunch_start_time,
+              lunch_expected_end: payload.lunch_expected_end,
+              break_start_time: payload.break_start_time,
+            };
+          }
+          return emp;
+        });
+      });
+    };
+
+    socket.on("status-update", handleStatusUpdate);
+    return () => {
+      socket.off("status-update", handleStatusUpdate);
+    };
+  }, [socket, queryClient]);
+
+  // --- Queries & Mutations ---
+  const companiesQuery = useQuery({
+    queryKey: ["companies"],
     queryFn: async () => {
-      const res = await apiRequest<{ items?: Employee[] }>('/employees');
-      return res.data?.items || [];
+      const list = await listResource<Company>("companies");
+      return list.filter((c) => c.status === "active");
+    },
+  });
+  const companies = companiesQuery.data ?? [];
+
+  const employeesQuery = useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => {
+      const res = await apiFetch<{ items: EmployeeApi[] }>("/api/employees");
+      return res.items.map(normalizeEmployee);
+    },
+  });
+  const employees = employeesQuery.data ?? [];
+
+  useEffect(() => {
+    const viewId = String(localParams.view || "").trim();
+    if (!viewId) return;
+    const match = employees.find((e) => String(e.id) === viewId);
+    if (match) openView(match);
+  }, [employees, localParams.view]);
+
+  const createEmployeeMutation = useMutation({
+    mutationFn: async (payload: Omit<Employee, "id">) => {
+      const res = await apiFetch<{ item: EmployeeApi }>("/api/employees", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      return normalizeEmployee(res.item);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["employees"] });
     },
   });
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
-
-  const filteredEmployees = employees.filter((employee) => {
-    const matchesSearch =
-      employee.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.department?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter =
-      filter === 'all' ||
-      (filter === 'active' && employee.status === 'active') ||
-      (filter === 'on-leave' && employee.status === 'on-leave');
-    return matchesSearch && matchesFilter;
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: CreateEmployeeValues }) => {
+      const fullName = `${payload.firstName} ${payload.lastName}`.trim();
+      const nextPayload = {
+        ...payload,
+        name: fullName,
+        avatar: getInitials(fullName),
+      };
+      const res = await apiFetch<{ item: EmployeeApi }>(`/api/employees/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(nextPayload),
+      });
+      return normalizeEmployee(res.item);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["employees"] });
+    },
   });
 
-  const getStatusColor = (status: EmployeeStatus) => {
-    switch (status) {
-      case 'active':
-        return Colors.success;
-      case 'on-leave':
-        return Colors.warning;
-      case 'inactive':
-        return Colors.textTertiary;
-    }
+  const deleteEmployeeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiFetch<{ ok: true }>(`/api/employees/${id}`, { method: "DELETE" });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["employees"] });
+    },
+  });
+
+  const defaultFormValues: CreateEmployeeValues = {
+    firstName: "", lastName: "", email: "", phone: "", category: "", role: "",
+    company: "", status: "active", payRate: "", shift: "", hireDate: "", location: "", joinDate: "",
   };
 
-  const filters: { key: FilterType; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'active', label: 'Active' },
-    { key: 'on-leave', label: 'On Leave' },
-  ];
+  const createForm = useForm<CreateEmployeeValues>({
+    resolver: zodResolver(createEmployeeSchema),
+    defaultValues: defaultFormValues,
+  });
 
-  const openProfile = (employee: Employee) => {
-    setSelectedEmployee(employee);
-    setShowProfileModal(true);
+  const editForm = useForm<CreateEmployeeValues>({
+    resolver: zodResolver(createEmployeeSchema),
+    defaultValues: defaultFormValues,
+  });
+
+  // --- Handlers ---
+  const onCreateEmployee = (values: CreateEmployeeValues) => {
+    const fullName = `${values.firstName} ${values.lastName}`.trim();
+    const payload: Omit<Employee, "id"> = {
+      ...values,
+      name: fullName,
+      avatar: getInitials(fullName),
+    };
+
+    createEmployeeMutation.mutate(payload, {
+      onSuccess: () => {
+        setIsCreateOpen(false);
+        createForm.reset();
+        Alert.alert("Success", "New employee has been added to the directory.");
+      },
+      onError: (err) => {
+        Alert.alert("Error", err instanceof Error ? err.message : "Something went wrong");
+      },
+    });
   };
 
-  // Show loading screen when data is loading initially
-  if (isLoading && !refreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Team</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading team members...</Text>
-        </View>
-      </View>
+  const onEditEmployee = (values: CreateEmployeeValues) => {
+    if (!selectedEmployee) return;
+    updateEmployeeMutation.mutate(
+      { id: selectedEmployee.id, payload: values },
+      {
+        onSuccess: () => {
+          setIsEditOpen(false);
+          Alert.alert("Success", "Employee profile has been updated.");
+        },
+        onError: (err) => {
+          Alert.alert("Error", err instanceof Error ? err.message : "Something went wrong");
+        },
+      }
     );
-  }
+  };
+
+  const openView = (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setIsViewOpen(true);
+  };
+
+  const openEdit = (employee: Employee) => {
+    const [firstName, ...rest] = employee.name.trim().split(/\s+/).filter(Boolean);
+    const lastName = rest.join(" ");
+    setSelectedEmployee(employee);
+    editForm.reset({
+      firstName: firstName ?? "",
+      lastName,
+      email: employee.email,
+      phone: employee.phone,
+      category: employee.category,
+      role: employee.role,
+      company: employee.company,
+      status: employee.status,
+      payRate: employee.payRate,
+      shift: employee.shift,
+      hireDate: employee.hireDate,
+      location: employee.location,
+      joinDate: employee.joinDate,
+    });
+    setIsEditOpen(true);
+  };
+
+  const openActions = (employee: Employee) => {
+    Alert.alert("Employee Options", employee.name, [
+      { text: "View Details", onPress: () => openView(employee) },
+      { text: "Edit Profile", onPress: () => openEdit(employee) },
+      { text: "Delete Employee", style: "destructive", onPress: () => confirmDeleteAlert(employee) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const confirmDeleteAlert = (employee: Employee) => {
+    Alert.alert("Delete employee?", "This action cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          deleteEmployeeMutation.mutate(employee.id, {
+            onSuccess: () => Alert.alert("Deleted", "Employee profile removed."),
+            onError: (err) => Alert.alert("Error", err instanceof Error ? err.message : "Mutation failed"),
+          });
+        },
+      },
+    ]);
+  };
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((employee) => {
+      const matchesSearch =
+        employee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        employee.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        employee.role.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === "all" || employee.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, searchQuery, statusFilter]);
+
+  const renderEmployeeCard = ({ item: employee }: { item: Employee }) => {
+    const isOnLeaveOrBreak = employee.current_status && employee.current_status !== "AVAILABLE";
+    
+    return (
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: panelColors.dashboardCardBackground, borderColor: borderColor }, isOnLeaveOrBreak && { opacity: 0.75 }]}
+        onPress={() => openView(employee)}
+      >
+        {isOnLeaveOrBreak && (
+          <View style={[styles.statusBadgeOverlay, employee.current_status === "LUNCH" ? styles.lunchBg : styles.breakBg]}>
+            <Text style={styles.statusBadgeText}>
+              {employee.current_status === "LUNCH" ? "On Lunch" : "On Break"} ({formatStatusTime(employee.current_status === "LUNCH" ? employee.lunch_start_time : employee.break_start_time)})
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.cardHeader}>
+          <View style={styles.avatarContainer}>
+            <View style={[styles.avatar, isDarkBase ? { backgroundColor: "#334155" } : { backgroundColor: "#EEF2F6" }, isOnLeaveOrBreak && { borderColor: customColors.accent, borderWidth: 2 }]}>
+              <Text style={[styles.avatarText, { color: customColors.secondary }]}>{getInitials(employee.name)}</Text>
+            </View>
+            <View style={[styles.statusDot, { backgroundColor: statusColors[employee.status] }]} />
+          </View>
+
+          <View style={styles.headerMeta}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.employeeName, { color: panelColors.dashboardTextColor }]}>{employee.name}</Text>
+              {employee.milestoneLevel && (
+                <MilestoneBadge level={employee.milestoneLevel} label={employee.milestoneLabel} size="sm" />
+              )}
+            </View>
+            <Text style={[styles.employeeRole, { color: textMuted }]}>{employee.role}</Text>
+          </View>
+
+          <TouchableOpacity onPress={() => openActions(employee)} style={styles.actionButton}>
+            <MoreHorizontal size={20} color={textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.cardDetails, { borderBottomColor: borderColor }]}>
+          <View style={styles.detailRow}>
+            <Mail size={14} color={textMuted} />
+            <Text style={[styles.detailText, { color: panelColors.dashboardTextColor }]} numberOfLines={1}>{employee.email}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Phone size={14} color={textMuted} />
+            <Text style={[styles.detailText, { color: panelColors.dashboardTextColor }]}>{employee.phone}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MapPin size={14} color={textMuted} />
+            <Text style={[styles.detailText, { color: panelColors.dashboardTextColor }]}>{employee.location}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardFooter}>
+          <Text style={[styles.statusIndicatorLabel, { color: statusColors[employee.status] }]}>
+            ● {statusLabels[employee.status]}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Team</Text>
-        <Text style={styles.subtitle}>{employees.length} members</Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={20} color={Colors.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search team members..."
-            placeholderTextColor={Colors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterContent}
-      >
-        {filters.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text style={[styles.filterChipText, filter === f.key && styles.filterChipTextActive]}>
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing || isLoading} onRefresh={onRefresh} />}
-      >
-        {filteredEmployees.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No team members found</Text>
+    <SafeAreaView style={[styles.safeContainer, { backgroundColor: panelColors.dashboardBackground }]}>
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        
+        {/* --- Header Area --- */}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.title, { color: panelColors.dashboardTextColor }]}>Employee Directory</Text>
+            <Text style={[styles.subtitle, { color: textMuted }]}>View and manage your team members</Text>
           </View>
-        ) : (
-          filteredEmployees.map((employee) => (
-            <View key={employee.id} style={styles.employeeCard}>
-              <View style={styles.employeeHeader}>
-                <View style={styles.avatarContainer}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {employee.name?.split(' ').map((n) => n[0]).join('') || '?'}
-                    </Text>
-                  </View>
-                  <View style={[styles.statusDot, { backgroundColor: getStatusColor(employee.status) }]} />
-                </View>
-                <View style={styles.employeeInfo}>
-                  <Text style={styles.employeeName}>{employee.name || 'Unknown'}</Text>
-                  <Text style={styles.employeeRole}>{employee.role || 'Staff'}</Text>
-                  <Text style={styles.employeeDept}>{employee.department || '-'}</Text>
-                </View>
-              </View>
-              <View style={styles.contactRow}>
-                <View style={styles.contactButton}>
-                  <Phone size={16} color={Colors.secondary} />
-                  <Text style={styles.contactText}>{employee.phone || '-'}</Text>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.viewProfile} onPress={() => openProfile(employee)}>
-                <Text style={styles.viewProfileText}>View Profile</Text>
-                <ChevronRight size={16} color={Colors.secondary} />
-              </TouchableOpacity>
-            </View>
-          ))
-        )}
-        <View style={{ height: 20 }} />
-      </ScrollView>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: customColors.primary }]} onPress={() => setIsCreateOpen(true)}>
+            <Plus size={18} color="#FFF" />
+            <Text style={styles.addBtnText}>Add</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Profile Modal */}
-      <Modal
-        visible={showProfileModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowProfileModal(false)}
-      >
-        <View style={[styles.modalContainer, { paddingTop: Platform.OS === 'ios' ? 20 : 0 }]}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Employee Profile</Text>
-            <TouchableOpacity onPress={() => setShowProfileModal(false)}>
-              <X size={24} color={Colors.text} />
+        {/* --- Filters Area --- */}
+        <View style={styles.filterSection}>
+          <View style={[styles.searchContainer, { backgroundColor: panelColors.dashboardCardBackground, borderColor: borderColor }]}>
+            <Search size={16} color={textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: panelColors.dashboardTextColor }]}
+              placeholder="Search by name, email, or role..."
+              placeholderTextColor={textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          <TouchableOpacity style={[styles.dropdownSelector, { backgroundColor: panelColors.dashboardCardBackground, borderColor: borderColor }]} onPress={() => setStatusPickerOpen(true)}>
+            <Text style={[styles.dropdownSelectorText, { color: panelColors.dashboardTextColor }]}>
+              {statusFilter === "all" ? "All Status" : statusLabels[statusFilter as keyof typeof statusLabels]}
+            </Text>
+            <ChevronDown size={16} color={textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* --- Employee Main Content Row --- */}
+        {employeesQuery.isLoading ? (
+          <View style={styles.centerSection}>
+            <ActivityIndicator size="large" color={customColors.primary} />
+            <Text style={[styles.loadingText, { color: textMuted }]}>Loading employees...</Text>
+          </View>
+        ) : filteredEmployees.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Users size={48} color={textMuted} />
+            <Text style={[styles.emptyTitle, { color: panelColors.dashboardTextColor }]}>No employees found</Text>
+            <Text style={[styles.emptySubtitle, { color: textMuted }]}>Try adjusting your filter options</Text>
+            <TouchableOpacity style={[styles.clearFiltersBtn, { borderColor: borderColor }]} onPress={() => { setSearchQuery(""); setStatusFilter("all"); }}>
+              <Text style={[styles.clearFiltersText, { color: panelColors.dashboardTextColor }]}>Clear filters</Text>
             </TouchableOpacity>
           </View>
+        ) : (
+          <FlatList
+            data={filteredEmployees}
+            keyExtractor={(item) => item.id}
+            renderItem={renderEmployeeCard}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
-          {selectedEmployee && (
-            <ScrollView style={styles.modalContent}>
-              <View style={styles.profileHeader}>
-                <View style={styles.profileAvatar}>
-                  <Text style={styles.profileAvatarText}>
-                    {selectedEmployee.name?.split(' ').map((n) => n[0]).join('') || '?'}
-                  </Text>
-                </View>
-                <Text style={styles.profileName}>{selectedEmployee.name}</Text>
-                <Text style={styles.profileRole}>{selectedEmployee.role}</Text>
-                <View
-                  style={[
-                    styles.profileStatusBadge,
-                    { backgroundColor: `${getStatusColor(selectedEmployee.status)}20` },
-                  ]}
-                >
-                  <View style={[styles.profileStatusDot, { backgroundColor: getStatusColor(selectedEmployee.status) }]} />
-                  <Text style={[styles.profileStatusText, { color: getStatusColor(selectedEmployee.status) }]}>
-                    {selectedEmployee.status?.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.profileSection}>
-                <Text style={styles.profileSectionTitle}>Contact Information</Text>
-                <View style={styles.profileInfoRow}>
-                  <Phone size={20} color={Colors.secondary} />
-                  <View style={styles.profileInfoContent}>
-                    <Text style={styles.profileInfoLabel}>Phone</Text>
-                    <Text style={styles.profileInfoValue}>{selectedEmployee.phone || '-'}</Text>
-                  </View>
-                </View>
-                <View style={styles.profileInfoRow}>
-                  <Mail size={20} color={Colors.secondary} />
-                  <View style={styles.profileInfoContent}>
-                    <Text style={styles.profileInfoLabel}>Email</Text>
-                    <Text style={styles.profileInfoValue}>{selectedEmployee.email || '-'}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.profileSection}>
-                <Text style={styles.profileSectionTitle}>Work Information</Text>
-                <View style={styles.profileInfoRow}>
-                  <ClipboardCheck size={20} color={Colors.secondary} />
-                  <View style={styles.profileInfoContent}>
-                    <Text style={styles.profileInfoLabel}>Department</Text>
-                    <Text style={styles.profileInfoValue}>{selectedEmployee.department || '-'}</Text>
-                  </View>
-                </View>
-                <View style={styles.profileInfoRow}>
-                  <Clock size={20} color={Colors.secondary} />
-                  <View style={styles.profileInfoContent}>
-                    <Text style={styles.profileInfoLabel}>Role</Text>
-                    <Text style={styles.profileInfoValue}>{selectedEmployee.role || '-'}</Text>
-                  </View>
-                </View>
-              </View>
-            </ScrollView>
-          )}
+        {/* --- Stats Footer Summary Bar --- */}
+        <View style={[styles.statsFooter, { backgroundColor: panelColors.dashboardBackground, borderTopColor: borderColor }]}>
+          <Text style={[styles.statsMainCount, { color: textMuted }]}>
+            Showing {filteredEmployees.length} of {employees.length}
+          </Text>
+          <View style={styles.statsIndicatorContainer}>
+            <Text style={[styles.statDotUnit, { color: statusColors.active }]}>
+              ● {employees.filter((e) => e.status === "active").length} Active
+            </Text>
+            <Text style={[styles.statDotUnit, { color: statusColors["on-leave"] }]}>
+              ● {employees.filter((e) => e.status === "on-leave").length} Leave
+            </Text>
+          </View>
         </View>
-      </Modal>
-    </View>
+
+        {/* --- Global Filter Dropdown Picker Overlay --- */}
+        <Modal visible={statusPickerOpen} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.bottomSheetContainer, { backgroundColor: panelColors.dashboardCardBackground }]}>
+              <View style={styles.bottomSheetHeader}>
+                <Text style={[styles.bottomSheetTitle, { color: panelColors.dashboardTextColor }]}>Select Status Filter</Text>
+                <TouchableOpacity onPress={() => setStatusPickerOpen(false)}>
+                  <X size={20} color={panelColors.dashboardTextColor} />
+                </TouchableOpacity>
+              </View>
+              {["all", "active", "inactive", "on-leave"].map((statusOption) => (
+                <TouchableOpacity
+                  key={statusOption}
+                  style={[styles.pickerItem, { borderBottomColor: borderColor }]}
+                  onPress={() => {
+                    setStatusFilter(statusOption);
+                    setStatusPickerOpen(false);
+                  }}
+                >
+                  <Text style={[styles.pickerItemText, { color: panelColors.dashboardTextColor }]}>
+                    {statusOption === "all" ? "All Status" : statusLabels[statusOption as keyof typeof statusLabels]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Modal>
+
+        {/* --- Input Form Modals --- */}
+        <EmployeeFormModal
+          visible={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+          onSubmit={onCreateEmployee}
+          companies={companies}
+          formTitle="Add Employee"
+          formHook={createForm}
+          themeContext={{ panelColors, customColors, textMuted, borderColor }}
+        />
+
+        <EmployeeFormModal
+          visible={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          onSubmit={onEditEmployee}
+          companies={companies}
+          formTitle="Edit Employee"
+          formHook={editForm}
+          themeContext={{ panelColors, customColors, textMuted, borderColor }}
+        />
+
+        {/* --- Detailed Profile View Modal Overlays --- */}
+        <Modal visible={isViewOpen} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.viewDetailsContainer, { backgroundColor: panelColors.dashboardCardBackground }]}>
+              <View style={styles.bottomSheetHeader}>
+                <Text style={[styles.bottomSheetTitle, { color: panelColors.dashboardTextColor }]}>Employee Details</Text>
+                <TouchableOpacity onPress={() => setIsViewOpen(false)}>
+                  <X size={20} color={panelColors.dashboardTextColor} />
+                </TouchableOpacity>
+              </View>
+
+              {selectedEmployee && (
+                <View style={styles.viewDetailsBody}>
+                  <View style={styles.viewDetailsHeaderArea}>
+                    <View style={[styles.largeAvatar, isDarkBase ? { backgroundColor: "#334155" } : { backgroundColor: "#EEF2F6" }]}>
+                      <Text style={[styles.largeAvatarText, { color: customColors.secondary }]}>{getInitials(selectedEmployee.name)}</Text>
+                    </View>
+                    <Text style={[styles.viewDetailsName, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.name}</Text>
+                    <Text style={[styles.viewDetailsRole, { color: textMuted }]}>{selectedEmployee.role}</Text>
+                  </View>
+
+                  <ScrollView style={styles.viewDetailsGrid}>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Email</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.email}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Phone</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.phone}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Location</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.location}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Category</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.category || "N/A"}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Company</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.company || "N/A"}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Status</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{statusLabels[selectedEmployee.status]}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Shift</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{selectedEmployee.shift || "N/A"}</Text></View>
+                    <View style={styles.infoBlock}><Text style={[styles.infoLabel, { color: textMuted }]}>Join Date</Text><Text style={[styles.infoValue, { color: panelColors.dashboardTextColor }]}>{new Date(selectedEmployee.joinDate).toLocaleDateString()}</Text></View>
+                  </ScrollView>
+
+                  <View style={styles.viewDetailsFooterRow}>
+                    <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: panelColors.dashboardCardBackground, borderColor: borderColor }]} onPress={() => setIsViewOpen(false)}>
+                      <Text style={[styles.secondaryBtnText, { color: panelColors.dashboardTextColor }]}>Close</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: customColors.primary }]} onPress={() => { setIsViewOpen(false); openEdit(selectedEmployee); }}>
+                      <Text style={styles.primaryBtnText}>Edit Profile</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+      </Animated.View>
+    </SafeAreaView>
   );
 }
 
+// --- Dynamic Theme Aware Input Form Modal Component ---
+function EmployeeFormModal({
+  visible, onClose, onSubmit, companies, formTitle, formHook, themeContext
+}: {
+  visible: boolean; onClose: () => void; onSubmit: (values: CreateEmployeeValues) => void;
+  companies: Company[]; formTitle: string; formHook: any; themeContext: any;
+}) {
+  const { panelColors, customColors, textMuted, borderColor } = themeContext;
+  const [formCompanyPicker, setFormCompanyPicker] = useState(false);
+  const [formStatusPicker, setFormStatusPicker] = useState(false);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+        <View style={[styles.formContainerSheet, { backgroundColor: panelColors.dashboardCardBackground }]}>
+          <View style={styles.bottomSheetHeader}>
+            <Text style={[styles.bottomSheetTitle, { color: panelColors.dashboardTextColor }]}>{formTitle}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <X size={20} color={panelColors.dashboardTextColor} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.formScrollBody} showsVerticalScrollIndicator={false}>
+            {/* Input fields render loop context mapping */}
+            {[
+              { id: "firstName", label: "First Name *" },
+              { id: "lastName", label: "Last Name *" },
+              { id: "email", label: "Email *", keyboard: "email-address" },
+              { id: "phone", label: "Phone *", keyboard: "phone-pad" },
+              { id: "category", label: "Category" },
+              { id: "role", label: "Role *" },
+            ].map((fieldItem) => (
+              <React.Fragment key={fieldItem.id}>
+                <Text style={[styles.formLabelText, { color: panelColors.dashboardTextColor }]}>{fieldItem.label}</Text>
+                <Controller
+                  control={formHook.control}
+                  name={fieldItem.id}
+                  render={({ field: { onChange, value }, fieldState: { error } }) => (
+                    <View>
+                      <TextInput
+                        style={[styles.formTextInput, { backgroundColor: panelColors.dashboardBackground, borderColor: borderColor, color: panelColors.dashboardTextColor }]}
+                        placeholder={fieldItem.label}
+                        placeholderTextColor={textMuted}
+                        keyboardType={fieldItem.keyboard as any || "default"}
+                        autoCapitalize={fieldItem.id === "email" ? "none" : "sentences"}
+                        value={value}
+                        onChangeText={onChange}
+                      />
+                      {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
+                  )}
+                />
+              </React.Fragment>
+            ))}
+
+            {/* Company Custom Picker Dropdown */}
+            <Text style={[styles.formLabelText, { color: panelColors.dashboardTextColor }]}>Company</Text>
+            <Controller
+              control={formHook.control}
+              name="company"
+              render={({ field: { onChange, value } }) => (
+                <View>
+                  <TouchableOpacity style={[styles.formDropdownRow, { backgroundColor: panelColors.dashboardBackground, borderColor: borderColor }]} onPress={() => setFormCompanyPicker(true)}>
+                    <Text style={{ color: value ? panelColors.dashboardTextColor : textMuted }}>{value || "Select Company"}</Text>
+                    <ChevronDown size={16} color={textMuted} />
+                  </TouchableOpacity>
+
+                  <Modal visible={formCompanyPicker} transparent animationType="fade">
+                    <View style={styles.modalOverlayInside}>
+                      <View style={[styles.innerPickerBox, { backgroundColor: panelColors.dashboardCardBackground }]}>
+                        <FlatList
+                          data={[...companies, { id: "__other__", name: "Other" }]}
+                          keyExtractor={(item) => item.id}
+                          renderItem={({ item }) => (
+                            <TouchableOpacity
+                              style={[styles.innerPickerOption, { borderBottomColor: borderColor }]}
+                              onPress={() => {
+                                onChange(item.id === "__other__" ? "" : item.name);
+                                setFormCompanyPicker(false);
+                              }}
+                            >
+                              <Text style={{ color: panelColors.dashboardTextColor, textAlign: "center" }}>{item.name}</Text>
+                            </TouchableOpacity>
+                          )}
+                        />
+                      </View>
+                    </View>
+                  </Modal>
+                </View>
+              )}
+            />
+
+            {/* Status Custom Picker Dropdown */}
+            <Text style={[styles.formLabelText, { color: panelColors.dashboardTextColor }]}>Status *</Text>
+            <Controller
+              control={formHook.control}
+              name="status"
+              render={({ field: { onChange, value } }) => (
+                <View>
+                  <TouchableOpacity style={[styles.formDropdownRow, { backgroundColor: panelColors.dashboardBackground, borderColor: borderColor }]} onPress={() => setFormStatusPicker(true)}>
+                    <Text style={{ color: panelColors.dashboardTextColor }}>{statusLabels[value as keyof typeof statusLabels] || "Select Status"}</Text>
+                    <ChevronDown size={16} color={textMuted} />
+                  </TouchableOpacity>
+
+                  <Modal visible={formStatusPicker} transparent animationType="fade">
+                    <View style={styles.modalOverlayInside}>
+                      <View style={[styles.innerPickerBox, { backgroundColor: panelColors.dashboardCardBackground }]}>
+                        {["active", "inactive", "on-leave"].map((statusKey) => (
+                          <TouchableOpacity
+                            key={statusKey}
+                            style={[styles.innerPickerOption, { borderBottomColor: borderColor }]}
+                            onPress={() => {
+                              onChange(statusKey);
+                              setFormStatusPicker(false);
+                            }}
+                          >
+                            <Text style={{ color: panelColors.dashboardTextColor, textAlign: "center" }}>{statusLabels[statusKey as keyof typeof statusLabels]}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </Modal>
+                </View>
+              )}
+            />
+
+            {/* Remaining Descriptive Info Fields */}
+            {[
+              { id: "payRate", label: "Pay Rate", placeholder: "e.g. $25/hr" },
+              { id: "shift", label: "Shift", placeholder: "e.g. 09:00 - 17:00" },
+              { id: "hireDate", label: "Hire Date (YYYY-MM-DD)", placeholder: "YYYY-MM-DD" },
+              { id: "location", label: "Location *", placeholder: "e.g. Main Office" },
+              { id: "joinDate", label: "Join Date * (YYYY-MM-DD)", placeholder: "YYYY-MM-DD" },
+            ].map((descField) => (
+              <React.Fragment key={descField.id}>
+                <Text style={[styles.formLabelText, { color: panelColors.dashboardTextColor }]}>{descField.label}</Text>
+                <Controller
+                  control={formHook.control}
+                  name={descField.id}
+                  render={({ field: { onChange, value }, fieldState: { error } }) => (
+                    <View>
+                      <TextInput
+                        style={[styles.formTextInput, { backgroundColor: panelColors.dashboardBackground, borderColor: borderColor, color: panelColors.dashboardTextColor }]}
+                        placeholder={descField.placeholder}
+                        placeholderTextColor={textMuted}
+                        value={value}
+                        onChangeText={onChange}
+                      />
+                      {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
+                  )}
+                />
+              </React.Fragment>
+            ))}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+
+          <View style={[styles.bottomSheetFooterRow, { borderTopColor: borderColor }]}>
+            <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: panelColors.dashboardCardBackground, borderColor: borderColor }]} onPress={onClose}>
+              <Text style={[styles.secondaryBtnText, { color: panelColors.dashboardTextColor }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: customColors.primary }]} onPress={formHook.handleSubmit(onSubmit)}>
+              <Text style={styles.primaryBtnText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// --- Component Static Styles Base Configuration ---
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    width: "100%",
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    color: Colors.text,
+    fontSize: 24,
+    fontWeight: "700",
   },
   subtitle: {
     fontSize: 14,
-    color: Colors.textTertiary,
-    marginTop: 4,
+    marginTop: 2,
+  },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    gap: 4,
+  },
+  addBtnText: {
+    color: "#FFF",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  filterSection: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 16,
+    alignItems: "center",
   },
   searchContainer: {
-    paddingHorizontal: 16,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    fontSize: 15,
-    color: Colors.text,
+    height: 40,
+    fontSize: 14,
   },
-  filterScroll: {
-    maxHeight: 50,
-    marginTop: 12,
-  },
-  filterContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
+  dropdownSelector: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    gap: 6,
   },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+  dropdownSelectorText: {
+    fontSize: 14,
   },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    color: Colors.textSecondary,
+  listContainer: {
+    paddingBottom: 20,
   },
-  filterChipTextActive: {
-    color: Colors.surface,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-    marginTop: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: Colors.textTertiary,
-  },
-  employeeCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+    position: "relative",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  employeeHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  statusBadgeOverlay: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    zIndex: 10,
+  },
+  lunchBg: { backgroundColor: "#D97706" },
+  breakBg: { backgroundColor: "#7C3AED" },
+  statusBadgeText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarText: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    color: Colors.surface,
+    fontWeight: "600",
+    fontSize: 15,
   },
   statusDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: Colors.surface,
+    borderColor: "#FFF",
   },
-  employeeInfo: {
+  headerMeta: {
     flex: 1,
-    marginLeft: 14,
+    marginLeft: 12,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   employeeName: {
     fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
+    fontWeight: "600",
   },
   employeeRole: {
     fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
-  employeeDept: {
+  actionButton: {
+    padding: 6,
+  },
+  cardDetails: {
+    gap: 6,
+    borderBottomWidth: 1,
+    paddingBottom: 12,
+    marginBottom: 10,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+  },
+  statusIndicatorLabel: {
     fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 2,
+    fontWeight: "600",
   },
-  contactRow: {
-    flexDirection: 'row',
-    marginTop: 14,
+  statsFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    paddingVertical: 12,
+    width: "100%",
+  },
+  statsMainCount: {
+    fontSize: 12,
+  },
+  statsIndicatorContainer: {
+    flexDirection: "row",
     gap: 12,
   },
-  contactButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
-  },
-  contactText: {
+  statDotUnit: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    fontWeight: "500",
   },
-  viewProfile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-  },
-  viewProfileText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.secondary,
-  },
-  modalContainer: {
+  centerSection: {
     flex: 1,
-    backgroundColor: Colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  modalContent: {
-    flex: 1,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: Colors.surface,
-  },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  profileAvatarText: {
-    fontSize: 28,
-    fontWeight: '600' as const,
-    color: Colors.surface,
-  },
-  profileName: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  profileRole: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-  profileStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 12,
-    gap: 6,
-  },
-  profileStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  profileStatusText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-  },
-  profileSection: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  profileSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  profileInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 14,
-  },
-  profileInfoContent: {
-    flex: 1,
-  },
-  profileInfoLabel: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-  profileInfoValue: {
-    fontSize: 15,
-    color: Colors.text,
-    marginTop: 2,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
+    marginTop: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyTitle: {
     fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 16,
+    fontWeight: "600",
+    marginTop: 12,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  clearFiltersBtn: {
+    marginTop: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 6,
+  },
+  clearFiltersText: {
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalOverlayInside: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bottomSheetContainer: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 34,
+  },
+  bottomSheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  pickerItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  pickerItemText: {
+    fontSize: 15,
+  },
+  viewDetailsContainer: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: "85%",
+  },
+  viewDetailsBody: {
+    gap: 16,
+  },
+  viewDetailsHeaderArea: {
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  largeAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  largeAvatarText: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  viewDetailsName: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  viewDetailsRole: {
+    fontSize: 14,
+  },
+  viewDetailsGrid: {
+    maxHeight: 240,
+  },
+  infoBlock: {
+    marginBottom: 12,
+  },
+  infoLabel: {
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  viewDetailsFooterRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+  primaryBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  primaryBtnText: {
+    color: "#FFF",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  secondaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    height: 44,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  secondaryBtnText: {
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  formContainerSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    height: "90%",
+  },
+  formScrollBody: {
+    flex: 1,
+  },
+  formLabelText: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  formTextInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  formDropdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 12,
+  },
+  bottomSheetFooterRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  innerPickerBox: {
+    width: "80%",
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: "60%",
+  },
+  innerPickerOption: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
 });

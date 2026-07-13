@@ -1,538 +1,625 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  Modal,
+  ScrollView,
   TextInput,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { Edit3, MessageCircle, Menu, Search, X, User } from 'lucide-react-native';
-import Colors from '@/constants/colors';
-import { useSidebar } from '@/contexts/SidebarContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { apiRequest } from '@/services/api';
-import { Conversation } from '@/types';
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
+  Image,
+  Dimensions,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import {
+  MessageCircle,
+  Send,
+  Search,
+  ChevronLeft,
+  Check,
+  CheckCheck,
+  Paperclip,
+  Download,
+} from "lucide-react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
-type UserItem = {
+// --- Hooks / Context / API Imports ---
+// Maintain standard project configurations for your API endpoints and socket states
+import { useSocket } from "@/contexts/SocketContext";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getEmployeeConversations,
+  getConversation,
+  sendMessage,
+  markMessagesAsRead,
+  getEmployeeProfile,
+  uploadMessageAttachment,
+  toProxiedUrl,
+} from "@/lib/admin/apiClient";
+
+interface Conversation {
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    department: string;
+    status: string;
+    initials: string;
+    avatarUrl?: string;
+    current_status?: string;
+    lunch_start_time?: string | null;
+    lunch_expected_end?: string | null;
+    break_start_time?: string | null;
+  };
+  lastMessage: {
+    id: string;
+    content: string;
+    timestamp: string;
+    sender: string;
+    status: string;
+  } | null;
+  unreadCount: number;
+}
+
+interface Message {
   id: string;
-  name: string;
-  username?: string;
-  email?: string;
-  role: string;
-  status?: string;
-  avatarUrl?: string;
+  sender: string;
+  recipient: string;
+  content: string;
+  timestamp: string;
+  type: string;
+  status: string;
+  attachment?: { fileName?: string; url?: string; mimeType?: string; size?: number };
+}
+
+const normalizeMessage = (m: any): Message => {
+  return {
+    id: String(m.id || m._id || ""),
+    sender: String(m.sender || ""),
+    recipient: String(m.recipient || ""),
+    content: String(m.content || ""),
+    timestamp: String(m.timestamp || m.createdAt || new Date().toISOString()),
+    type: String(m.type || "direct"),
+    status: String(m.status || "sent"),
+    attachment: m.attachment,
+  };
 };
 
-export default function MessagesScreen() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { openSidebar } = useSidebar();
-  const { user } = useAuth();
-  const [showUserList, setShowUserList] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+export default function EmployeeMessagesScreen() {
+  const queryClient = useQueryClient();
+  const { socket } = useSocket();
 
-  const { data: conversations } = useQuery<Conversation[]>({
-    queryKey: ['conversations'],
-    queryFn: async () => {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [employeeName, setEmployeeName] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [messageInput, setMessageInput] = useState("");
+  
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
+
+  const [nowTime, setNowTime] = useState(Date.now());
+  const chatScrollViewRef = useRef<ScrollView>(null);
+
+  // Live Timer for status metadata calculations
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Fetch initial base context profile and conversations 
+  useEffect(() => {
+    const loadConversations = async () => {
       try {
-        const res = await apiRequest<{ items: any[] }>('/messages');
-        const items = res.data?.items ?? [];
+        const profileRes = await getEmployeeProfile();
+        const name = profileRes.item.name;
+        setEmployeeName(name);
 
-        const myId = user?.id || user?.fullName || user?.username || 'employee';
+        const convRes = await getEmployeeConversations(name);
+        setConversations(convRes.items || []);
+      } catch (err) {
+        console.error("Failed to load conversations:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadConversations();
+  }, []);
 
-        const map = new Map<string, any>();
-        for (const m of items) {
-          const sender = String(m.sender || '');
-          const recipient = String(m.recipient || '');
-          const other = sender === myId ? recipient : sender;
-          if (!other) continue;
+  // Live Sync Socket Engine 
+  useEffect(() => {
+    if (!socket || !employeeName) return;
 
-          const prev = map.get(other);
-          if (!prev || new Date(String(m.timestamp || 0)).getTime() > new Date(String(prev.timestamp || 0)).getTime()) {
-            map.set(other, m);
-          }
+    const handleNewMessage = (data: any) => {
+      if (data.sender === employeeName || data.recipient === employeeName) {
+        const normalized = normalizeMessage(data);
+        if (!normalized.id) return;
+
+        const partnerName = selectedConversation?.employee?.name;
+        if (partnerName && (normalized.sender === partnerName || normalized.recipient === partnerName)) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === normalized.id)) return prev;
+            return [...prev, normalized].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+          });
+          setTimeout(() => chatScrollViewRef.current?.scrollToEnd({ animated: true }), 100);
         }
 
-        const derived: Conversation[] = Array.from(map.entries()).map(([other, last]) => ({
-          id: other,
-          participantName: other,
-          participantRole: String(last.type || ''),
-          participantAvatar: String(last.senderAvatar || ''),
-          lastMessage: String(last.content || ''),
-          lastMessageTime: String(last.timestamp || new Date().toISOString()),
-          unreadCount: 0,
-        }));
-
-        return derived;
-      } catch {
-        return [];
+        getEmployeeConversations(employeeName)
+          .then((res) => setConversations(res.items || []))
+          .catch(() => {});
       }
-    },
-  });
+    };
 
-  // Fetch all users for messaging
-  const { data: allUsers } = useQuery<UserItem[]>({
-    queryKey: ['allUsers'],
-    queryFn: async () => {
+    const handleStatusUpdate = (payload: any) => {
+      const updateFn = (c: Conversation) => {
+        if (c.employee.id === payload.userId || c.employee.name === payload.name) {
+          return {
+            ...c,
+            employee: {
+              ...c.employee,
+              current_status: payload.current_status,
+              lunch_start_time: payload.lunch_start_time,
+              lunch_expected_end: payload.lunch_expected_end,
+              break_start_time: payload.break_start_time,
+            },
+          };
+        }
+        return c;
+      };
+
+      setConversations((prev) => prev.map(updateFn));
+      setSelectedConversation((prev) => (prev ? updateFn(prev) : null));
+    };
+
+    socket.on("new-message", handleNewMessage);
+    socket.on("status-update", handleStatusUpdate);
+
+    return () => {
+      socket.off("new-message", handleNewMessage);
+      socket.off("status-update", handleStatusUpdate);
+    };
+  }, [socket, employeeName, selectedConversation?.employee?.name]);
+
+  // Polling fallback
+  useEffect(() => {
+    if (!selectedConversation || !employeeName) return;
+    const interval = setInterval(async () => {
       try {
-        const res = await apiRequest<{ items: UserItem[] }>('/users/all');
-        return res.data?.items ?? [];
-      } catch {
-        return [];
+        const res = await getConversation(employeeName, selectedConversation.employee.name);
+        setMessages(res.items || []);
+      } catch { /* silence polling errors */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedConversation?.employee?.name, employeeName]);
+
+  // Load and Mark Active Chat Thread
+  useEffect(() => {
+    if (!selectedConversation || !employeeName) return;
+
+    const loadMessages = async () => {
+      try {
+        const res = await getConversation(employeeName, selectedConversation.employee.name);
+        setMessages(res.items || []);
+        setTimeout(() => chatScrollViewRef.current?.scrollToEnd({ animated: false }), 50);
+
+        if (selectedConversation.unreadCount > 0) {
+          await markMessagesAsRead(selectedConversation.employee.name, employeeName);
+          queryClient.invalidateQueries({ queryKey: ["employee-conversations-preview", employeeName] });
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.employee.id === selectedConversation.employee.id ? { ...c, unreadCount: 0 } : c
+            )
+          );
+        }
+      } catch (err) {
+        console.error(err);
       }
-    },
-    enabled: showUserList,
-  });
+    };
+    loadMessages();
+  }, [selectedConversation, employeeName]);
 
-  const myId = user?.id || user?.fullName || user?.username || 'employee';
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || !selectedConversation || !employeeName) return;
 
-  // Filter out current user and apply search
-  const filteredUsers = allUsers?.filter(u => {
-    if (u.id === myId) return false;
-    if (u.username === myId) return false;
-    if (u.name === myId) return false;
-    
-    if (!searchQuery) return true;
-    
-    const query = searchQuery.toLowerCase();
-    return (
-      u.name?.toLowerCase().includes(query) ||
-      u.username?.toLowerCase().includes(query) ||
-      u.email?.toLowerCase().includes(query) ||
-      u.role?.toLowerCase().includes(query)
-    );
-  }) ?? [];
+    setSending(true);
+    try {
+      const payload = {
+        sender: employeeName,
+        recipient: selectedConversation.employee.name,
+        content: messageInput.trim(),
+        timestamp: new Date().toISOString(),
+        type: "direct",
+        status: "sent",
+      };
 
-  const formatTime = (isoString: string) => {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
+      const res = await sendMessage(payload);
+      const normalized = normalizeMessage(res.item);
+      
+      setMessages((prev) => [...prev, normalized]);
+      setMessageInput("");
+      setTimeout(() => chatScrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
-    if (diffHours < 24) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.employee.id === selectedConversation.employee.id ? { ...c, lastMessage: res.item } : c
+        )
+      );
+    } catch (err) {
+      Alert.alert("Transmission Error", "Could not send text message.");
+    } finally {
+      setSending(false);
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const startConversation = (targetUser: UserItem) => {
-    setShowUserList(false);
-    const conversationId = targetUser.username || targetUser.name || targetUser.id;
-    router.push(`/(tabs)/messages/${encodeURIComponent(conversationId)}` as any);
+  const handleAttachFile = async () => {
+    if (!selectedConversation || !employeeName) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) return;
+
+      setUploading(true);
+      const fileAsset = result.assets[0];
+      
+      // Map document layout data structure to a compatible native file package object
+      const filePayload: any = {
+        uri: fileAsset.uri,
+        name: fileAsset.name,
+        type: fileAsset.mimeType || "application/octet-stream",
+      };
+
+      const up = await uploadMessageAttachment(filePayload);
+      const payload = {
+        sender: employeeName,
+        recipient: selectedConversation.employee.name,
+        content: "",
+        timestamp: new Date().toISOString(),
+        type: "direct",
+        status: "sent",
+        attachment: up.attachment,
+      };
+
+      const res = await sendMessage(payload);
+      setMessages((prev) => [...prev, normalizeMessage(res.item)]);
+      setTimeout(() => chatScrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (err) {
+      Alert.alert("Upload Failed", "Error processing document payload binary.");
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const renderUserItem = ({ item }: { item: UserItem }) => (
-    <TouchableOpacity
-      style={styles.userItem}
-      onPress={() => startConversation(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.userAvatarContainer}>
-        {item.avatarUrl ? (
-          <Image source={{ uri: item.avatarUrl }} style={styles.userAvatar} />
-        ) : (
-          <View style={styles.userAvatarPlaceholder}>
-            <Text style={styles.userAvatarInitial}>{item.name?.charAt(0)?.toUpperCase()}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.name}</Text>
-        <Text style={styles.userRole}>{item.role}</Text>
-        {item.email && <Text style={styles.userEmail}>{item.email}</Text>}
-      </View>
-      <MessageCircle color={Colors.primary} size={20} />
-    </TouchableOpacity>
+  const downloadAttachmentNative = async (url: string, fileName: string) => {
+    const safeUrl = toProxiedUrl(url) || url;
+    try {
+      const localTargetUri = `${FileSystem.documentDirectory}${Date.now()}_${fileName}`;
+      const { uri } = await FileSystem.downloadAsync(safeUrl, localTargetUri);
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        Alert.alert("Success", `File saved down to safe workspace folder location: ${uri}`);
+      }
+    } catch (err) {
+      Alert.alert("Download Interrupted", "Could not process media streams natively.");
+    }
+  };
+
+  // Status Style Helper mappings 
+  const getAvatarBorderColor = (empStatus: string | undefined) => {
+    if (empStatus === "LUNCH") return "#f59e0b";
+    if (empStatus === "BREAK") return "#8b5cf6";
+    return "#27272a";
+  };
+
+  const getSubtitleText = (emp: any) => {
+    if (emp.current_status === "LUNCH" && emp.lunch_start_time) {
+      const start = new Date(emp.lunch_start_time).getTime();
+      const expectedEnd = emp.lunch_expected_end ? new Date(emp.lunch_expected_end).getTime() : start + 30 * 60 * 1000;
+      const diff = expectedEnd - nowTime;
+      if (diff > 0) return `Lunch (${Math.floor(diff / 60000)}m remaining)`;
+      return `Lunch (${Math.floor(-diff / 60000)}m overdue)`;
+    }
+    if (emp.current_status === "BREAK" && emp.break_start_time) {
+      const start = new Date(emp.break_start_time).getTime();
+      const diff = start + 15 * 60 * 1000 - nowTime;
+      if (diff > 0) return `Break (${Math.floor(diff / 60000)}m remaining)`;
+      return `Break (${Math.floor(-diff / 60000)}m overdue)`;
+    }
+    return emp.department || "No department listed";
+  };
+
+  const formatTime = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  };
+
+  const filteredConversations = conversations.filter((c) =>
+    c.employee.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const renderConversation = ({ item }: { item: Conversation }) => (
-    <TouchableOpacity
-      style={styles.convItem}
-      onPress={() => router.push(`/(tabs)/messages/${encodeURIComponent(item.id)}` as any)}
-      activeOpacity={0.7}
-      testID={`conversation-${item.id}`}
-    >
-      <View style={styles.avatarContainer}>
-        {item.participantAvatar ? (
-          <Image source={{ uri: item.participantAvatar }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarInitial}>
-              {item.participantName.charAt(0)}
-            </Text>
-          </View>
-        )}
-        {item.unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{item.unreadCount}</Text>
-          </View>
-        )}
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#3b82f6" />
       </View>
+    );
+  }
 
-      <View style={styles.convContent}>
-        <View style={styles.convTopRow}>
-          <Text
-            style={[styles.convName, item.unreadCount > 0 && styles.convNameUnread]}
-            numberOfLines={1}
-          >
-            {item.participantName}
-          </Text>
-          <Text style={styles.convTime}>{formatTime(item.lastMessageTime)}</Text>
-        </View>
-        <Text style={styles.convRole}>{item.participantRole}</Text>
-        <Text
-          style={[styles.convLastMsg, item.unreadCount > 0 && styles.convLastMsgUnread]}
-          numberOfLines={1}
-        >
-          {item.lastMessage}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <MessageCircle color={Colors.textTertiary} size={48} />
-      <Text style={styles.emptyTitle}>No messages yet</Text>
-      <Text style={styles.emptySubtitle}>Tap the + button to start a conversation</Text>
-    </View>
-  );
-
-  return (
-    <View style={[styles.container, { paddingTop: /*insets.top*/0 }]}>
-      <View style={styles.header}>
-       {/* <TouchableOpacity
-          style={styles.hamburgerBtn}
-          onPress={openSidebar}
-          activeOpacity={0.7}
-          testID="messages-hamburger"
-        >
-          <Menu color={Colors.surface} size={22} />
-        </TouchableOpacity>*/}
-        <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity 
-          style={styles.composeBtn}
-          onPress={() => setShowUserList(true)}
-        >
-          <Edit3 color={Colors.surface} size={18} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.content}>
-        <FlatList
-          data={conversations}
-          renderItem={renderConversation}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={renderEmpty}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      </View>
-
-      {/* User Selection Modal */}
-      <Modal
-        visible={showUserList}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowUserList(false)}
+  // --- RENDERING ROUTE A: EXPANDED LIVE CONVERSATION VIEWPORT ---
+  if (selectedConversation) {
+    return (
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={90}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Message</Text>
-              <TouchableOpacity onPress={() => setShowUserList(false)}>
-                <X color={Colors.text} size={24} />
-              </TouchableOpacity>
-            </View>
+        {/* Chat Control Header */}
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => setSelectedConversation(null)} style={styles.backButton}>
+            <ChevronLeft color="#ffffff" size={24} />
+          </TouchableOpacity>
 
-            <View style={styles.searchContainer}>
-              <Search color={Colors.textTertiary} size={18} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search users..."
-                placeholderTextColor={Colors.textTertiary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-
-            <FlatList
-              data={filteredUsers}
-              renderItem={renderUserItem}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.userList}
-              showsVerticalScrollIndicator={false}
-              ListEmptyComponent={() => (
-                <View style={styles.emptyUsersContainer}>
-                  <User color={Colors.textTertiary} size={48} />
-                  <Text style={styles.emptyUsersText}>No users found</Text>
-                </View>
-              )}
-            />
+          <View style={[styles.avatarContainer, { borderColor: getAvatarBorderColor(selectedConversation.employee.current_status), borderWidth: 2 }]}>
+            <Text style={styles.avatarText}>{selectedConversation.employee.initials}</Text>
           </View>
+
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerNameText} numberOfLines={1}>{selectedConversation.employee.name}</Text>
+            <Text style={styles.headerStatusSub} numberOfLines={1}>{getSubtitleText(selectedConversation.employee)}</Text>
+          </View>
+
+          <View style={[styles.statusIndicator, { backgroundColor: selectedConversation.employee.status === "active" ? "#22c55e" : "#71717a" }]} />
         </View>
-      </Modal>
+
+        {/* Dynamic Scroll Content Array */}
+        <ScrollView 
+          ref={chatScrollViewRef}
+          contentContainerStyle={styles.chatScrollContent}
+          onContentSizeChange={() => chatScrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
+          {messages.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MessageCircle color="#3f3f46" size={48} />
+              <Text style={styles.emptyStateText}>No messages layout loaded. Say hello!</Text>
+            </View>
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.sender === employeeName;
+              const hasAttachment = !!msg.attachment?.url;
+              const isImg = msg.attachment?.mimeType?.startsWith("image/");
+
+              return (
+                <View key={msg.id} style={[styles.messageBubbleRow, isMe ? styles.rowMe : styles.rowThem]}>
+                  <View style={[styles.bubbleBlock, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                    
+                    {hasAttachment && (
+                      <View style={styles.attachmentWrapper}>
+                        {isImg ? (
+                          <TouchableOpacity onPress={() => setPreview({ url: msg.attachment!.url!, fileName: msg.attachment!.fileName! })}>
+                            <Image source={{ uri: toProxiedUrl(msg.attachment!.url!) }} style={styles.inlineImagePreview} />
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity 
+                            style={styles.fileDownloadBtn} 
+                            onPress={() => downloadAttachmentNative(msg.attachment!.url!, msg.attachment!.fileName!)}
+                          >
+                            <Download color="#3b82f6" size={16} style={{ marginRight: 6 }} />
+                            <Text style={styles.fileDownloadText} numberOfLines={1}>{msg.attachment!.fileName}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+
+                    {msg.content?.trim() ? <Text style={styles.messageTextContent}>{msg.content}</Text> : null}
+
+                    <View style={styles.bubbleFooterRow}>
+                      <Text style={styles.bubbleTimeStr}>{formatTime(msg.timestamp)}</Text>
+                      {isMe && (msg.status === "read" ? <CheckCheck color="#38bdf8" size={12} /> : <Check color="#a1a1aa" size={12} />)}
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+
+        {/* Message Input Strip Bar */}
+        <View style={styles.inputDockContainer}>
+          <TouchableOpacity style={styles.dockActionBtn} onPress={handleAttachFile} disabled={uploading}>
+            {uploading ? <ActivityIndicator size="small" color="#ffffff" /> : <Paperclip color="#a1a1aa" size={20} />}
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.dockInputStyle}
+            placeholder="Write an internal secure reply..."
+            placeholderTextColor="#71717a"
+            value={messageInput}
+            onChangeText={setMessageInput}
+            multiline
+          />
+
+          <TouchableOpacity 
+            style={[styles.sendActionBtn, !messageInput.trim() && styles.disabledSendBtn]} 
+            onPress={handleSendMessage}
+            disabled={!messageInput.trim() || sending}
+          >
+            <Send color="#ffffff" size={18} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Media Overlay Lightbox Viewer Modal */}
+        <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+          <View style={styles.modalLightboxContainer}>
+            <View style={styles.modalTopNavbar}>
+              <Text style={styles.lightboxTitleText} numberOfLines={1}>{preview?.fileName}</Text>
+              <View style={{ flexDirection: "row", gap: 14 }}>
+                <TouchableOpacity onPress={() => downloadAttachmentNative(preview!.url, preview!.fileName)}>
+                  <Download color="#ffffff" size={22} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPreview(null)}>
+                  <Text style={styles.lightboxCloseLabel}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {preview?.url && <Image source={{ uri: toProxiedUrl(preview.url) }} style={styles.lightboxImageFrame} resizeMode="contain" />}
+          </View>
+        </Modal>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // --- RENDERING ROUTE B: CORE CHANNELS CONVERSATIONS MASTER FEED ---
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        
+        <Text style={styles.mainHeadingTitle}>Messages</Text>
+
+        {/* Realtime Directory Query Filter Strip */}
+        <View style={styles.searchBarBox}>
+          <Search color="#71717a" size={18} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInputField}
+            placeholder="Query workspace conversations..."
+            placeholderTextColor="#71717a"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+          />
+        </View>
+
+        {/* Channel Selection Matrix */}
+        <View style={styles.conversationsShellCard}>
+          {filteredConversations.length === 0 ? (
+            <View style={{ padding: 40, alignItems: "center" }}>
+              <MessageCircle color="#27272a" size={40} />
+              <Text style={styles.emptyStateText}>No conversations found matching criteria.</Text>
+            </View>
+          ) : (
+            filteredConversations.map((c) => {
+              const borderCol = getAvatarBorderColor(c.employee.current_status);
+              return (
+                <TouchableOpacity
+                  key={c.employee.id}
+                  style={styles.channelRowSelector}
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedConversation(c)}
+                >
+                  <View style={[styles.avatarContainer, { borderColor: borderCol, borderWidth: 2 }]}>
+                    <Text style={styles.avatarText}>{c.employee.initials}</Text>
+                    <View style={[styles.inlineStatusDot, { backgroundColor: c.employee.status === "active" ? "#22c55e" : "#71717a" }]} />
+                  </View>
+
+                  <View style={styles.channelMetaBody}>
+                    <View style={styles.channelMetaTopRow}>
+                      <Text style={styles.channelPartnerName} numberOfLines={1}>{c.employee.name}</Text>
+                      {c.lastMessage && <Text style={styles.channelTimeLabel}>{formatTime(c.lastMessage.timestamp)}</Text>}
+                    </View>
+                    <Text style={styles.channelMessagePreview} numberOfLines={1}>
+                      {c.lastMessage ? c.lastMessage.content : "No structural logs shared yet."}
+                    </Text>
+                  </View>
+
+                  {c.unreadCount > 0 && (
+                    <View style={styles.badgeIndicatorNotification}>
+                      <Text style={styles.notificationBadgeText}>{c.unreadCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
+// --- Dynamic Screen Dimension Computations ---
+const { width, height } = Dimensions.get("window");
+
+// --- Premium Deep Space Matte Dark System Theme Stylesheet Layout ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  hamburgerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  composeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  listContent: {
-    paddingTop: 12,
-    paddingBottom: 24,
-  },
-  convItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 14,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  avatarPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: Colors.infoLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    color: Colors.primary,
-  },
-  unreadBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    backgroundColor: Colors.secondary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: Colors.background,
-  },
-  unreadText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700' as const,
-  },
-  convContent: {
-    flex: 1,
-  },
-  convTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  convName: {
-    fontSize: 15,
-    fontWeight: '500' as const,
-    color: Colors.text,
-    flex: 1,
-  },
-  convNameUnread: {
-    fontWeight: '700' as const,
-  },
-  convTime: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginLeft: 8,
-  },
-  convRole: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 1,
-  },
-  convLastMsg: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 3,
-  },
-  convLastMsgUnread: {
-    color: Colors.text,
-    fontWeight: '500' as const,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: Colors.borderLight,
-    marginLeft: 84,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 8,
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  userList: {
-    paddingHorizontal: 20,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  userAvatarContainer: {
-    width: 48,
-    height: 48,
-  },
-  userAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  userAvatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.infoLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userAvatarInitial: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.primary,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  userRole: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    textTransform: 'capitalize' as const,
-    marginTop: 2,
-  },
-  userEmail: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
-  emptyUsersContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 8,
-  },
-  emptyUsersText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
+  container: { flex: 1, backgroundColor: "#09090b" },
+  center: { justifyContent: "center", alignItems: "center" },
+  scrollContainer: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 40 },
+  
+  mainHeadingTitle: { color: "#ffffff", fontSize: 26, fontWeight: "bold", letterSpacing: -0.5, marginBottom: 16 },
+  
+  // Custom Filters Section
+  searchBarBox: { height: 44, backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  searchInputField: { flex: 1, color: "#ffffff", fontSize: 14 },
+
+  // Directory Channels Blueprint 
+  conversationsShellCard: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, overflow: "hidden" },
+  channelRowSelector: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: "#27272a" },
+  channelMetaBody: { flex: 1, marginLeft: 12, marginRight: 8, gap: 2 },
+  channelMetaTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  channelPartnerName: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
+  channelTimeLabel: { color: "#71717a", fontSize: 11 },
+  channelMessagePreview: { color: "#a1a1aa", fontSize: 13 },
+
+  // Atomic Badging Structures
+  badgeIndicatorNotification: { minWidth: 20, height: 20, backgroundColor: "#2563eb", borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  notificationBadgeText: { color: "#ffffff", fontSize: 10, fontWeight: "bold" },
+  inlineStatusDot: { width: 10, height: 10, borderRadius: 5, position: "absolute", bottom: -2, right: -2, borderWidth: 1.5, borderColor: "#18181b" },
+
+  // Focused Active Thread View Layouts
+  chatHeader: { height: 64, backgroundColor: "#18181b", borderBottomWidth: 1, borderBottomColor: "#27272a", flexDirection: "row", alignItems: "center", paddingHorizontal: 12 },
+  backButton: { marginRight: 8, padding: 4 },
+  headerInfo: { flex: 1, marginLeft: 10, gap: 1 },
+  headerNameText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  headerStatusSub: { color: "#a1a1aa", fontSize: 12 },
+  statusIndicator: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+
+  // Chat Scroller Rules
+  chatScrollContent: { padding: 16, paddingBottom: 24 },
+  emptyState: { paddingVertical: 60, alignItems: "center", gap: 12 },
+  emptyStateText: { color: "#71717a", fontSize: 14, textAlign: "center" },
+
+  // Messaging Atomic Message Bubbles Packaging Architecture
+  messageBubbleRow: { flexDirection: "row", marginBottom: 12, width: "100%" },
+  rowMe: { justifyContent: "flex-end" },
+  rowThem: { justifyContent: "flex-start" },
+  bubbleBlock: { maxWidth: "80%", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, elevation: 1 },
+  bubbleMe: { backgroundColor: "#1e3a8a", borderBottomRightRadius: 2 },
+  bubbleThem: { backgroundColor: "#27272a", borderBottomLeftRadius: 2 },
+  messageTextContent: { color: "#ffffff", fontSize: 14, lineHeight: 19 },
+  bubbleFooterRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 4 },
+  bubbleTimeStr: { color: "#a1a1aa", fontSize: 10 },
+
+  // Inline Attachment Elements
+  attachmentWrapper: { marginBottom: 6, borderRadius: 6, overflow: "hidden" },
+  inlineImagePreview: { width: 180, height: 140, borderRadius: 6, backgroundColor: "#09090b" },
+  fileDownloadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#09090b", padding: 8, borderRadius: 6, maxWidth: 200 },
+  fileDownloadText: { color: "#3b82f6", fontSize: 12, textDecorationLine: "underline" },
+
+  // Dock Message Bar Styling Configurations
+  inputDockContainer: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#18181b", borderTopWidth: 1, borderTopColor: "#27272a", flexDirection: "row", alignItems: "center", gap: 8 },
+  dockActionBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  dockInputStyle: { flex: 1, minHeight: 38, maxHeight: 100, backgroundColor: "#09090b", borderRadius: 20, borderWidth: 1, borderColor: "#27272a", paddingHorizontal: 16, paddingVertical: 8, color: "#ffffff", fontSize: 14 },
+  sendActionBtn: { width: 38, height: 38, backgroundColor: "#2563eb", borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  disabledSendBtn: { backgroundColor: "#1d4ed8", opacity: 0.4 },
+
+  // Media Overlays Lightbox Modules Frameworks
+  modalLightboxContainer: { flex: 1, backgroundColor: "#000000ef", justifyContent: "center", alignItems: "center" },
+  modalTopNavbar: { position: "absolute", top: 40, left: 0, right: 0, height: 50, paddingHorizontal: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center", zIndex: 10 },
+  lightboxTitleText: { color: "#ffffff", fontSize: 14, fontWeight: "600", width: width * 0.5 },
+  lightboxCloseLabel: { color: "#ef4444", fontWeight: "700", fontSize: 14 },
+  lightboxImageFrame: { width: width, height: height * 0.75 },
+
+  // Base Fallback Avatar Element Styles
+  avatarContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1e3a8a", justifyContent: "center", alignItems: "center", position: "relative" },
+  avatarText: { color: "#ffffff", fontWeight: "700", fontSize: 14 },
 });
