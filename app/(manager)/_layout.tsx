@@ -7,7 +7,7 @@ import ManagerFixedSidebar from '@/components/ManagerFixedSidebar';
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
 
-function ManagerLayoutContent() {
+function ManagerLayoutContent_() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { uiTheme } = useTheme(); 
 
@@ -22,6 +22,33 @@ function ManagerLayoutContent() {
           headerShown: false,
           contentStyle: { backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#f8fafc' }
         }} />
+      </View>
+
+      <ManagerFixedSidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)} 
+      />
+    </View>
+  );
+}
+
+function ManagerLayoutContent() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { uiTheme } = useTheme(); 
+
+  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
+
+  return (
+    <View style={styles.root}> 
+      <ManagerHeader onMenuPress={() => setSidebarOpen(true)} />
+
+      <View style={styles.body}>
+        <Stack 
+          screenOptions={{ 
+            headerShown: false,
+            contentStyle: { backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#f8fafc' }
+          }} 
+        />
       </View>
 
       <ManagerFixedSidebar
@@ -49,6 +76,7 @@ const getThemedStyles = (uiTheme: any) => {
     },
     body: {
       flex: 1,
+      marginTop:-20
     },
   });
 };

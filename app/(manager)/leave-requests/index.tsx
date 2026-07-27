@@ -9,14 +9,12 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-// Custom API fetch utility from your project architecture
 import { apiFetch } from "@/lib/admin/apiClient";
-
-// Lucide icons tailored for a clean mobile user experience
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 import {
   Calendar,
   Search,
@@ -28,11 +26,9 @@ import {
   AlertCircle,
   FileText,
   X,
-  Layers,
   ShieldCheck
 } from "lucide-react-native";
 
-// --- Interfaces & Types ---
 type LeaveStatus = "pending" | "approved" | "rejected";
 
 interface LeaveItem {
@@ -64,7 +60,6 @@ interface LeaveApiItem {
   createdAt?: string;
 }
 
-// --- Helper Functions ---
 function normalizeLeave(i: LeaveApiItem): LeaveItem {
   return {
     id: String(i.id || i._id || ""),
@@ -92,18 +87,423 @@ function formatDate(dateStr: string): string {
   });
 }
 
-const { width } = Dimensions.get("window");
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#0B0F17" : "#f8fafc"),
+    panelHeader:     isDark ? "#161B22" : "#ffffff",
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#111827" : "#f1f5f9"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f1f5f9" : "#0f172a"),
+    textSecondary:   isDark ? "#9CA3AF" : "#475569",
+    border:          isDark ? "#2B313D" : "#e2e8f0",
+    primary:         uiTheme.customColors?.primary                || "#FFD27A",
+    success:         "#16C784",
+    warning:         "#F59E0B",
+    danger:          "#EF4444",
+    purple:          "#A855F7",
+  };
+}
+
+function createStyles(
+  colors: ReturnType<typeof buildColors>,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number
+) {
+  return StyleSheet.create({
+    mainViewport: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: wp(4.2),
+      paddingTop: hp(2),
+      marginBottom: hp(1.7),
+    },
+    headerTitle: {
+      fontSize: wp(6),
+      fontWeight: "900",
+      color: colors.primary,
+    },
+    headerSubtitle: {
+      fontSize: wp(3.3),
+      color: colors.textSecondary,
+      marginTop: hp(0.25),
+    },
+    iconContainerBg: {
+      width: wp(11),
+      height: wp(11),
+      borderRadius: wp(2.5),
+      backgroundColor: "rgba(255, 210, 122, 0.08)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    metricsSummaryContainer: {
+      flexDirection: "row",
+      marginHorizontal: wp(4.2),
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(3),
+      padding: wp(3.2),
+      marginBottom: hp(1.7),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    metricItemBox: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    metricCountText: {
+      fontSize: wp(4),
+      fontWeight: "800",
+      color: colors.text,
+    },
+    metricLabelText: {
+      fontSize: wp(2.6),
+      color: colors.textSecondary,
+      fontWeight: "600",
+      marginTop: hp(0.25),
+      textTransform: "uppercase",
+    },
+    searchSectionBar: {
+      flexDirection: "row",
+      paddingHorizontal: wp(4.2),
+      alignItems: "center",
+      marginBottom: hp(1.7),
+      gap: wp(2.5),
+    },
+    searchWrapperInput: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3.2),
+      height: hp(5.2),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    searchIconSymbol: {
+      marginRight: wp(2),
+    },
+    searchInputField: {
+      flex: 1,
+      color: colors.text,
+      fontSize: wp(3.3),
+    },
+    refreshButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.cardBg,
+      height: hp(5.2),
+      paddingHorizontal: wp(3.6),
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    refreshButtonText: {
+      color: colors.primary,
+      fontSize: wp(3),
+      fontWeight: "700",
+      marginLeft: wp(1.5),
+    },
+    buttonPressed: {
+      opacity: 0.8,
+    },
+    loadingStateFallback: {
+      padding: wp(10),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    loadingStateText: {
+      color: colors.textSecondary,
+      fontSize: wp(3.3),
+      marginTop: hp(1.2),
+    },
+    emptyStateFallback: {
+      padding: wp(10),
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: hp(2.5),
+    },
+    emptyStateHeading: {
+      color: colors.text,
+      fontSize: wp(3.8),
+      fontWeight: "700",
+      marginTop: hp(1.5),
+    },
+    emptyStateSubtext: {
+      color: colors.textSecondary,
+      fontSize: wp(3),
+      marginTop: hp(0.5),
+      textAlign: "center",
+    },
+    scrollContainerLayout: {
+      paddingHorizontal: wp(4.2),
+      paddingBottom: hp(5),
+    },
+    requestCardRow: {
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(3),
+      padding: wp(3.6),
+      marginBottom: hp(1.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardTopHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(1.5),
+    },
+    employeeMetaIdentity: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      marginRight: wp(2),
+    },
+    avatarPlaceholderIcon: {
+      width: wp(5.8),
+      height: wp(5.8),
+      borderRadius: wp(2.9),
+      backgroundColor: "rgba(255,210,122,0.1)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: wp(2),
+    },
+    employeeNameText: {
+      color: colors.text,
+      fontSize: wp(3.6),
+      fontWeight: "800",
+    },
+    badgeStyle: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+    },
+    badgeApproved: {
+      backgroundColor: "rgba(22, 199, 132, 0.12)",
+    },
+    badgeRejected: {
+      backgroundColor: "rgba(239, 68, 68, 0.12)",
+    },
+    badgePending: {
+      backgroundColor: "rgba(245, 158, 11, 0.12)",
+    },
+    badgeText: {
+      fontSize: wp(2.5),
+      fontWeight: "800",
+      textTransform: "uppercase",
+    },
+    cardMiddleDetails: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: hp(1.5),
+    },
+    metaDetailBlock: {
+      width: "48%",
+    },
+    metaDetailLabel: {
+      fontSize: wp(2.3),
+      color: colors.textSecondary,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+      marginBottom: hp(0.25),
+    },
+    metaDetailValue: {
+      color: colors.text,
+      fontSize: wp(3),
+      fontWeight: "600",
+      textTransform: "capitalize",
+    },
+    cardFooterMetricsDivider: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      paddingTop: hp(1.2),
+      gap: wp(2.5),
+    },
+    reasonCardPreviewText: {
+      flex: 1,
+      color: colors.textSecondary,
+      fontSize: wp(3),
+      fontStyle: "italic",
+    },
+    eodTagBadge: {
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+      borderWidth: 1,
+    },
+    eodExempt: {
+      backgroundColor: "rgba(168, 85, 247, 0.08)",
+      borderColor: "rgba(168, 85, 247, 0.2)",
+    },
+    eodRequired: {
+      backgroundColor: "rgba(148, 163, 184, 0.05)",
+      borderColor: "rgba(148, 163, 184, 0.15)",
+    },
+    eodTagText: {
+      fontSize: wp(2.3),
+      fontWeight: "700",
+    },
+    modalViewportContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    modalTopNavigationHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(4.2),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.panelHeader,
+    },
+    modalHeaderTitle: {
+      fontSize: wp(3.8),
+      fontWeight: "900",
+      color: colors.text,
+    },
+    modalCloseButtonAnchor: {
+      padding: wp(1),
+    },
+    modalScrollBodyArea: {
+      padding: wp(4.2),
+    },
+    modalHeroMetadataBlock: {
+      alignItems: "center",
+      backgroundColor: colors.cardBg,
+      padding: wp(5),
+      borderRadius: wp(3),
+      marginBottom: hp(2),
+      borderBottomWidth: 2,
+      borderColor: colors.primary,
+    },
+    avatarCircleBig: {
+      width: wp(14.5),
+      height: wp(14.5),
+      borderRadius: wp(7.25),
+      backgroundColor: "rgba(255,210,122,0.08)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: hp(1.2),
+    },
+    modalEmployeeName: {
+      color: colors.text,
+      fontSize: wp(4.6),
+      fontWeight: "900",
+    },
+    modalSystemRefId: {
+      color: colors.textSecondary,
+      fontSize: wp(2.8),
+      marginTop: hp(0.5),
+    },
+    specificationsGridCard: {
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(3),
+      padding: wp(4.2),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionFormGroupHeader: {
+      fontSize: wp(2.8),
+      fontWeight: "800",
+      color: colors.primary,
+      textTransform: "uppercase",
+      marginBottom: hp(1.7),
+      letterSpacing: 0.5,
+    },
+    specGridRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: hp(1.7),
+    },
+    specGridColumn: {
+      width: "48%",
+    },
+    specFieldLabel: {
+      fontSize: wp(2.5),
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+    },
+    specFieldValue: {
+      fontSize: wp(3.3),
+      color: colors.text,
+      fontWeight: "700",
+      marginTop: hp(0.25),
+    },
+    specDividerBorder: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: hp(1.2),
+    },
+    reasonTextAreaContainer: {
+      backgroundColor: colors.background,
+      borderRadius: wp(2),
+      padding: wp(3.2),
+      paddingLeft: wp(8.8),
+      marginTop: hp(0.75),
+      minHeight: hp(8.4),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    reasonFullTextBody: {
+      color: colors.text,
+      fontSize: wp(3.3),
+      lineHeight: hp(2.2),
+      fontStyle: "italic",
+    },
+    adminDisclaimerHint: {
+      color: colors.textSecondary,
+      fontSize: wp(2.8),
+      lineHeight: hp(1.8),
+      fontStyle: "italic",
+    },
+    inlineAdminIconText: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: hp(0.25),
+    },
+    dismissActionButton: {
+      backgroundColor: colors.primary,
+      height: hp(5.6),
+      borderRadius: wp(2),
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: hp(3),
+      marginBottom: hp(5),
+    },
+    dismissActionText: {
+      color: colors.panelHeader,
+      fontWeight: "900",
+      fontSize: wp(3.6),
+    },
+  });
+}
 
 export default function ManagerLeaveRequests() {
+  const { width, height } = useWindowDimensions();
+  const wp = useMemo(() => (p: number) => (width * p) / 100, [width]);
+  const hp = useMemo(() => (p: number) => (height * p) / 100, [height]);
+
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors, wp, hp), [colors, wp, hp]);
+
   const [items, setItems] = useState<LeaveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  
-  // Modal tracking states
   const [selectedLeave, setSelectedLeave] = useState<LeaveItem | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  // --- API Request Pipeline ---
   const load = async () => {
     setLoading(true);
     try {
@@ -117,10 +517,9 @@ export default function ManagerLeaveRequests() {
   };
 
   useEffect(() => {
-    void load();
+    load();
   }, []);
 
-  // --- Memoized Search Filter Logic ---
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
@@ -132,7 +531,6 @@ export default function ManagerLeaveRequests() {
     );
   }, [items, search]);
 
-  // --- Metrics Summary Panel State ---
   const metrics = useMemo(() => {
     return {
       total: filtered.length,
@@ -142,149 +540,140 @@ export default function ManagerLeaveRequests() {
     };
   }, [filtered]);
 
-  // Custom Status Badge UI Renderer for Native Elements
   const renderStatusBadge = (status: LeaveStatus) => {
     switch (status) {
       case "approved":
         return (
-          <View style={[styles.badgeStyle, styles.badgeApproved]}>
-            <CheckCircle2 size={11} color="#4ade80" style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: "#4ade80" }]}>Approved</Text>
+          <View style={s([styles.badgeStyle, styles.badgeApproved])}>
+            <CheckCircle2 size={11} color={colors.success} style={{ marginRight: 4 }} />
+            <Text style={s([styles.badgeText, { color: colors.success }])}>Approved</Text>
           </View>
         );
       case "rejected":
         return (
-          <View style={[styles.badgeStyle, styles.badgeRejected]}>
-            <XCircle size={11} color="#f87171" style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: "#f87171" }]}>Rejected</Text>
+          <View style={s([styles.badgeStyle, styles.badgeRejected])}>
+            <XCircle size={11} color={colors.danger} style={{ marginRight: 4 }} />
+            <Text style={s([styles.badgeText, { color: colors.danger }])}>Rejected</Text>
           </View>
         );
       default:
         return (
-          <View style={[styles.badgeStyle, styles.badgePending]}>
-            <Clock size={11} color="#facc15" style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: "#facc15" }]}>Pending</Text>
+          <View style={s([styles.badgeStyle, styles.badgePending])}>
+            <Clock size={11} color={colors.warning} style={{ marginRight: 4 }} />
+            <Text style={s([styles.badgeText, { color: colors.warning }])}>Pending</Text>
           </View>
         );
     }
   };
 
   return (
-    <SafeAreaView style={styles.mainViewport} edges={["top", "left", "right"]}>
-      
-      {/* Premium Dashboard Header */}
-      <View style={styles.headerRow}>
+    <SafeAreaView style={s(styles.mainViewport)} edges={["top", "left", "right"]}>
+      <View style={s(styles.headerRow)}>
         <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={styles.headerTitle}>Leave Requests</Text>
-          <Text style={styles.headerSubtitle}>View employee PTO/leave coverage statuses</Text>
+          <Text style={s(styles.headerTitle)}>Leave Requests</Text>
+          <Text style={s(styles.headerSubtitle)}>View employee PTO/leave coverage statuses</Text>
         </View>
-        <View style={styles.iconContainerBg}>
-          <Calendar size={22} color="#ffd27a" />
-        </View>
-      </View>
-
-      {/* Real-time Status Breakdown Horizontal Counter */}
-      <View style={styles.metricsSummaryContainer}>
-        <View style={styles.metricItemBox}>
-          <Text style={styles.metricCountText}>{metrics.total}</Text>
-          <Text style={styles.metricLabelText}>Filtered</Text>
-        </View>
-        <View style={styles.metricItemBox}>
-          <Text style={[styles.metricCountText, { color: "#facc15" }]}>{metrics.pending}</Text>
-          <Text style={styles.metricLabelText}>Pending</Text>
-        </View>
-        <View style={styles.metricItemBox}>
-          <Text style={[styles.metricCountText, { color: "#4ade80" }]}>{metrics.approved}</Text>
-          <Text style={styles.metricLabelText}>Approved</Text>
-        </View>
-        <View style={styles.metricItemBox}>
-          <Text style={[styles.metricCountText, { color: "#f87171" }]}>{metrics.rejected}</Text>
-          <Text style={styles.metricLabelText}>Rejected</Text>
+        <View style={s(styles.iconContainerBg)}>
+          <Calendar size={22} color={colors.primary} />
         </View>
       </View>
 
-      {/* Control Filters Area */}
-      <View style={styles.searchSectionBar}>
-        <View style={styles.searchWrapperInput}>
-          <Search size={16} color="#64748b" style={styles.searchIconSymbol} />
+      <View style={s(styles.metricsSummaryContainer)}>
+        <View style={s(styles.metricItemBox)}>
+          <Text style={s(styles.metricCountText)}>{metrics.total}</Text>
+          <Text style={s(styles.metricLabelText)}>Filtered</Text>
+        </View>
+        <View style={s(styles.metricItemBox)}>
+          <Text style={s([styles.metricCountText, { color: colors.warning }])}>{metrics.pending}</Text>
+          <Text style={s(styles.metricLabelText)}>Pending</Text>
+        </View>
+        <View style={s(styles.metricItemBox)}>
+          <Text style={s([styles.metricCountText, { color: colors.success }])}>{metrics.approved}</Text>
+          <Text style={s(styles.metricLabelText)}>Approved</Text>
+        </View>
+        <View style={s(styles.metricItemBox)}>
+          <Text style={s([styles.metricCountText, { color: colors.danger }])}>{metrics.rejected}</Text>
+          <Text style={s(styles.metricLabelText)}>Rejected</Text>
+        </View>
+      </View>
+
+      <View style={s(styles.searchSectionBar)}>
+        <View style={s(styles.searchWrapperInput)}>
+          <Search size={16} color={colors.textSecondary} style={s(styles.searchIconSymbol)} />
           <TextInput
-            style={styles.searchInputField}
+            style={s(styles.searchInputField)}
             placeholder="Search by name, type, status..."
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textSecondary}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch("")} style={{ padding: 4 }}>
-              <X size={14} color="#64748b" />
+              <X size={14} color={colors.textSecondary} />
             </Pressable>
           )}
         </View>
-        
-        <Pressable 
-          style={({ pressed }) => [styles.refreshButton, pressed && styles.buttonPressed, loading && { opacity: 0.6 }]}
-          onPress={() => void load()}
+
+        <Pressable
+          style={({ pressed }) => s([styles.refreshButton, pressed && styles.buttonPressed, loading && { opacity: 0.6 }])}
+          onPress={load}
           disabled={loading}
         >
-          <RefreshCw size={15} color="#ffd27a" style={loading && { transform: [{ rotate: "45deg" }] }} />
-          <Text style={styles.refreshButtonText}>Refresh</Text>
+          <RefreshCw size={15} color={colors.primary} />
+          <Text style={s(styles.refreshButtonText)}>Refresh</Text>
         </Pressable>
       </View>
 
-      {/* Main Request Matrix Content Display */}
       {loading ? (
-        <View style={styles.loadingStateFallback}>
-          <ActivityIndicator color="#ffd27a" size="small" />
-          <Text style={styles.loadingStateText}>Syncing request logs...</Text>
+        <View style={s(styles.loadingStateFallback)}>
+          <ActivityIndicator color={colors.primary} size="small" />
+          <Text style={s(styles.loadingStateText)}>Syncing request logs...</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContainerLayout} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={s(styles.scrollContainerLayout)} showsVerticalScrollIndicator={false}>
           {filtered.length === 0 ? (
-            <View style={styles.emptyStateFallback}>
-              <AlertCircle size={36} color="#334155" />
-              <Text style={styles.emptyStateHeading}>No Leave Records Found</Text>
-              <Text style={styles.emptyStateSubtext}>No requests match your current search queries.</Text>
+            <View style={s(styles.emptyStateFallback)}>
+              <AlertCircle size={36} color={colors.textSecondary} />
+              <Text style={s(styles.emptyStateHeading)}>No Leave Records Found</Text>
+              <Text style={s(styles.emptyStateSubtext)}>No requests match your current search queries.</Text>
             </View>
           ) : (
             filtered.map((item) => (
-              <Pressable 
-                key={item.id} 
-                style={styles.requestCardRow} 
+              <Pressable
+                key={item.id}
+                style={s(styles.requestCardRow)}
                 onPress={() => { setSelectedLeave(item); setIsDetailsOpen(true); }}
               >
-                {/* Employee Info Header Line */}
-                <View style={styles.cardTopHeader}>
-                  <View style={styles.employeeMetaIdentity}>
-                    <View style={styles.avatarPlaceholderIcon}>
-                      <User size={14} color="#ffd27a" />
+                <View style={s(styles.cardTopHeader)}>
+                  <View style={s(styles.employeeMetaIdentity)}>
+                    <View style={s(styles.avatarPlaceholderIcon)}>
+                      <User size={14} color={colors.primary} />
                     </View>
-                    <Text style={styles.employeeNameText} numberOfLines={1}>{item.employeeName}</Text>
+                    <Text style={s(styles.employeeNameText)} numberOfLines={1}>{item.employeeName}</Text>
                   </View>
                   {renderStatusBadge(item.status)}
                 </View>
 
-                {/* Date & Leave Classification Row */}
-                <View style={styles.cardMiddleDetails}>
-                  <View style={styles.metaDetailBlock}>
-                    <Text style={styles.metaDetailLabel}>LEAVE TYPE</Text>
-                    <Text style={styles.metaDetailValue}>{item.type}</Text>
+                <View style={s(styles.cardMiddleDetails)}>
+                  <View style={s(styles.metaDetailBlock)}>
+                    <Text style={s(styles.metaDetailLabel)}>LEAVE TYPE</Text>
+                    <Text style={s(styles.metaDetailValue)}>{item.type}</Text>
                   </View>
-                  <View style={[styles.metaDetailBlock, { alignItems: "flex-end" }]}>
-                    <Text style={styles.metaDetailLabel}>DURATION PERIOD</Text>
-                    <Text style={styles.metaDetailValue}>
+                  <View style={s([styles.metaDetailBlock, { alignItems: "flex-end" }])}>
+                    <Text style={s(styles.metaDetailLabel)}>DURATION PERIOD</Text>
+                    <Text style={s(styles.metaDetailValue)}>
                       {formatDate(item.startDate)} - {formatDate(item.endDate)}
                     </Text>
                   </View>
                 </View>
 
-                {/* Reason Preview Section and EOD Tag */}
-                <View style={styles.cardFooterMetricsDivider}>
-                  <Text style={styles.reasonCardPreviewText} numberOfLines={1}>
+                <View style={s(styles.cardFooterMetricsDivider)}>
+                  <Text style={s(styles.reasonCardPreviewText)} numberOfLines={1}>
                     {item.reason ? `“${item.reason}”` : "No explanatory reason supplied."}
                   </Text>
-                  <View style={[styles.eodTagBadge, item.exemptFromEOD ? styles.eodExempt : styles.eodRequired]}>
-                    <Text style={[styles.eodTagText, { color: item.exemptFromEOD ? "#c084fc" : "#94a3b8" }]}>
+                  <View style={s([styles.eodTagBadge, item.exemptFromEOD ? styles.eodExempt : styles.eodRequired])}>
+                    <Text style={s([styles.eodTagText, { color: item.exemptFromEOD ? colors.purple : colors.textSecondary }])}>
                       {item.exemptFromEOD ? "EOD Exempt" : "EOD Required"}
                     </Text>
                   </View>
@@ -295,100 +684,92 @@ export default function ManagerLeaveRequests() {
         </ScrollView>
       )}
 
-      {/* --- DETAILED PARAMS AUDIT modal DRAWERS --- */}
-      <Modal 
-        visible={isDetailsOpen} 
-        animationType="slide" 
-        presentationStyle="pageSheet" 
+      <Modal
+        visible={isDetailsOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setIsDetailsOpen(false)}
       >
-        <SafeAreaView style={styles.modalViewportContainer}>
-          {/* Header Bar */}
-          <View style={styles.modalTopNavigationHeader}>
-            <Text style={styles.modalHeaderTitle}>Leave Specification Audit</Text>
-            <Pressable style={styles.modalCloseButtonAnchor} onPress={() => setIsDetailsOpen(false)}>
-              <X size={18} color="#fff" />
+        <SafeAreaView style={s(styles.modalViewportContainer)}>
+          <View style={s(styles.modalTopNavigationHeader)}>
+            <Text style={s(styles.modalHeaderTitle)}>Leave Specification Audit</Text>
+            <Pressable style={s(styles.modalCloseButtonAnchor)} onPress={() => setIsDetailsOpen(false)}>
+              <X size={18} color={colors.text} />
             </Pressable>
           </View>
 
           {selectedLeave && (
-            <ScrollView contentContainerStyle={styles.modalScrollBodyArea}>
-              
-              {/* Profile Card Banner */}
-              <View style={styles.modalHeroMetadataBlock}>
-                <View style={styles.avatarCircleBig}>
-                  <User size={28} color="#ffd27a" />
+            <ScrollView contentContainerStyle={s(styles.modalScrollBodyArea)}>
+              <View style={s(styles.modalHeroMetadataBlock)}>
+                <View style={s(styles.avatarCircleBig)}>
+                  <User size={28} color={colors.primary} />
                 </View>
-                <Text style={styles.modalEmployeeName}>{selectedLeave.employeeName}</Text>
-                <Text style={styles.modalSystemRefId}>Request Identifier: {selectedLeave.id}</Text>
+                <Text style={s(styles.modalEmployeeName)}>{selectedLeave.employeeName}</Text>
+                <Text style={s(styles.modalSystemRefId)}>Request Identifier: {selectedLeave.id}</Text>
                 <View style={{ marginTop: 12 }}>
                   {renderStatusBadge(selectedLeave.status)}
                 </View>
               </View>
 
-              {/* Data Properties Cards Grid */}
-              <View style={styles.specificationsGridCard}>
-                <Text style={styles.sectionFormGroupHeader}>Core Request Parameters</Text>
-                
-                <View style={styles.specGridRow}>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>Classification Type</Text>
-                    <Text style={[styles.specFieldValue, { textTransform: "capitalize" }]}>{selectedLeave.type}</Text>
+              <View style={s(styles.specificationsGridCard)}>
+                <Text style={s(styles.sectionFormGroupHeader)}>Core Request Parameters</Text>
+
+                <View style={s(styles.specGridRow)}>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>Classification Type</Text>
+                    <Text style={s([styles.specFieldValue, { textTransform: "capitalize" }])}>{selectedLeave.type}</Text>
                   </View>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>End-Of-Day Logging</Text>
-                    <Text style={styles.specFieldValue}>{selectedLeave.exemptFromEOD ? "Exempt From Logs" : "Standard Requirement"}</Text>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>End-Of-Day Logging</Text>
+                    <Text style={s(styles.specFieldValue)}>{selectedLeave.exemptFromEOD ? "Exempt From Logs" : "Standard Requirement"}</Text>
                   </View>
                 </View>
 
-                <View style={styles.specGridRow}>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>Leave Commencement</Text>
-                    <Text style={styles.specFieldValue}>{formatDate(selectedLeave.startDate)}</Text>
+                <View style={s(styles.specGridRow)}>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>Leave Commencement</Text>
+                    <Text style={s(styles.specFieldValue)}>{formatDate(selectedLeave.startDate)}</Text>
                   </View>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>Leave Conclusion</Text>
-                    <Text style={styles.specFieldValue}>{formatDate(selectedLeave.endDate)}</Text>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>Leave Conclusion</Text>
+                    <Text style={s(styles.specFieldValue)}>{formatDate(selectedLeave.endDate)}</Text>
                   </View>
                 </View>
 
-                <View style={styles.specDividerBorder} />
+                <View style={s(styles.specDividerBorder)} />
 
-                {/* Request Explanatory Statement Box */}
-                <Text style={styles.specFieldLabel}>Employee Submitted Reason</Text>
-                <View style={styles.reasonTextAreaContainer}>
-                  <FileText size={14} color="#64748b" style={{ position: 'absolute', top: 12, left: 12 }} />
-                  <Text style={styles.reasonFullTextBody}>
+                <Text style={s(styles.specFieldLabel)}>Employee Submitted Reason</Text>
+                <View style={s(styles.reasonTextAreaContainer)}>
+                  <FileText size={14} color={colors.textSecondary} style={{ position: "absolute", top: 12, left: 12 }} />
+                  <Text style={s(styles.reasonFullTextBody)}>
                     {selectedLeave.reason || "No written statement or reason was logged for this leave sequence requirement."}
                   </Text>
                 </View>
               </View>
 
-              {/* Operations Authorization Logs View */}
-              <View style={[styles.specificationsGridCard, { marginTop: 16 }]}>
-                <Text style={styles.sectionFormGroupHeader}>Administrative Authority Logs</Text>
-                <Text style={styles.adminDisclaimerHint}>
+              <View style={s([styles.specificationsGridCard, { marginTop: 16 }])}>
+                <Text style={s(styles.sectionFormGroupHeader)}>Administrative Authority Logs</Text>
+                <Text style={s(styles.adminDisclaimerHint)}>
                   Managers hold read-only parameters review visibility over PTO schedules. Definitive status edits are logged by global infrastructure administration.
                 </Text>
 
-                <View style={[styles.specGridRow, { marginTop: 12 }]}>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>Authorized Reviewer</Text>
-                    <View style={styles.inlineAdminIconText}>
-                      <ShieldCheck size={13} color="#94a3b8" style={{ marginRight: 5 }} />
-                      <Text style={styles.specFieldValue}>{selectedLeave.approvedBy || "—"}</Text>
+                <View style={s([styles.specGridRow, { marginTop: 12 }])}>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>Authorized Reviewer</Text>
+                    <View style={s(styles.inlineAdminIconText)}>
+                      <ShieldCheck size={13} color={colors.textSecondary} style={{ marginRight: 5 }} />
+                      <Text style={s(styles.specFieldValue)}>{selectedLeave.approvedBy || "—"}</Text>
                     </View>
                   </View>
-                  <View style={styles.specGridColumn}>
-                    <Text style={styles.specFieldLabel}>Review Execution Stamp</Text>
-                    <Text style={styles.specFieldValue}>{selectedLeave.approvedAt ? formatDate(selectedLeave.approvedAt) : "—"}</Text>
+                  <View style={s(styles.specGridColumn)}>
+                    <Text style={s(styles.specFieldLabel)}>Review Execution Stamp</Text>
+                    <Text style={s(styles.specFieldValue)}>{selectedLeave.approvedAt ? formatDate(selectedLeave.approvedAt) : "—"}</Text>
                   </View>
                 </View>
               </View>
 
-              {/* Close Button Anchor */}
-              <Pressable style={styles.dismissActionButton} onPress={() => setIsDetailsOpen(false)}>
-                <Text style={styles.dismissActionText}>Dismiss Review</Text>
+              <Pressable style={s(styles.dismissActionButton)} onPress={() => setIsDetailsOpen(false)}>
+                <Text style={s(styles.dismissActionText)}>Dismiss Review</Text>
               </Pressable>
             </ScrollView>
           )}
@@ -397,90 +778,3 @@ export default function ManagerLeaveRequests() {
     </SafeAreaView>
   );
 }
-
-// --- PREMIUM SEAMLESS MOBILE DESIGN STYLES ---
-const styles = StyleSheet.create({
-  mainViewport: { flex: 1, backgroundColor: "#111315" },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 16, marginBottom: 14 },
-  headerTitle: { fontSize: 24, fontWeight: "900", color: "#ffd27a" },
-  headerSubtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  iconContainerBg: { width: 42, height: 42, borderRadius: 10, backgroundColor: "rgba(255, 210, 122, 0.08)", justifyContent: "center", alignItems: "center" },
-  
-  // Horizontal Performance Metrics Bar Style 
-  metricsSummaryContainer: { flexDirection: "row", marginHorizontal: 16, backgroundColor: "#1e293b", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  metricItemBox: { flex: 1, alignItems: "center", justifyContent: "center" },
-  metricCountText: { fontSize: 16, fontWeight: "800", color: "#ffffff" },
-  metricLabelText: { fontSize: 10, color: "#64748b", fontWeight: "600", marginTop: 2, textTransform: "uppercase" },
-
-  // Control Row Filter Panel Objects
-  searchSectionBar: { flexDirection: "row", paddingHorizontal: 16, alignItems: "center", marginBottom: 14, gap: 10 },
-  searchWrapperInput: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#1e293b", borderRadius: 8, paddingHorizontal: 12, height: 42, borderWidth: 1, borderColor: "#2d3748" },
-  searchIconSymbol: { marginRight: 8 },
-  searchInputField: { flex: 1, color: "#ffffff", fontSize: 13 },
-  refreshButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#1e293b", height: 42, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: "#ffd27a" },
-  refreshButtonText: { color: "#ffd27a", fontSize: 12, fontWeight: "700", marginLeft: 6 },
-  buttonPressed: { opacity: 0.8 },
-
-  // Fallbacks
-  loadingStateFallback: { padding: 40, alignItems: "center", justifyContent: "center" },
-  loadingStateText: { color: "#64748b", fontSize: 13, marginTop: 10 },
-  emptyStateFallback: { padding: 40, alignItems: "center", justifyContent: "center", marginTop: 20 },
-  emptyStateHeading: { color: "#ffffff", fontSize: 15, fontWeight: "700", marginTop: 12 },
-  emptyStateSubtext: { color: "#475569", fontSize: 12, marginTop: 4, textAlign: "center" },
-
-  // Mobile Clean Grid Scroll Body Container
-  scrollContainerLayout: { paddingHorizontal: 16, paddingBottom: 40 },
-  requestCardRow: { backgroundColor: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.02)" },
-  cardTopHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  employeeMetaIdentity: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
-  avatarPlaceholderIcon: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(255,210,122,0.1)", alignItems: "center", justifyContent: "center", marginRight: 8 },
-  employeeNameText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
-  
-  // Custom Badges Configurations
-  badgeStyle: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeApproved: { backgroundColor: "rgba(34, 197, 94, 0.12)" },
-  badgeRejected: { backgroundColor: "rgba(239, 68, 68, 0.12)" },
-  badgePending: { backgroundColor: "rgba(234, 179, 8, 0.12)" },
-  badgeText: { fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
-
-  cardMiddleDetails: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
-  metaDetailBlock: { width: "48%" },
-  metaDetailLabel: { fontSize: 9, color: "#64748b", fontWeight: "700", letterSpacing: 0.5, marginBottom: 2 },
-  metaDetailValue: { color: "#94a3b8", fontSize: 12, fontWeight: "600", textTransform: "capitalize" },
-
-  cardFooterMetricsDivider: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderColor: "rgba(255,255,255,0.05)", paddingTop: 10, gap: 10 },
-  reasonCardPreviewText: { flex: 1, color: "#64748b", fontSize: 12, fontStyle: "italic" },
-  eodTagBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1 },
-  eodExempt: { backgroundColor: "rgba(192, 132, 252, 0.08)", borderColor: "rgba(192, 132, 252, 0.2)" },
-  eodRequired: { backgroundColor: "rgba(148, 163, 184, 0.05)", borderColor: "rgba(148, 163, 184, 0.15)" },
-  eodTagText: { fontSize: 9, fontWeight: "700" },
-
-  // Detailed Modal Container Components
-  modalViewportContainer: { flex: 1, backgroundColor: "#0f172a" },
-  modalTopNavigationHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderColor: "#1e293b" },
-  modalHeaderTitle: { fontSize: 15, fontWeight: "900", color: "#ffffff" },
-  modalCloseButtonAnchor: { padding: 4 },
-  modalScrollBodyArea: { padding: 16 },
-  
-  modalHeroMetadataBlock: { alignItems: "center", backgroundColor: "#1e293b", padding: 20, borderRadius: 12, marginBottom: 16, borderBottomWidth: 2, borderColor: "#ffd27a" },
-  avatarCircleBig: { width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(255,210,122,0.08)", alignItems: "center", justifyContent: "center", marginBottom: 10 },
-  modalEmployeeName: { color: "#ffffff", fontSize: 18, fontWeight: "900" },
-  modalSystemRefId: { color: "#64748b", fontSize: 11, marginTop: 4 },
-
-  specificationsGridCard: { backgroundColor: "#1e293b", borderRadius: 12, padding: 16 },
-  sectionFormGroupHeader: { fontSize: 11, fontWeight: "800", color: "#ffd27a", textTransform: "uppercase", marginBottom: 14, letterSpacing: 0.5 },
-  specGridRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 14 },
-  specGridColumn: { width: "48%" },
-  specFieldLabel: { fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 },
-  specFieldValue: { fontSize: 13, color: "#ffffff", fontWeight: "700", marginTop: 2 },
-  specDividerBorder: { height: 1, backgroundColor: "rgba(255,255,255,0.05)", marginVertical: 10 },
-
-  reasonTextAreaContainer: { backgroundColor: "#0f172a", borderRadius: 8, padding: 12, paddingLeft: 34, marginTop: 6, minHeight: 68, borderWidth: 1, borderColor: "#2d3748" },
-  reasonFullTextBody: { color: "#cbd5e1", fontSize: 13, lineHeight: 18, fontStyle: "italic" },
-
-  adminDisclaimerHint: { color: "#64748b", fontSize: 11, lineHeight: 15, fontStyle: "italic" },
-  inlineAdminIconText: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  
-  dismissActionButton: { backgroundColor: "#ffd27a", height: 46, borderRadius: 8, justifyContent: "center", alignItems: "center", marginTop: 24, marginBottom: 40 },
-  dismissActionText: { color: "#111315", fontWeight: "900", fontSize: 14 }
-});

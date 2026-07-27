@@ -151,6 +151,7 @@ const MENU_ITEMS = [
     icon: Coffee,
     path: '/(admin)/break-history',
   },
+ 
   {
     id: 6,
     label: 'Bug Reports',
@@ -578,7 +579,7 @@ export default function AdminFixedSidebar({ isOpen, onClose }: any) {
                     </Text>
                   ) : (
                     <Text style={[styles.menuLabel, rowActive && styles.menuLabelActive]}>
-                      {item.label}
+                      {item.label} 
                     </Text>
                   )}
                 </View>

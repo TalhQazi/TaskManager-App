@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -10,12 +10,11 @@ import {
   SafeAreaView,
   StatusBar,
   Alert,
+  useWindowDimensions,
 } from "react-native";
-import { Palette, RefreshCw, Check } from "lucide-react-native";
+import { Palette, RefreshCw, Check, ChevronDown } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
-
-
 
 export const THEME_DEFAULTS: Record<string, string> = {
   "dark-minimal": "#f8fafc",
@@ -102,30 +101,93 @@ const CARD_STYLES = [
   { id: "flat", name: "Flat Default" },
 ];
 
-const PRESET_PICKER_COLORS = ["#f8fafc", "#e0f7fa", "#d4af37", "#ffffff", "#ffedd5", "#ef4444", "#10b981"];
-
+// Flat color catalog for robust distribution within a wrapped grid engine
+const COLOR_PICKER_SPECTRUM = [
+  "#ffffff", "#cbd5e1", "#64748b", "#334155", "#000000",
+  "#fee2e2", "#f87171", "#ef4444", "#dc2626", "#991b1b",
+  "#ffedd5", "#fb923c", "#f97316", "#ea580c", "#9a3412",
+  "#fef9c3", "#fde047", "#eab308", "#ca8a04", "#854d0e",
+  "#dcfce7", "#4ade80", "#22c55e", "#16a34a", "#166534",
+  "#e0f2fe", "#38bdf8", "#0ea5e9", "#0284c7", "#075985",
+  "#dbeafe", "#60a5fa", "#3b82f6", "#2563eb", "#1e40af",
+  "#f3e8ff", "#c084fc", "#a855f7", "#9333ea", "#6b21a8",
+  "#fae8ff", "#e879f9", "#d946ef", "#c026d3", "#86198f"
+];
 
 export default function ThemeEngine() {
   const { uiTheme, updateTheme } = useTheme();
 
-  const [activeTheme, setActiveTheme] = useState(uiTheme.theme);
-  const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle);
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
+  const [activeTheme, setActiveTheme] = useState(uiTheme.theme || "dark-minimal");
+  const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle || "glass");
   const [customTextColor, setCustomTextColor] = useState(
     uiTheme.customColors?.textColor || THEME_DEFAULTS[uiTheme.theme] || "#ffffff"
   );
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
- 
-  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
+  const styles = useMemo(
+    () => getThemedStyles(uiTheme, wp, hp, isTablet, isSmallScreen, width),
+    [uiTheme, wp, hp, isTablet, isSmallScreen, width]
+  );
+  
   const isLightTheme = useMemo(() => {
     return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   }, [uiTheme]);
 
+  const textColor = useMemo(() => {
+    return uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
+  }, [uiTheme, isLightTheme]);
 
   useEffect(() => {
-    setActiveTheme(uiTheme.theme);
-    setActiveCardStyle(uiTheme.cardStyle);
+    const fetchPersistedPreferences = async () => {
+      try {
+        const res = await apiFetch<{ item: any }>("/api/ui-preferences");
+        if (res?.item) {
+          const theme = res.item.theme || "dark-minimal";
+          const cardStyle = res.item.cardStyle || "glass";
+          const textColorVal = res.item.customColors?.textColor || THEME_DEFAULTS[theme] || "#ffffff";
+          const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
+
+          setActiveTheme(theme as any);
+          setActiveCardStyle(cardStyle as any);
+          setCustomTextColor(textColorVal);
+
+          updateTheme({
+            theme,
+            cardStyle,
+            customColors: { 
+              ...uiTheme.customColors,
+              primary: preset.primary, 
+              secondary: preset.secondary,
+              accent: preset.accent, 
+              textColor: textColorVal 
+            },
+            panelColors: {
+              ...uiTheme.panelColors,
+              dashboardBackground: preset.dashboardBg,
+              dashboardCardBackground: preset.cardBg,
+              dashboardTextColor: textColorVal
+            }
+          } as any);
+        }
+      } catch (err) {
+        console.error("Failed to recover configuration parameters from server store:", err);
+      }
+    };
+
+    fetchPersistedPreferences();
+  }, []);
+
+  useEffect(() => {
+    setActiveTheme(uiTheme.theme as any);
+    setActiveCardStyle(uiTheme.cardStyle as any);
     setCustomTextColor(uiTheme.customColors?.textColor || THEME_DEFAULTS[uiTheme.theme] || "#ffffff");
   }, [uiTheme.theme, uiTheme.cardStyle, uiTheme.customColors?.textColor]);
 
@@ -133,10 +195,9 @@ export default function ThemeEngine() {
     const preset = THEME_PRESETS[themeId] || THEME_PRESETS["dark-minimal"];
     const defaultColor = THEME_DEFAULTS[themeId] || "#ffffff";
     
-    setActiveTheme(themeId);
+    setActiveTheme(themeId as any);
     setCustomTextColor(defaultColor);
     setSaveSuccess(false);
-    
 
     updateTheme({
       theme: themeId,
@@ -153,22 +214,23 @@ export default function ThemeEngine() {
         dashboardCardBackground: preset.cardBg,
         dashboardTextColor: defaultColor
       }
-    });
+    } as any);
   };
 
   const handlePreviewCardStyle = (styleId: string) => {
-    setActiveCardStyle(styleId);
+    setActiveCardStyle(styleId as any);
     setSaveSuccess(false);
-    updateTheme({ cardStyle: styleId });
+    updateTheme({ cardStyle: styleId } as any);
   };
 
   const handleTextColorChange = (color: string) => {
-    setCustomTextColor(color);
+    const formattedColor = color.startsWith("#") ? color : `#${color}`;
+    setCustomTextColor(formattedColor);
     setSaveSuccess(false);
     updateTheme({ 
-      customColors: { ...uiTheme.customColors, textColor: color },
-      panelColors: { ...uiTheme.panelColors, dashboardTextColor: color }
-    });
+      customColors: { ...uiTheme.customColors, textColor: formattedColor },
+      panelColors: { ...uiTheme.panelColors, dashboardTextColor: formattedColor }
+    } as any);
   };
 
   const saveSettings = async () => {
@@ -198,7 +260,7 @@ export default function ThemeEngine() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       console.error(e);
-      Alert.alert("Configuration Anomaly", "Could not synchronize theme preferences to core server architecture.");
+      Alert.alert("Execution Anomaly", "Could not synchronize theme configurations to core data architecture.");
     } finally {
       setLoading(false);
     }
@@ -211,31 +273,32 @@ export default function ThemeEngine() {
       const res = await apiFetch<{ item: any }>("/api/ui-preferences/reset", { method: "POST" });
       const theme = res.item?.theme || "dark-minimal";
       const cardStyle = res.item?.cardStyle || "glass";
-      const textColor = res.item?.customColors?.textColor || "#ffffff";
+      const textColorVal = res.item?.customColors?.textColor || "#ffffff";
       const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
 
-      setActiveTheme(theme);
-      setActiveCardStyle(cardStyle);
-      setCustomTextColor(textColor);
+      setActiveTheme(theme as any);
+      setActiveCardStyle(cardStyle as any);
+      setCustomTextColor(textColorVal);
 
       updateTheme({
         theme,
         cardStyle,
         customColors: { 
           primary: preset.primary, 
-          secondary: preset.secondary, 
+          secondary: preset.secondary,
           accent: preset.accent, 
-          textColor 
+          textColor: textColorVal 
         },
         panelColors: {
           dashboardBackground: preset.dashboardBg,
           dashboardCardBackground: preset.cardBg,
-          dashboardTextColor: textColor
+          dashboardTextColor: textColorVal
         }
-      });
+      } as any);
+      Alert.alert("System Restored", "Baseline interface configurations successfully established.");
     } catch (e) {
       console.error(e);
-      Alert.alert("Reset Error", "Failed to clear remote preferences.");
+      Alert.alert("Reset Failure", "Failed to clear remote interface preferences.");
     } finally {
       setLoading(false);
     }
@@ -248,21 +311,17 @@ export default function ThemeEngine() {
         backgroundColor={uiTheme.panelColors?.dashboardBackground || "#09090b"} 
       />
       
-      {/* Title Header Block */}
       <View style={styles.header}>
         <View style={styles.iconContainer}>
           <Palette size={22} color={uiTheme.customColors?.primary || "#ffd27a"} />
         </View>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Theme Engine</Text>
           <Text style={styles.subtitle}>Customize the interface exactly the way you want it.</Text>
         </View>
       </View>
 
-      {/* Main Configurations Body */}
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* Preset Themes Container */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeading}>PRESET THEMES</Text>
           <View style={styles.themesGrid}>
@@ -285,7 +344,6 @@ export default function ThemeEngine() {
           </View>
         </View>
 
-        {/* Card Style Configuration Section */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeading}>CARD STYLE ENGINE</Text>
           <View style={styles.verticalListContainer}>
@@ -307,34 +365,51 @@ export default function ThemeEngine() {
             })}
           </View>
 
-          {/* Global Text Color Setup */}
-          <Text style={[styles.sectionHeading, { marginTop: 24 }]}>GLOBAL TEXT COLOR</Text>
+          <Text style={[styles.sectionHeading, { marginTop: hp(3) }]}>GLOBAL TEXT COLOR</Text>
           <View style={styles.colorPickerWrapper}>
-            <View style={styles.colorConfigInputRow}>
+            <TouchableOpacity 
+              style={styles.colorConfigInputRow} 
+              onPress={() => setShowColorPicker(!showColorPicker)}
+              activeOpacity={0.8}
+            >
               <View style={[styles.colorPreviewBlock, { backgroundColor: customTextColor || "#ffffff" }]} />
               <TextInput
                 style={styles.textHexInput}
-                value={customTextColor}
+                value={customTextColor.replace("#", "")}
                 onChangeText={handleTextColorChange}
-                placeholder="#FFFFFF"
+                placeholder="FFFFFF"
                 placeholderTextColor={isLightTheme ? "#94a3b8" : "#71717a"}
                 autoCapitalize="characters"
-                maxLength={7}
+                maxLength={6}
+                editable={false}
+                pointerEvents="none"
               />
-            </View>
+              <ChevronDown size={16} color={textColor} style={{ opacity: 0.5 }} />
+            </TouchableOpacity>
             
-            {/* Quick-tap Swatch Palette */}
-            <View style={styles.presetPaletteRow}>
-              {PRESET_PICKER_COLORS.map((color) => (
-                <TouchableOpacity
-                  key={color}
-                  style={[styles.presetSwatch, { backgroundColor: color }, customTextColor === color && styles.activeSwatchBorder]}
-                  onPress={() => handleTextColorChange(color)}
-                />
-              ))}
-            </View>
+            {showColorPicker && (
+              <View style={styles.spectrumPickerDropdownContainer}>
+                {COLOR_PICKER_SPECTRUM.map((color) => {
+                  const isSelected = customTextColor.toLowerCase() === color.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.spectrumSwatch, 
+                        { backgroundColor: color }, 
+                        isSelected && styles.activeSwatchBorder
+                      ]}
+                      onPress={() => {
+                        handleTextColorChange(color);
+                        setShowColorPicker(false);
+                      }}
+                      activeOpacity={0.7}
+                    />
+                  );
+                })}
+              </View>
+            )}
             
-            {/* Typography Preview Panel Simulation */}
             <View style={[styles.previewSimulationBlock, { backgroundColor: uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b") }]}>
               <Text style={[styles.previewSimulationText, { color: customTextColor }]}>
                 Typography Realtime Contrast Text
@@ -344,7 +419,6 @@ export default function ThemeEngine() {
         </View>
       </ScrollView>
 
-      {/* Persistent Dynamic Action Control Bar Footer */}
       <View style={styles.actionBar}>
         <TouchableOpacity 
           style={styles.restoreBtn} 
@@ -378,8 +452,14 @@ export default function ThemeEngine() {
   );
 }
 
-
-const getThemedStyles = (uiTheme: any) => {
+const getThemedStyles = (
+  uiTheme: any,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  screenWidth: number
+) => {
   const isLightTheme = uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   const structuralBorderColor = isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
   const surfaceAlphaColor = isLightTheme ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)";
@@ -387,6 +467,8 @@ const getThemedStyles = (uiTheme: any) => {
   const bg = uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b");
   const cardBg = uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#f8fafc" : "#141417");
   const textColor = uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
+
+  const horizontalPadding = isSmallScreen ? wp(3) : isTablet ? wp(6) : wp(4.2);
 
   return StyleSheet.create({
     container: {
@@ -396,67 +478,71 @@ const getThemedStyles = (uiTheme: any) => {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 16,
+      gap: wp(3),
+      paddingHorizontal: horizontalPadding,
+      paddingTop: hp(2),
+      paddingBottom: hp(2),
       borderBottomWidth: 1,
       borderColor: structuralBorderColor,
     },
     iconContainer: {
-      padding: 10,
+      padding: wp(2.5),
       borderRadius: 99,
       backgroundColor: isLightTheme ? "rgba(0,0,0,0.04)" : "rgba(255, 255, 255, 0.06)",
     },
     title: {
-      fontSize: 20,
+      fontSize: isTablet ? 24 : 20,
       fontWeight: "800",
       color: textColor,
       letterSpacing: -0.5,
     },
     subtitle: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       color: textColor,
       opacity: 0.6,
-      marginTop: 2,
+      marginTop: hp(0.3),
     },
     scrollContent: {
-      padding: 16,
-      paddingBottom: 120,
+      paddingHorizontal: horizontalPadding,
+      paddingTop: hp(2),
+      paddingBottom: hp(15),
     },
     sectionCard: {
       backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
+      borderRadius: wp(4),
+      padding: wp(4),
+      marginBottom: hp(2),
+      maxWidth: isTablet ? 720 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
     },
     sectionHeading: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       fontWeight: "900",
       color: textColor,
       opacity: 0.5,
       letterSpacing: 1,
       borderBottomWidth: 1,
       borderColor: structuralBorderColor,
-      paddingBottom: 6,
-      marginBottom: 12,
+      paddingBottom: hp(0.8),
+      marginBottom: hp(1.5),
     },
     themesGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 10,
+      gap: wp(2.5),
     },
     themeBtn: {
-      width: "48%",
+      width: isTablet ? "31%" : "48%",
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       borderWidth: 1,
-      borderRadius: 10,
-      paddingVertical: 14,
-      paddingHorizontal: 12,
+      borderRadius: wp(2.5),
+      paddingVertical: hp(1.8),
+      paddingHorizontal: wp(3),
     },
     inactiveButton: {
       backgroundColor: surfaceAlphaColor,
@@ -467,7 +553,7 @@ const getThemedStyles = (uiTheme: any) => {
       borderColor: uiTheme.customColors?.primary || "#ffd27a",
     },
     themeBtnText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "500",
     },
     inactiveButtonText: {
@@ -478,22 +564,22 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "800",
     },
     verticalListContainer: {
-      gap: 8,
+      gap: hp(1),
     },
     styleListItem: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       borderWidth: 1,
-      padding: 14,
-      borderRadius: 10,
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
     },
     styleListItemActive: {
       backgroundColor: uiTheme.customColors?.primary || "#ffd27a",
       borderColor: uiTheme.customColors?.primary || "#ffd27a",
     },
     styleListText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "500",
     },
     styleListTextActive: {
@@ -501,41 +587,48 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "800",
     },
     colorPickerWrapper: {
-      gap: 12,
+      gap: hp(1.5),
     },
     colorConfigInputRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: wp(3),
       backgroundColor: surfaceAlphaColor,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      padding: 10,
-      borderRadius: 10,
+      padding: wp(2.5),
+      borderRadius: wp(2.5),
     },
     colorPreviewBlock: {
-      width: 32,
-      height: 32,
-      borderRadius: 6,
+      width: isTablet ? 36 : 32,
+      height: isTablet ? 36 : 32,
+      borderRadius: wp(1.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
     },
     textHexInput: {
       flex: 1,
       color: textColor,
-      fontSize: 14,
+      fontSize: isTablet ? 15 : 14,
       fontWeight: "700",
-      paddingVertical: 4,
+      paddingVertical: hp(0.5),
     },
-    presetPaletteRow: {
+    spectrumPickerDropdownContainer: {
       flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: 4,
+      flexWrap: "wrap",
+      gap: wp(2),
+      padding: wp(3),
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
+      borderRadius: wp(2.5),
+      justifyContent: "flex-start",
+      marginTop: hp(0.3),
     },
-    presetSwatch: {
-      width: 28,
-      height: 28,
-      borderRadius: 99,
+    spectrumSwatch: {
+      width: isTablet ? 38 : isSmallScreen ? 28 : 33,
+      height: isTablet ? 38 : isSmallScreen ? 28 : 33,
+      borderRadius: wp(1.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
     },
@@ -546,22 +639,21 @@ const getThemedStyles = (uiTheme: any) => {
     },
     previewSimulationBlock: {
       width: "100%",
-      padding: 14,
-      borderRadius: 10,
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 4,
+      marginTop: hp(0.5),
     },
     previewSimulationText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
-      
     },
     actionBar: {
-      position: "absolute",
-      bottom: 30,
+      position: "absolute", 
+      bottom: 0,
       left: 0,
       right: 0,
       flexDirection: "row",
@@ -570,40 +662,43 @@ const getThemedStyles = (uiTheme: any) => {
       backgroundColor: cardBg,
       borderTopWidth: 1,
       borderColor: structuralBorderColor,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingHorizontal: horizontalPadding,
+      paddingVertical: hp(1.8),
+      maxWidth: isTablet ? 720 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
     },
     restoreBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      paddingVertical: 10,
+      gap: wp(1.5),
+      paddingVertical: hp(1.2),
     },
     restoreBtnText: {
       color: "#ef4444",
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "600",
     },
     saveActionContainer: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: wp(3),
     },
     saveSuccessToast: {
       color: "#10b981",
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "700",
     },
     saveBtn: {
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      borderRadius: 10,
-      minWidth: 130,
+      paddingHorizontal: wp(5),
+      paddingVertical: hp(1.5),
+      borderRadius: wp(2.5),
+      minWidth: isTablet ? 150 : 130,
       alignItems: "center",
       justifyContent: "center",
     },
     saveBtnText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "800",
     },
   });

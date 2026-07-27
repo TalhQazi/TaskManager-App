@@ -59,7 +59,6 @@ export interface ClearHireProfile {
   updatedAt: string;
 }
 
-
 export interface EmployeeProfile {
   id: string;
   name: string;
@@ -74,7 +73,6 @@ export interface EmployeeProfile {
   lunch_expected_end?: string | null;
   break_start_time?: string | null;
 }
-
 
 export interface TimeEntry {
   id: string;
@@ -109,8 +107,6 @@ export interface EODReportResponse {
   productivityScore?: number;
   flags?: { missing?: boolean; lowOutput?: boolean };
 }
-// ─── Core Helper Functions ─────────────────────────────────────────────────────
-
 
 export interface ItineraryStop {
   _id: string;
@@ -129,10 +125,9 @@ export interface ItineraryStop {
 
 export interface Itinerary {
   _id: string;
-  id: string; // Sometimes your API might return 'id' or '_id', keeping both for safety
+  id: string;
   startTime: string;
   stops: ItineraryStop[];
-  // Add other itinerary fields as per your backend schema
 }
 
 export interface NativeFilePayload {
@@ -180,6 +175,7 @@ export interface Note {
   updatedAt: string;
 }
 
+// ─── Core Helper Functions ─────────────────────────────────────────────────────
 
 /**
  * Retrieves the authorization JWT token from persistent device storage
@@ -210,11 +206,13 @@ const buildQueryString = (params?: Record<string, any>): string => {
 // ─── Core Request Interceptor ──────────────────────────────────────────────────
 
 /**
- * Core Request Interceptor handling cross-platform headers & token injection
+ * Core Request Interceptor handling cross-platform headers, token injection,
+ * timeouts, and payload memory safety guards.
  */
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
+  timeoutMs: number = 15000 // 15-second timeout safeguard for slow server maintenance
 ): Promise<ApiResponse<T>> {
   const token = await getAuthToken();
 
@@ -231,11 +229,17 @@ export async function apiRequest<T>(
   const url = `${API_BASE_URL}${cleanEndpoint}`;
   console.log(`[API] ${options.method || 'GET'} ${url}`);
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(url, {
       ...options,
       headers,
+      signal: options.signal || controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (response.status === 401) {
       console.log('[API] Unauthorized - clearing token');
@@ -249,16 +253,25 @@ export async function apiRequest<T>(
 
     const responseText = await response.text().catch(() => "");
 
+    // Monitor response payload sizes to prevent silent OOM crashes
+    const payloadSizeMB = responseText.length / (1024 * 1024);
+    if (payloadSizeMB > 1.0) {
+      console.warn(`⚠️ [API] Heavy Payload Warning on ${cleanEndpoint}: ~${payloadSizeMB.toFixed(2)} MB`);
+    }
+
     if (!response.ok) {
       const errorBody = responseText || 'Unknown error';
       console.log(`[API] Error ${response.status}: ${errorBody}`);
-     // throw new Error(`Request failed: ${response.statusText}`);
-     // throw new Error(`Request failed with Status ${response.status}: ${errorBody}`);
     }
 
     const data = responseText.trim() ? JSON.parse(responseText) : ({} as T);
     return { data, success: true };
-  } catch (error) {
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      console.warn(`⏱️ [API] Request timed out (${timeoutMs / 1000}s): ${cleanEndpoint}`);
+      throw new Error("Server is responding slowly due to maintenance. Please try again.");
+    }
     console.log(`[API] Request failed:`, error);
     throw error;
   }
@@ -343,14 +356,35 @@ export const deleteResource = async <T,>(resource: string, id: string | number):
 
 // ─── File Utilities ────────────────────────────────────────────────────────────
 
-export const toProxiedUrl = (url: string): string => {
+export async function _toProxiedUrl(url: string | undefined): Promise<string> {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
+  if (url.startsWith("data:")) return url;
+
+  const s3Pattern = /^https:\/\/([\w.-]+)\.s3\.([\w.-]+)\.amazonaws\.com\/(.+)$/;
+  const match = url.match(s3Pattern);
+
+  if (match) {
+    const key = match[3];
+    return `${API_BASE_URL}/s3-proxy/${key}`;
   }
-  const hostRoot = API_BASE_URL.replace('/api', '');
-  return `${hostRoot}${url.startsWith("/") ? "" : "/"}${url}`;
-};
+
+  return url;
+}
+
+export function toProxiedUrl(url: string | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
+
+  const s3Pattern = /^https:\/\/([\w.-]+)\.s3\.([\w.-]+)\.amazonaws\.com\/(.+)$/;
+  const match = url.match(s3Pattern);
+
+  if (match) {
+    const key = match[3];
+    return `${API_BASE_URL}/s3-proxy/${key}`;
+  }
+
+  return url;
+}
 
 export const downloadViaUrl = async (url: string, fileName: string): Promise<void> => {
   try {
@@ -415,6 +449,16 @@ export async function addComment(taskId: string, payload: { message: string; att
   });
 }
 
+export async function toggleMessageReaction(messageId: string, emoji: string, username: string) {
+  return apiFetch<{ messageId: string; reactions: Array<{ emoji: string; username: string }> }>(
+    `/api/messages/${encodeURIComponent(messageId)}/react`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji, username }),
+    }
+  );
+}
+
 export async function addTaskComment(taskId: string, message: string) {
   const res = await apiRequest<{
     item: {
@@ -453,9 +497,9 @@ export async function getMyEODReports(params?: { from?: string; to?: string }) {
   return apiFetch<{ items: any[] }>(`/api/eod-reports/me${query}`);
 }
 
-// ─── Manager EOD Reports API (Newly Ported) ───────────────────────────────────
+// ─── Manager EOD Reports API ───────────────────────────────────────────────────
 
-export async function getEODReports(params?: { date?: string; employeeId?: string; status?: string }) {
+export async function getEODReports(params?: { date?: string; employeeId?: string; status?: string; page?: number; limit?: number }) {
   const queryString = buildQueryString(params);
   return apiFetch<{
     items: Array<{
@@ -773,9 +817,6 @@ class TravelCalendarApi {
 
 export const travelCalendarApi = new TravelCalendarApi();
 
-
-
-
 /**
  * Fetch today's current time entry status
  */
@@ -815,8 +856,6 @@ export async function getEmployeeTimeEntryHistory() {
 export async function getEmployeeProfile() {
   return apiFetch<{ item: EmployeeProfile }>("/employees/me");
 }
-
-
 
 /**
  * Get current onboarding phase review details
@@ -887,7 +926,6 @@ export async function getEmployeeSchedule() {
   }>("/api/employees/me/schedule");
 }
 
-
 export async function createLeaveRequest(payload: {
   type: "pto" | "vacation" | "sick" | "holiday" | "unpaid" | "other";
   startDate: string;
@@ -923,8 +961,6 @@ export async function getMyLeaveRequests() {
     }>;
   }>("/api/leave-requests/me");
 }
-
-
 
 export async function getEmployeeConversations(employeeName: string) {
   return apiFetch<{
@@ -998,9 +1034,6 @@ export async function markMessagesAsRead(sender: string, recipient: string) {
 
 export async function uploadMessageAttachment(file: NativeFilePayload) {
   const fd = new FormData();
-  
-  // React Native requires an object with uri, name, and type properties
-  // Cast as 'any' to bypass the TypeScript DOM-based File structure restriction
   fd.append("file", file as any);
 
   return apiFetch<{
@@ -1009,7 +1042,6 @@ export async function uploadMessageAttachment(file: NativeFilePayload) {
     method: "POST",
     body: fd,
     headers: {
-      // Allow your custom fetch client to dynamically generate correct boundary headers
       "Content-Type": "multipart/form-data",
     },
   });
@@ -1039,7 +1071,6 @@ export async function deletePersonalNote(id: string) {
   });
 }
 
-
 export async function markNotificationAsRead(notificationId: string): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>(
     `/api/messages/${encodeURIComponent(notificationId)}/mark-read`,
@@ -1047,9 +1078,6 @@ export async function markNotificationAsRead(notificationId: string): Promise<{ 
   );
 }
 
-/**
- * Dispatches a request to bulk-update and clear all unread notification markers.
- */
 export async function markAllNotificationsAsRead(): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>(
     "/api/messages/mark-all-read", 
@@ -1078,7 +1106,6 @@ export async function getEmployeeScrumRecords() {
   }>("/api/employees/me/scrum-records");
 }
 
-
 export async function getEmployeeTimeLogs() {
   return apiFetch<{
     items: Array<{
@@ -1101,19 +1128,17 @@ export async function getEmployeeDocuments() {
     }>;
   }>("/api/employees/me/documents");
 }
- 
+
 export const uploadDocument = (formData: FormData) =>
   apiFetch("/api/employees/me/documents", {
     method: "POST",
     body: formData,
   });
 
-  export async function getVideoHistory(employeeId: string) {
+export async function getVideoHistory(employeeId: string) {
   return apiFetch<{ items: Array<{ id: string; employeeId: string; videoMessageId: string; messageType: string; deliveredAt: string; acknowledgedAt?: string | null; watchDuration?: number; response?: string; replayCount?: number; videoTitle: string; videoSubtitle: string; videoUrl: string }> }>(
     `/api/user/${encodeURIComponent(employeeId)}/video-history`
   );
 }
-
-
 
 export default apiRequest;

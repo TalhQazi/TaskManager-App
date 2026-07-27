@@ -6,20 +6,38 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
+  ActivityIndicator,
   Alert,
+  Dimensions,
+  PixelRatio
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 import {
   Plus,
   Search,
-  MoreHorizontal,
   Edit,
   Trash2,
   Calendar as CalendarIcon,
+  MapPin,
+  User,
+  Clock,
   X,
+  ChevronDown,
+  Check
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+// Responsive scaling utility
+const scale = (size: number) => (SCREEN_WIDTH / 375) * size;
+const normalize = (size: number) => {
+  const newSize = scale(size);
+  return Math.round(PixelRatio.roundToNearestPixel(newSize));
+};
 
 interface ScheduleItem {
   id: string;
@@ -43,48 +61,403 @@ type ScheduleItemApi = Omit<ScheduleItem, "id"> & {
   _id: string;
 };
 
-function normalizeScheduleItem(s: ScheduleItemApi): ScheduleItem {
+function normalizeScheduleItem(sItem: ScheduleItemApi): ScheduleItem {
   return {
-    id: s._id,
-    title: s.title || "",
-    assignee: s.assignee || "",
-    location: s.location || "",
-    date: s.date || "",
-    startTime: s.startTime || "",
-    endTime: s.endTime || "",
-    type: s.type || "task",
-    status: s.status || "scheduled",
+    id: sItem._id,
+    title: sItem.title,
+    assignee: sItem.assignee,
+    location: sItem.location,
+    date: sItem.date,
+    startTime: sItem.startTime,
+    endTime: sItem.endTime,
+    type: sItem.type,
+    status: sItem.status || "scheduled",
   };
 }
 
-// ─── STABLE PROPORTIONAL COLUMN CONFIGURATIONS ───
-const COL_WIDTHS = {
-  id: 85,
-  title: 150,
-  employee: 120,
-  location: 120,
-  date: 100,
-  time: 110,
-  type: 85,
-  status: 100,
-  actions: 60, // Fixed width allocation for action triggers
-};
-const TABLE_MIN_WIDTH = Object.values(COL_WIDTHS).reduce((a, b) => a + b, 0);
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
+    panelHeader:      uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
+    textSecondary:   isDark ? "#a1a1aa" : "#475569",
+    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
+    primary:         uiTheme.customColors?.primary                || "#ffd27a",
+    success:         "#16C784",
+    warning:         "#F59E0B",
+    danger:          "#EF4444",
+    inputBg:         isDark ? "#09090b" : "#ffffff",
+    overlay:         "rgba(0,0,0,0.6)",
+    badgeBg:         isDark ? "#27272a" : "#e4e4e7",
+    itemSelectedBg:  isDark ? "rgba(255, 210, 122, 0.08)" : "rgba(255, 210, 122, 0.15)"
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    viewport: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: normalize(8),
+      color: colors.textSecondary,
+      fontSize: normalize(14),
+    },
+    scrollContent: {
+      paddingHorizontal: "4%",
+      paddingTop: normalize(16),
+      paddingBottom: normalize(40),
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: normalize(20),
+      flexWrap: "wrap",
+      gap: normalize(10),
+    },
+    titleHeading: {
+      fontSize: normalize(24),
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: 0.3,
+    },
+    subtitleText: {
+      fontSize: normalize(12),
+      color: colors.textSecondary,
+      marginTop: normalize(2),
+    },
+    primaryActionBtn: {
+      flexDirection: "row",
+      backgroundColor: colors.primary,
+      paddingVertical: normalize(10),
+      paddingHorizontal: normalize(14),
+      borderRadius: normalize(8),
+      alignItems: "center",
+      gap: normalize(6),
+    },
+    primaryActionBtnText: {
+      color: colors.inputBg,
+      fontSize: normalize(13),
+      fontWeight: "700",
+    },
+    searchCard: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(12),
+      padding: normalize(12),
+      marginBottom: normalize(20),
+    },
+    searchBarContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(8),
+      paddingHorizontal: normalize(12),
+      height: normalize(42),
+    },
+    searchIcon: {
+      marginRight: normalize(8),
+    },
+    searchBarInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: normalize(14),
+      padding: 0,
+    },
+    sectionTitle: {
+      fontSize: normalize(16),
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: normalize(12),
+      paddingHorizontal: normalize(2),
+    },
+    scheduleCardItem: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(12),
+      padding: normalize(16),
+      marginBottom: normalize(12),
+      gap: normalize(12),
+    },
+    cardHeaderBlock: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    metaIdentityRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: normalize(8),
+      flex: 1,
+      marginRight: normalize(8),
+    },
+    calendarIconWrapper: {
+      width: normalize(32),
+      height: normalize(32),
+      borderRadius: normalize(8),
+      backgroundColor: "rgba(255, 210, 122, 0.1)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    monoIdText: {
+      fontSize: normalize(11),
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    itemTitleText: {
+      fontSize: normalize(14),
+      fontWeight: "700",
+      color: colors.text,
+      marginTop: normalize(1),
+    },
+    contextRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: normalize(8),
+    },
+    contextColumnBlock: {
+      flex: 1,
+    },
+    contextLabel: {
+      fontSize: normalize(10),
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    contextValue: {
+      fontSize: normalize(13),
+      color: colors.text,
+      marginTop: normalize(1),
+    },
+    badgeRow: {
+      flexDirection: "row",
+      gap: normalize(6),
+      marginTop: normalize(2),
+      flexWrap: "wrap",
+    },
+    typeBadge: {
+      backgroundColor: colors.badgeBg,
+      paddingHorizontal: normalize(8),
+      paddingVertical: normalize(3),
+      borderRadius: normalize(6),
+    },
+    typeBadgeText: {
+      fontSize: normalize(11),
+      color: colors.text,
+      fontWeight: "600",
+      textTransform: "capitalize",
+    },
+    statusBadge: {
+      paddingHorizontal: normalize(8),
+      paddingVertical: normalize(3),
+      borderRadius: normalize(6),
+      borderWidth: 0.5,
+    },
+    statusBadgeText: {
+      fontSize: normalize(11),
+      fontWeight: "700",
+      textTransform: "capitalize",
+    },
+    fallbackEmptyBlock: {
+      paddingVertical: normalize(40),
+      paddingHorizontal: normalize(20),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fallbackEmptyTextPrimary: {
+      fontSize: normalize(15),
+      fontWeight: "700",
+      color: colors.text,
+      marginTop: normalize(12),
+    },
+    fallbackEmptyTextSecondary: {
+      fontSize: normalize(13),
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: normalize(4),
+    },
+    modalOverlayMask: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalSheetContainer: {
+      width: "92%",
+      maxWidth: 500,
+      backgroundColor: colors.background,
+      borderRadius: normalize(16),
+      borderWidth: 1,
+      borderColor: colors.border,
+      maxHeight: SCREEN_HEIGHT * 0.85,
+      overflow: "hidden",
+    },
+    modalHeaderPane: {
+      padding: normalize(16),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.panelHeader,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    modalTitleText: {
+      fontSize: normalize(16),
+      fontWeight: "800",
+      color: colors.text,
+    },
+    modalSubtitleText: {
+      fontSize: normalize(12),
+      color: colors.textSecondary,
+      marginTop: normalize(2),
+    },
+    modalScrollArea: {
+      padding: normalize(16),
+    },
+    formGroup: {
+      marginBottom: normalize(14),
+    },
+    formLabel: {
+      fontSize: normalize(12),
+      fontWeight: "600",
+      color: colors.textSecondary,
+      marginBottom: normalize(6),
+    },
+    formInput: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(6),
+      paddingHorizontal: normalize(12),
+      height: normalize(42),
+      color: colors.text,
+      fontSize: normalize(14),
+    },
+    selectorPickerTrigger: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(6),
+      paddingHorizontal: normalize(12),
+      height: normalize(42),
+    },
+    selectorPickerText: {
+      fontSize: normalize(14),
+      color: colors.text,
+      fontWeight: "500",
+    },
+    selectorPickerPlaceholder: {
+      fontSize: normalize(14),
+      color: colors.textSecondary,
+    },
+    modalFooterStrip: {
+      flexDirection: "row",
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      padding: normalize(12),
+      backgroundColor: colors.panelHeader,
+      gap: normalize(10),
+    },
+    footerCancelBtn: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: normalize(8),
+      height: normalize(42),
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+    },
+    footerCancelBtnText: {
+      color: colors.text,
+      fontSize: normalize(13),
+      fontWeight: "600",
+    },
+    footerSubmitBtn: {
+      flex: 1,
+      backgroundColor: colors.primary,
+      borderRadius: normalize(8),
+      height: normalize(42),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    footerSubmitBtnText: {
+      color: colors.inputBg,
+      fontSize: normalize(13),
+      fontWeight: "700",
+    },
+    pickerOptionsContainer: {
+      width: "88%",
+      maxWidth: 420,
+      backgroundColor: colors.background,
+      borderRadius: normalize(14),
+      borderWidth: 1,
+      borderColor: colors.border,
+      maxHeight: SCREEN_HEIGHT * 0.65,
+      overflow: "hidden",
+    },
+    pickerOptionItem: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: normalize(12),
+      paddingHorizontal: normalize(16),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    pickerOptionItemText: {
+      fontSize: normalize(14),
+      color: colors.text,
+      fontWeight: "500",
+    },
+  });
+}
 
 export default function Scheduling() {
+  const { uiTheme } = useTheme();
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  
-  // Modals Configuration
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ScheduleItem | null>(null);
+  const [selected, setSelected] = useState<ScheduleItem | null>(null);
 
-  // Form Configurations
+  const [pickerConfig, setPickerConfig] = useState<{
+    visible: boolean;
+    title: string;
+    options: string[];
+    target: "add" | "edit";
+    key: "assignee" | "type" | "status";
+    currentValue: string;
+  }>({
+    visible: false,
+    title: "",
+    options: [],
+    target: "add",
+    key: "assignee",
+    currentValue: ""
+  });
+
   const [formData, setFormData] = useState({
     title: "",
     assignee: "",
@@ -107,45 +480,40 @@ export default function Scheduling() {
     status: "scheduled" as ScheduleItem["status"],
   });
 
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
+      const res = await apiFetch<{ items: ScheduleItemApi[] }>("/api/events");
+      setSchedules((res.items || []).map(normalizeScheduleItem));
+
+      const empRes = await apiFetch<{ items: Employee[] }>("/api/employees");
+      setEmployees((empRes.items ?? []).filter((e) => e.status === "active"));
+    } catch {
+      Alert.alert("Error", "Failed to load configuration schedules");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        setLoading(true);
-        setApiError(null);
-
-        const res = await apiFetch<{ items: ScheduleItemApi[] }>("/api/events");
-        if (!mounted) return;
-        setSchedules(res.items.map(normalizeScheduleItem));
-
-        const empRes = await apiFetch<{ items: Employee[] }>("/api/employees");
-        if (!mounted) return;
-        setEmployees((empRes.items ?? []).filter((e) => e.status === "active"));
-      } catch (e) {
-        if (!mounted) return;
-        setApiError(e instanceof Error ? e.message : "Failed to load schedules");
-      } finally {
-        if (!mounted) return;
-        setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
+    loadInitialData();
   }, []);
 
   const refreshSchedules = async () => {
-    const res = await apiFetch<{ items: ScheduleItemApi[] }>("/api/events");
-    setSchedules(res.items.map(normalizeScheduleItem));
+    try {
+      const res = await apiFetch<{ items: ScheduleItemApi[] }>("/api/events");
+      setSchedules((res.items || []).map(normalizeScheduleItem));
+    } catch {
+      // Passive logging suppression
+    }
   };
 
   const displayIdByScheduleId = useMemo(() => {
     return new Map(
-      schedules.map((s, idx) => {
+      schedules.map((sItem, idx) => {
         const displayId = `SC${String(idx + 1).padStart(3, "0")}`;
-        return [s.id, displayId] as const;
-      })
+        return [sItem.id, displayId] as const;
+      }),
     );
   }, [schedules]);
 
@@ -156,21 +524,21 @@ export default function Scheduling() {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return schedules;
-    return schedules.filter((s) => {
+    return schedules.filter((sItem) => {
       return (
-        s.location.toLowerCase().includes(q) ||
-        s.assignee.toLowerCase().includes(q) ||
-        s.title.toLowerCase().includes(q)
+        sItem.location.toLowerCase().includes(q) ||
+        sItem.assignee.toLowerCase().includes(q) ||
+        sItem.title.toLowerCase().includes(q)
       );
     });
   }, [schedules, searchQuery]);
 
   const addSchedule = async () => {
     if (!formData.title || !formData.assignee || !formData.date) {
-      Alert.alert("Missing Fields", "Please populate Title, Employee, and Date fields.");
+      Alert.alert("Required Fields", "Please populate Title, Employee, and Date configuration markers.");
       return;
     }
-    const next: ScheduleItem = {
+    const next = {
       id: `SCH-${Date.now().toString().slice(-6)}`,
       title: formData.title,
       assignee: formData.assignee,
@@ -182,7 +550,6 @@ export default function Scheduling() {
       status: formData.status,
     };
     try {
-      setApiError(null);
       await apiFetch("/api/events", {
         method: "POST",
         body: JSON.stringify(next),
@@ -199,55 +566,44 @@ export default function Scheduling() {
         type: "task",
         status: "scheduled",
       });
-    } catch (e) {
-      setApiError(e instanceof Error ? e.message : "Failed to add schedule");
+    } catch {
+      Alert.alert("Error", "Failed to commit shift record mapping entry");
     }
   };
 
-  const handleOpenActionMenu = (item: ScheduleItem) => {
-    setSelectedItem(item);
-    setActionMenuOpen(true);
-  };
-
-  const triggerEditFlow = () => {
-    if (!selectedItem) return;
-    setActionMenuOpen(false);
+  const onEdit = (sItem: ScheduleItem) => {
+    setSelected(sItem);
     setEditFormData({
-      title: selectedItem.title,
-      assignee: selectedItem.assignee,
-      location: selectedItem.location,
-      date: selectedItem.date,
-      startTime: selectedItem.startTime,
-      endTime: selectedItem.endTime,
-      type: selectedItem.type,
-      status: selectedItem.status,
+      title: sItem.title,
+      assignee: sItem.assignee,
+      location: sItem.location,
+      date: sItem.date,
+      startTime: sItem.startTime,
+      endTime: sItem.endTime,
+      type: sItem.type,
+      status: sItem.status,
     });
     setEditOpen(true);
   };
 
   const saveEdit = async () => {
-    if (!selectedItem) return;
+    if (!selected) return;
     try {
-      setApiError(null);
-      await apiFetch(`/api/events/${selectedItem.id}`, {
+      await apiFetch(`/api/events/${selected.id}`, {
         method: "PUT",
         body: JSON.stringify(editFormData),
       });
       await refreshSchedules();
       setEditOpen(false);
-      setSelectedItem(null);
-    } catch (e) {
-      setApiError(e instanceof Error ? e.message : "Failed to update schedule");
+      setSelected(null);
+    } catch {
+      Alert.alert("Error", "Failed to process target modifications");
     }
   };
 
-  const triggerDeleteFlow = (item?: ScheduleItem) => {
-    const target = item || selectedItem;
-    if (!target) return;
-    setActionMenuOpen(false);
-
+  const onDelete = (sItem: ScheduleItem) => {
     Alert.alert(
-      "Confirm Deletion",
+      "Confirm Action",
       "Are you sure you want to delete this schedule?",
       [
         { text: "Cancel", style: "cancel" },
@@ -256,540 +612,433 @@ export default function Scheduling() {
           style: "destructive",
           onPress: async () => {
             try {
-              setApiError(null);
-              await apiFetch(`/api/events/${target.id}`, {
+              await apiFetch(`/api/events/${sItem.id}`, {
                 method: "DELETE",
               });
               await refreshSchedules();
-              setSelectedItem(null);
-            } catch (e) {
-              setApiError(e instanceof Error ? e.message : "Failed to delete schedule");
+            } catch {
+              Alert.alert("Error", "Failed to clear specified schedule allocation");
             }
-          },
-        },
+          }
+        }
       ]
     );
   };
 
+  const openOptionDropdown = (
+    title: string,
+    options: string[],
+    target: "add" | "edit",
+    key: "assignee" | "type" | "status",
+    currentValue: string
+  ) => {
+    setPickerConfig({
+      visible: true,
+      title,
+      options,
+      target,
+      key,
+      currentValue
+    });
+  };
+
+  const handleSelectOption = (option: string) => {
+    const { target, key } = pickerConfig;
+    if (target === "add") {
+      setFormData((prev) => ({ ...prev, [key]: option }));
+    } else {
+      setEditFormData((prev) => ({ ...prev, [key]: option }));
+    }
+    setPickerConfig((prev) => ({ ...prev, visible: false }));
+  };
+
+  const getStatusStyleMap = (status: string) => {
+    switch (status) {
+      case "completed":
+        return { bg: "rgba(22, 199, 132, 0.1)", text: colors.success, bdr: "rgba(22, 199, 132, 0.3)" };
+      case "canceled":
+        return { bg: "rgba(239, 68, 68, 0.1)", text: colors.danger, bdr: "rgba(239, 68, 68, 0.3)" };
+      default:
+        return { bg: "rgba(245, 158, 11, 0.1)", text: colors.warning, bdr: "rgba(245, 158, 11, 0.3)" };
+    }
+  };
+
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: "#09090b" }]}>
-        <ActivityIndicator size="large" color="#ffd27a" />
-        <Text style={styles.loadingText}>Syncing Rosters...</Text>
+      <View style={s(styles.centered)}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={s(styles.loadingText)}>Loading schedules...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.screenContainer} contentContainerStyle={{ paddingBottom: 32 }}>
-      {/* Header */}
-      <View style={styles.headerContainer}>
-        <View>
-          <Text style={styles.pageTitle}>Scheduling</Text>
-          <Text style={styles.pageSubtitle}>Plan and manage team schedules</Text>
-        </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setAddOpen(true)}>
-          <Plus size={16} color="#09090b" />
-          <Text style={styles.addButtonText}>Add</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* API Error Box */}
-      {apiError && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{apiError}</Text>
-        </View>
-      )}
-
-      {/* Filter Matrix Card */}
-      <View style={styles.searchCard}>
-        <View style={styles.searchWrapper}>
-          <Search size={14} color="#a1a1aa" style={styles.searchIcon} />
-          <TextInput
-            style={styles.textInput}
-            placeholder="Search by location, employee, title..."
-            placeholderTextColor="#52525b"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      {/* Schedules Table */}
-      <View style={styles.tableCard}>
-        <View style={styles.tableCardHeader}>
-          <Text style={styles.tableCardTitle}>Schedules ({filtered.length})</Text>
+    <SafeAreaView style={s(styles.viewport)} edges={["top", "left", "right"]}>
+      <ScrollView contentContainerStyle={s(styles.scrollContent)} showsVerticalScrollIndicator={false}>
+        
+        <View style={s(styles.headerRow)}>
+          <View>
+            <Text style={s(styles.titleHeading)}>Scheduling</Text>
+            <Text style={s(styles.subtitleText)}>Plan and manage team schedules</Text>
+          </View>
+          <TouchableOpacity style={s(styles.primaryActionBtn)} onPress={() => setAddOpen(true)}>
+            <Plus size={normalize(14)} color={colors.inputBg} />
+            <Text style={s(styles.primaryActionBtnText)}>Add Schedule</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.horizontalTableContainer}>
-          <View style={{ width: TABLE_MIN_WIDTH }}>
-            {/* Table Header Row */}
-            <View style={styles.tableHeadRow}>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.id }]}>ID</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.title }]}>Title</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.employee }]}>Employee</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.location }]}>Location</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.date }]}>Date</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.time }]}>Time Frame</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.type }]}>Type</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.status }]}>Status</Text>
-              <Text style={[styles.tableTh, { width: COL_WIDTHS.actions, textAlign: "right" }]}>Actions</Text>
-            </View>
+        <View style={s(styles.searchCard)}>
+          <View style={s(styles.searchBarContainer)}>
+            <Search size={normalize(16)} color={colors.textSecondary} style={s(styles.searchIcon)} />
+            <TextInput
+              style={s(styles.searchBarInput)}
+              placeholder="Search by location, employee, or type..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCorrect={false}
+            />
+          </View>
+        </View>
 
-            {/* Table Body Rows */}
-            {filtered.map((s) => (
-              <View key={s.id} style={styles.tableBodyRow}>
-                <Text style={[styles.monoCell, { width: COL_WIDTHS.id }]}>{getDisplayScheduleId(s.id)}</Text>
-                <Text style={[styles.tableTdText, styles.boldCell, { width: COL_WIDTHS.title }]} numberOfLines={1} ellipsizeMode="tail">{s.title}</Text>
-                <Text style={[styles.tableTdText, { width: COL_WIDTHS.employee }]} numberOfLines={1} ellipsizeMode="tail">{s.assignee}</Text>
-                <Text style={[styles.tableTdText, { width: COL_WIDTHS.location }]} numberOfLines={1} ellipsizeMode="tail">{s.location}</Text>
-                <Text style={[styles.tableTdText, styles.mutedCell, { width: COL_WIDTHS.date }]}>{s.date}</Text>
-                <Text style={[styles.tableTdText, styles.mutedCell, { width: COL_WIDTHS.time }]}>
-                  {s.startTime || "—"} - {s.endTime || "—"}
-                </Text>
-                <View style={{ width: COL_WIDTHS.type, ...styles.badgeAlign }}>
-                  <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{s.type}</Text></View>
+        <Text style={s(styles.sectionTitle)}>Schedules ({filtered.length})</Text>
+
+        {filtered.map((sItem) => {
+          const statusStyle = getStatusStyleMap(sItem.status);
+          return (
+            <View key={sItem.id} style={s(styles.scheduleCardItem)}>
+              <View style={s(styles.cardHeaderBlock)}>
+                <View style={s(styles.metaIdentityRow)}>
+                  <View style={s(styles.calendarIconWrapper)}>
+                    <CalendarIcon size={normalize(14)} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s(styles.monoIdText)}>{getDisplayScheduleId(sItem.id)}</Text>
+                    <Text style={s(styles.itemTitleText)} numberOfLines={1}>{sItem.title}</Text>
+                  </View>
                 </View>
-                <View style={{ width: COL_WIDTHS.status, ...styles.badgeAlign }}>
-                  <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{s.status}</Text></View>
-                </View>
-                {/* Fixed Action Button Box Container alignment */}
-                <View style={{ width: COL_WIDTHS.actions, alignItems: "flex-end" }}>
-                  <TouchableOpacity style={styles.actionRowButton} onPress={() => handleOpenActionMenu(s)}>
-                    <MoreHorizontal size={18} color="#ffd27a" />
+                <View style={{ flexDirection: "row", gap: normalize(6) }}>
+                  <TouchableOpacity style={{ padding: normalize(6) }} onPress={() => onEdit(sItem)}>
+                    <Edit size={normalize(16)} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ padding: normalize(6) }} onPress={() => onDelete(sItem)}>
+                    <Trash2 size={normalize(16)} color={colors.danger} />
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
 
-            {filtered.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <CalendarIcon size={24} color="#52525b" />
-                <Text style={styles.emptyText}>No schedules mapped to query</Text>
+              <View style={s(styles.contextRow)}>
+                <User size={normalize(14)} color={colors.textSecondary} />
+                <View style={s(styles.contextColumnBlock)}>
+                  <Text style={s(styles.contextLabel)}>Employee</Text>
+                  <Text style={s(styles.contextValue)} numberOfLines={1}>{sItem.assignee}</Text>
+                </View>
               </View>
-            )}
-          </View>
-        </ScrollView>
-      </View>
 
-      {/* ─── ADD SCHEDULE MODAL ─── */}
+              <View style={s(styles.contextRow)}>
+                <MapPin size={normalize(14)} color={colors.textSecondary} />
+                <View style={s(styles.contextColumnBlock)}>
+                  <Text style={s(styles.contextLabel)}>Location</Text>
+                  <Text style={s(styles.contextValue)} numberOfLines={1}>{sItem.location}</Text>
+                </View>
+              </View>
+
+              <View style={s(styles.contextRow)}>
+                <Clock size={normalize(14)} color={colors.textSecondary} />
+                <View style={s(styles.contextColumnBlock)}>
+                  <Text style={s(styles.contextLabel)}>Date & Time</Text>
+                  <Text style={s(styles.contextValue)} numberOfLines={1}>
+                    {sItem.date} · {sItem.startTime || "—"} - {sItem.endTime || "—"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={s(styles.badgeRow)}>
+                <View style={s(styles.typeBadge)}>
+                  <Text style={s(styles.typeBadgeText)}>{sItem.type || "—"}</Text>
+                </View>
+                <View style={s([styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.bdr }])}>
+                  <Text style={s([styles.statusBadgeText, { color: statusStyle.text }])}>{sItem.status}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+
+        {filtered.length === 0 && (
+          <View style={s(styles.fallbackEmptyBlock)}>
+            <CalendarIcon size={normalize(36)} color={colors.textSecondary} />
+            <Text style={s(styles.fallbackEmptyTextPrimary)}>No schedules found</Text>
+            <Text style={s(styles.fallbackEmptyTextSecondary)}>Try adjusting your filters or add a fresh schedule allocation matrix.</Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Add Schedule Modal */}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Schedule</Text>
-              <TouchableOpacity onPress={() => setAddOpen(false)}><X size={18} color="#a1a1aa" /></TouchableOpacity>
+        <View style={s(styles.modalOverlayMask)}>
+          <View style={s(styles.modalSheetContainer)}>
+            <View style={s(styles.modalHeaderPane)}>
+              <View>
+                <Text style={s(styles.modalTitleText)}>Add Schedule</Text>
+                <Text style={s(styles.modalSubtitleText)}>Create a new shift schedule</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAddOpen(false)} style={{ padding: normalize(4) }}>
+                <X size={normalize(18)} color={colors.text} />
+              </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalFormScroll}>
-              <Text style={styles.fieldLabel}>Title *</Text>
-              <TextInput style={styles.formInput} placeholder="Event title" placeholderTextColor="#52525b" value={formData.title} onChangeText={(text) => setFormData({ ...formData, title: text })} />
 
-              <Text style={styles.fieldLabel}>Employee Name *</Text>
-              <TextInput style={styles.formInput} placeholder="Assignee e.g., John Doe" placeholderTextColor="#52525b" value={formData.assignee} onChangeText={(text) => setFormData({ ...formData, assignee: text })} />
-
-              <Text style={styles.fieldLabel}>Location *</Text>
-              <TextInput style={styles.formInput} placeholder="e.g., Main Office" placeholderTextColor="#52525b" value={formData.location} onChangeText={(text) => setFormData({ ...formData, location: text })} />
-
-              <Text style={styles.fieldLabel}>Date * (YYYY-MM-DD)</Text>
-              <TextInput style={styles.formInput} placeholder="YYYY-MM-DD" placeholderTextColor="#52525b" value={formData.date} onChangeText={(text) => setFormData({ ...formData, date: text })} />
-
-              <View style={styles.formRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.fieldLabel}>Start Time</Text>
-                  <TextInput style={styles.formInput} placeholder="09:00 AM" placeholderTextColor="#52525b" value={formData.startTime} onChangeText={(text) => setFormData({ ...formData, startTime: text })} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.fieldLabel}>End Time</Text>
-                  <TextInput style={styles.formInput} placeholder="05:00 PM" placeholderTextColor="#52525b" value={formData.endTime} onChangeText={(text) => setFormData({ ...formData, endTime: text })} />
-                </View>
+            <ScrollView contentContainerStyle={s(styles.modalScrollArea)} keyboardShouldPersistTaps="handled">
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Title *</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={formData.title}
+                  onChangeText={(t) => setFormData((prev) => ({ ...prev, title: t }))}
+                  placeholder="Event title"
+                  placeholderTextColor={colors.textSecondary}
+                />
               </View>
 
-              <Text style={styles.fieldLabel}>Type (task, meeting, break, training)</Text>
-              <TextInput style={styles.formInput} placeholder="task" placeholderTextColor="#52525b" autoCapitalize="none" value={formData.type} onChangeText={(text) => setFormData({ ...formData, type: text.toLowerCase() as any })} />
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Employee *</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Employee", employees.map(e => e.name), "add", "assignee", formData.assignee)}
+                >
+                  <Text style={s(formData.assignee ? styles.selectorPickerText : styles.selectorPickerPlaceholder)}>
+                    {formData.assignee || "Select employee"}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
 
-              <Text style={styles.fieldLabel}>Status (scheduled, completed, canceled)</Text>
-              <TextInput style={styles.formInput} placeholder="scheduled" placeholderTextColor="#52525b" autoCapitalize="none" value={formData.status} onChangeText={(text) => setFormData({ ...formData, status: text.toLowerCase() as any })} />
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Location *</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={formData.location}
+                  onChangeText={(t) => setFormData((prev) => ({ ...prev, location: t }))}
+                  placeholder="e.g., Main Office"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Date * (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={formData.date}
+                  onChangeText={(t) => setFormData((prev) => ({ ...prev, date: t }))}
+                  placeholder="e.g., 2026-07-15"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Start Time (HH:MM)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={formData.startTime}
+                  onChangeText={(t) => setFormData((prev) => ({ ...prev, startTime: t }))}
+                  placeholder="e.g., 09:00"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>End Time (HH:MM)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={formData.endTime}
+                  onChangeText={(t) => setFormData((prev) => ({ ...prev, endTime: t }))}
+                  placeholder="e.g., 17:00"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Type</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Type", ["task", "meeting", "break", "training"], "add", "type", formData.type)}
+                >
+                  <Text style={s(styles.selectorPickerText)}>
+                    {formData.type}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Status</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Status", ["scheduled", "completed", "canceled"], "add", "status", formData.status)}
+                >
+                  <Text style={s(styles.selectorPickerText)}>
+                    {formData.status}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setAddOpen(false)}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={addSchedule}><Text style={styles.modalSubmitText}>Add Schedule</Text></TouchableOpacity>
+
+            <View style={s(styles.modalFooterStrip)}>
+              <TouchableOpacity style={s(styles.footerCancelBtn)} onPress={() => setAddOpen(false)}>
+                <Text style={s(styles.footerCancelBtnText)}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s(styles.footerSubmitBtn)} onPress={addSchedule}>
+                <Text style={s(styles.footerSubmitBtnText)}>Add Schedule</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* ─── EDIT SCHEDULE MODAL ─── */}
+      {/* Edit Schedule Modal */}
       <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Schedule</Text>
-              <TouchableOpacity onPress={() => setEditOpen(false)}><X size={18} color="#a1a1aa" /></TouchableOpacity>
+        <View style={s(styles.modalOverlayMask)}>
+          <View style={s(styles.modalSheetContainer)}>
+            <View style={s(styles.modalHeaderPane)}>
+              <View>
+                <Text style={s(styles.modalTitleText)}>Edit Schedule</Text>
+                <Text style={s(styles.modalSubtitleText)}>Update schedule information and save changes</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditOpen(false)} style={{ padding: normalize(4) }}>
+                <X size={normalize(18)} color={colors.text} />
+              </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalFormScroll}>
-              <Text style={styles.fieldLabel}>Title *</Text>
-              <TextInput style={styles.formInput} placeholder="Event title" placeholderTextColor="#52525b" value={editFormData.title} onChangeText={(text) => setEditFormData({ ...editFormData, title: text })} />
 
-              <Text style={styles.fieldLabel}>Employee Name *</Text>
-              <TextInput style={styles.formInput} placeholder="Assignee Name" placeholderTextColor="#52525b" value={editFormData.assignee} onChangeText={(text) => setEditFormData({ ...editFormData, assignee: text })} />
-
-              <Text style={styles.fieldLabel}>Location *</Text>
-              <TextInput style={styles.formInput} placeholder="Location" placeholderTextColor="#52525b" value={editFormData.location} onChangeText={(text) => setEditFormData({ ...editFormData, location: text })} />
-
-              <Text style={styles.fieldLabel}>Date * (YYYY-MM-DD)</Text>
-              <TextInput style={styles.formInput} placeholder="YYYY-MM-DD" placeholderTextColor="#52525b" value={editFormData.date} onChangeText={(text) => setEditFormData({ ...editFormData, date: text })} />
-
-              <View style={styles.formRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.fieldLabel}>Start Time</Text>
-                  <TextInput style={styles.formInput} value={editFormData.startTime} onChangeText={(text) => setEditFormData({ ...editFormData, startTime: text })} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.fieldLabel}>End Time</Text>
-                  <TextInput style={styles.formInput} value={editFormData.endTime} onChangeText={(text) => setEditFormData({ ...editFormData, endTime: text })} />
-                </View>
+            <ScrollView contentContainerStyle={s(styles.modalScrollArea)} keyboardShouldPersistTaps="handled">
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Title *</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={editFormData.title}
+                  onChangeText={(t) => setEditFormData((prev) => ({ ...prev, title: t }))}
+                />
               </View>
 
-              <Text style={styles.fieldLabel}>Type</Text>
-              <TextInput style={styles.formInput} value={editFormData.type} autoCapitalize="none" onChangeText={(text) => setEditFormData({ ...editFormData, type: text.toLowerCase() as any })} />
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Employee *</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Employee", employees.map(e => e.name), "edit", "assignee", editFormData.assignee)}
+                >
+                  <Text style={s(styles.selectorPickerText)}>
+                    {editFormData.assignee}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
 
-              <Text style={styles.fieldLabel}>Status</Text>
-              <TextInput style={styles.formInput} value={editFormData.status} autoCapitalize="none" onChangeText={(text) => setEditFormData({ ...editFormData, status: text.toLowerCase() as any })} />
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Location *</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={editFormData.location}
+                  onChangeText={(t) => setEditFormData((prev) => ({ ...prev, location: t }))}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Date * (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={editFormData.date}
+                  onChangeText={(t) => setEditFormData((prev) => ({ ...prev, date: t }))}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Start Time (HH:MM)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={editFormData.startTime}
+                  onChangeText={(t) => setEditFormData((prev) => ({ ...prev, startTime: t }))}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>End Time (HH:MM)</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={editFormData.endTime}
+                  onChangeText={(t) => setEditFormData((prev) => ({ ...prev, endTime: t }))}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Type</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Type", ["task", "meeting", "break", "training"], "edit", "type", editFormData.type)}
+                >
+                  <Text style={s(styles.selectorPickerText)}>
+                    {editFormData.type}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Status</Text>
+                <TouchableOpacity
+                  style={s(styles.selectorPickerTrigger)}
+                  onPress={() => openOptionDropdown("Select Status", ["scheduled", "completed", "canceled"], "edit", "status", editFormData.status)}
+                >
+                  <Text style={s(styles.selectorPickerText)}>
+                    {editFormData.status}
+                  </Text>
+                  <ChevronDown size={normalize(14)} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditOpen(false)}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={saveEdit}><Text style={styles.modalSubmitText}>Save Changes</Text></TouchableOpacity>
+
+            <View style={s(styles.modalFooterStrip)}>
+              <TouchableOpacity style={s(styles.footerCancelBtn)} onPress={() => setEditOpen(false)}>
+                <Text style={s(styles.footerCancelBtnText)}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s(styles.footerSubmitBtn)} onPress={saveEdit}>
+                <Text style={s(styles.footerSubmitBtnText)}>Save Changes</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* ─── ROW OPTIONS CONTEXT SHEET ─── */}
-      <Modal visible={actionMenuOpen} transparent animationType="fade" onRequestClose={() => setActionMenuOpen(false)}>
-        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionMenuOpen(false)}>
-          <View style={styles.sheetContent}>
-            <Text style={styles.sheetHeaderLabel}>
-              Manage: {selectedItem ? getDisplayScheduleId(selectedItem.id) : ""}
-            </Text>
-            <TouchableOpacity style={styles.sheetRowBtn} onPress={triggerEditFlow}>
-              <Edit size={16} color="#d4d4d8" />
-              <Text style={styles.sheetBtnText}>Edit Schedule Info</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.sheetRowBtn, { borderBottomWidth: 0 }]} onPress={() => triggerDeleteFlow()}>
-              <Trash2 size={16} color="#ef4444" />
-              <Text style={[styles.sheetBtnText, { color: "#ef4444" }]}>Remove Entry</Text>
-            </TouchableOpacity>
+      {/* Modern High-Fidelity Custom Selection Dropdown Menu Modal Overlay */}
+      <Modal visible={pickerConfig.visible} transparent animationType="fade" onRequestClose={() => setPickerConfig(prev => ({ ...prev, visible: false }))}>
+        <View style={s(styles.modalOverlayMask)}>
+          <View style={s(styles.pickerOptionsContainer)}>
+            <View style={s(styles.modalHeaderPane)}>
+              <Text style={s(styles.modalTitleText)}>{pickerConfig.title}</Text>
+              <TouchableOpacity onPress={() => setPickerConfig(prev => ({ ...prev, visible: false }))} style={{ padding: normalize(4) }}>
+                <X size={normalize(16)} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {pickerConfig.options.map((option) => {
+                const isSelected = pickerConfig.currentValue === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={s([styles.pickerOptionItem, isSelected && { backgroundColor: colors.itemSelectedBg }])}
+                    onPress={() => handleSelectOption(option)}
+                  >
+                    <Text style={s([styles.pickerOptionItemText, isSelected && { color: colors.primary, fontWeight: "700" }])}>
+                      {option}
+                    </Text>
+                    {isSelected && <Check size={normalize(16)} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
-    </ScrollView>
+
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#a1a1aa",
-    fontSize: 13,
-  },
-  screenContainer: {
-    flex: 1,
-    backgroundColor: "#09090b",
-    paddingHorizontal: 16,
-  },
-  headerContainer: {
-    marginTop: 20,
-    marginBottom: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#f4f4f5",
-    letterSpacing: 0.3,
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: "#a1a1aa",
-    marginTop: 2,
-  },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffd27a",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    gap: 4,
-  },
-  addButtonText: {
-    color: "#09090b",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  errorBanner: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
-    borderRadius: 6,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: "#ef4444",
-    fontSize: 13,
-  },
-  searchCard: {
-    backgroundColor: "#121214",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-  },
-  searchWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-  },
-  searchIcon: {
-    marginRight: 6,
-  },
-  textInput: {
-    flex: 1,
-    height: 38,
-    color: "#f4f4f5",
-    fontSize: 13,
-  },
-  tableCard: {
-    backgroundColor: "#121214",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 10,
-    paddingVertical: 14,
-  },
-  tableCardHeader: {
-    paddingHorizontal: 14,
-    marginBottom: 14,
-  },
-  tableCardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#f4f4f5",
-  },
-  horizontalTableContainer: {
-    paddingHorizontal: 14, // Table boundaries padding placed cleanly on scroll area
-  },
-  tableHeadRow: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderColor: "#27272a",
-    paddingBottom: 8,
-    marginBottom: 4,
-  },
-  tableTh: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#a1a1aa",
-    textTransform: "uppercase",
-    paddingRight: 6,
-  },
-  tableBodyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: "#1c1c1f",
-  },
-  tableTdText: {
-    fontSize: 13,
-    color: "#d4d4d8",
-    paddingRight: 8,
-  },
-  monoCell: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: "#71717a",
-  },
-  boldCell: {
-    color: "#f4f4f5",
-    fontWeight: "600",
-  },
-  mutedCell: {
-    color: "#a1a1aa",
-  },
-  badgeAlign: {
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-  typeBadge: {
-    borderWidth: 1,
-    borderColor: "#3f3f46",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: "#18181b",
-  },
-  typeBadgeText: {
-    fontSize: 10,
-    color: "#a1a1aa",
-    textTransform: "capitalize",
-    fontWeight: "600",
-  },
-  statusBadge: {
-    backgroundColor: "#27272a",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    color: "#ffd27a",
-    textTransform: "capitalize",
-    fontWeight: "700",
-  },
-  actionRowButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 32,
-    gap: 8,
-  },
-  emptyText: {
-    color: "#52525b",
-    fontSize: 13,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalContent: {
-    backgroundColor: "#121214",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 12,
-    width: "100%",
-    maxWidth: 500,
-    maxHeight: "85%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: "#27272a",
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#f4f4f5",
-  },
-  modalFormScroll: {
-    padding: 16,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#a1a1aa",
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  formInput: {
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    height: 40,
-    color: "#f4f4f5",
-    paddingHorizontal: 12,
-    fontSize: 14,
-  },
-  formRow: {
-    flexDirection: "row",
-  },
-  modalFooter: {
-    flexDirection: "row",
-    padding: 16,
-    borderTopWidth: 1,
-    borderColor: "#27272a",
-    gap: 12,
-  },
-  modalCancelBtn: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalCancelText: {
-    color: "#a1a1aa",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  modalSubmitBtn: {
-    flex: 1,
-    height: 40,
-    backgroundColor: "#ffd27a",
-    borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalSubmitText: {
-    color: "#09090b",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  sheetContent: {
-    backgroundColor: "#121214",
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    padding: 16,
-    borderTopWidth: 1,
-    borderColor: "#27272a",
-  },
-  sheetHeaderLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#71717a",
-    textTransform: "uppercase",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  sheetRowBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderColor: "#1c1c1f",
-  },
-  sheetBtnText: {
-    fontSize: 14,
-    color: "#e4e4e7",
-    fontWeight: "600",
-  },
-});

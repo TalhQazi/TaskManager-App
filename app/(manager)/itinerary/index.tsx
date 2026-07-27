@@ -16,10 +16,10 @@ import {
 import { Feather } from "@expo/vector-icons";
 import Svg, { Line, Circle, G, Text as SvgText } from "react-native-svg";
 import * as Location from "expo-location";
-
-// Maintain baseline API & context imports
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useSocket } from "@/contexts/SocketContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
 /* ── Interfaces ──────────────────────────────────────────────────── */
 interface Employee {
@@ -71,7 +71,606 @@ interface Itinerary {
   stops: ItineraryStop[];
 }
 
+interface SearchResultItem {
+  type: "task" | "location";
+  id: string;
+  title: string;
+  subtitle: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#0b0c16" : "#f8fafc"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "rgba(255, 255, 255, 0.03)" : "#ffffff"),
+    cardBgSub:       isDark ? "rgba(255, 255, 255, 0.02)" : "#f1f5f9",
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#ffffff" : "#0f172a"),
+    textSecondary:   isDark ? "#94a3b8" : "#475569",
+    textMuted:       isDark ? "#64748b" : "#94a3b8",
+    textDark:        isDark ? "#475569" : "#64748b",
+    border:          isDark ? "rgba(255, 255, 255, 0.08)" : "#e2e8f0",
+    borderLight:     isDark ? "rgba(255, 255, 255, 0.1)" : "#cbd5e1",
+    inputBg:         isDark ? "rgba(0, 0, 0, 0.4)" : "#ffffff",
+    primary:         uiTheme.customColors?.primary || "#2563eb",
+    accentText:      isDark ? "#60a5fa" : "#2563eb",
+    overlayBg:       isDark ? "rgba(0, 0, 0, 0.6)" : "rgba(15, 23, 42, 0.4)",
+    modalBg:         isDark ? "#1e293b" : "#ffffff",
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    appContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      paddingHorizontal: wp(4),
+      paddingTop: Platform.OS === 'ios' ? hp(6) : hp(3),
+      paddingBottom: hp(5),
+    },
+    headerContainer: {
+      marginBottom: hp(2.5),
+    },
+    headerTitle: {
+      fontSize: fs(6),
+      fontWeight: "900",
+      color: colors.primary,
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: fs(3.2),
+      color: colors.textSecondary,
+      marginTop: hp(0.5),
+      lineHeight: fs(4.5),
+    },
+    controlPanelCard: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2.5),
+    },
+    inputGroup: {
+      marginBottom: hp(1.5),
+    },
+    inputLabel: {
+      fontSize: fs(2.8),
+      fontWeight: "600",
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+      marginBottom: hp(0.75),
+      letterSpacing: 0.5,
+    },
+    pickerTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      height: hp(5),
+    },
+    pickerTriggerText: {
+      color: colors.textMuted,
+      fontSize: fs(3.2),
+      flex: 1,
+    },
+    inputIcon: {
+      marginRight: wp(2),
+    },
+    textInputStyle: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: fs(3.2),
+      padding: 0,
+    },
+    primarySaveButton: {
+      backgroundColor: colors.primary,
+      height: hp(5.2),
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: hp(1),
+    },
+    primarySaveButtonText: {
+      color: "#fff",
+      fontSize: fs(3.5),
+      fontWeight: "700",
+    },
+    gpsSimulationButtonRow: {
+      flexDirection: "row",
+      gap: wp(2),
+      marginTop: hp(1.5),
+    },
+    gpsSimulationButton: {
+      flex: 1,
+      backgroundColor: colors.border,
+      paddingVertical: hp(1),
+      borderRadius: wp(1.5),
+      alignItems: "center",
+    },
+    gpsSimulationButtonText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+      fontWeight: "600",
+    },
+    gpsReoptButton: {
+      backgroundColor: "rgba(16, 185, 129, 0.15)",
+    },
+    gpsReoptButtonText: {
+      color: "#34d399",
+    },
+    sectionContainerCard: {
+      backgroundColor: colors.cardBgSub,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2.5),
+    },
+    sectionHeaderRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(2),
+    },
+    sectionTitle: {
+      fontSize: fs(4),
+      fontWeight: "800",
+      color: colors.textMuted,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+    },
+    actionHeaderRowRightButtons: {
+      flexDirection: "row",
+      gap: wp(1.5),
+    },
+    smallAddStopBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(37, 99, 235, 0.15)",
+      borderWidth: 1,
+      borderColor: "rgba(59, 130, 246, 0.3)",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.6),
+      borderRadius: wp(1.5),
+      gap: wp(1),
+    },
+    smallAddStopBtnText: {
+      color: colors.accentText,
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    smallOptimizeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(16, 185, 129, 0.15)",
+      borderWidth: 1,
+      borderColor: "rgba(16, 185, 129, 0.3)",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.6),
+      borderRadius: wp(1.5),
+      gap: wp(1),
+    },
+    smallOptimizeBtnText: {
+      color: "#34d399",
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    fallbackEmptyStateFrame: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: hp(4),
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: "dashed",
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+    },
+    centeredIconPulse: {
+      marginBottom: hp(1),
+    },
+    fallbackTitleHeadlineText: {
+      color: colors.text,
+      fontSize: fs(3.5),
+      fontWeight: "700",
+      marginBottom: hp(0.5),
+    },
+    fallbackBodySubtitleText: {
+      color: colors.textSecondary,
+      fontSize: fs(3),
+      textAlign: "center",
+      lineHeight: fs(4),
+    },
+    stopsNativeListWrapper: {
+      gap: hp(1.2),
+    },
+    stopFeedItemNodeCard: {
+      flexDirection: "row",
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2.5),
+      padding: wp(3),
+      justifyContent: "space-between",
+    },
+    stopFeedItemNodeCardCompleted: {
+      backgroundColor: "rgba(16, 185, 129, 0.03)",
+      borderColor: "rgba(16, 185, 129, 0.15)",
+    },
+    stopCardLeftSegment: {
+      flexDirection: "row",
+      gap: wp(2.5),
+      flex: 1,
+    },
+    stopSequenceCircleBadge: {
+      width: wp(6),
+      height: wp(6),
+      borderRadius: wp(3),
+      backgroundColor: "rgba(59, 130, 246, 0.1)",
+      borderWidth: 1,
+      borderColor: "rgba(59, 130, 246, 0.2)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stopSequenceCircleBadgeText: {
+      color: colors.accentText,
+      fontSize: fs(2.8),
+      fontWeight: "700",
+    },
+    stopItemHeadlineBadgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+    },
+    stopItemTitleLabel: {
+      color: colors.text,
+      fontSize: fs(3.5),
+      fontWeight: "700",
+      maxWidth: "75%",
+    },
+    lineThroughTextStyle: {
+      textDecorationLine: "line-through",
+      color: colors.textDark,
+    },
+    miniTypeBadgeElement: {
+      backgroundColor: "rgba(59, 130, 246, 0.15)",
+      paddingHorizontal: wp(1),
+      paddingVertical: hp(0.15),
+      borderRadius: wp(1),
+    },
+    miniTypeBadgeElementText: {
+      color: colors.accentText,
+      fontSize: fs(2),
+      fontWeight: "700",
+    },
+    stopItemAddressMetaString: {
+      color: colors.textSecondary,
+      fontSize: fs(3),
+      marginTop: hp(0.25),
+    },
+    stopItemSubDurationMetaString: {
+      color: colors.textDark,
+      fontSize: fs(2.5),
+      marginTop: hp(0.5),
+    },
+    stopCardRightActionsTrack: {
+      flexDirection: "column",
+      justifyContent: "center",
+      gap: hp(0.75),
+    },
+    actionControlsSequenceRowInline: {
+      flexDirection: "row",
+      gap: wp(1),
+    },
+    miniActionButtonNode: {
+      width: wp(6),
+      height: wp(6),
+      backgroundColor: colors.border,
+      borderRadius: wp(1),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    miniActionDeleteButtonNode: {
+      backgroundColor: "rgba(248, 113, 113, 0.08)",
+    },
+    addMenuPopoverContainer: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      padding: wp(3),
+      marginBottom: hp(1.8),
+    },
+    addMenuSubtitleText: {
+      fontSize: fs(2.5),
+      fontWeight: "700",
+      color: colors.accentText,
+      letterSpacing: 0.5,
+      marginBottom: hp(0.75),
+    },
+    searchBarInlineFrame: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(1.5),
+      paddingHorizontal: wp(2),
+      height: hp(4.5),
+    },
+    searchIcon: {
+      marginRight: wp(1.5),
+    },
+    searchTextInputElement: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fs(3),
+    },
+    searchResultsContainer: {
+      backgroundColor: colors.background,
+      borderRadius: wp(1.5),
+      marginTop: hp(0.75),
+      maxHeight: hp(15),
+    },
+    emptyResultsText: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+      padding: wp(2),
+    },
+    searchResultListItem: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(2),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    searchResultItemTitle: {
+      color: colors.text,
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    searchResultItemSubtitle: {
+      color: colors.textSecondary,
+      fontSize: fs(2.5),
+    },
+    badgeLabelItem: {
+      backgroundColor: "rgba(59, 130, 246, 0.1)",
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+    },
+    badgeLabelItemText: {
+      color: colors.accentText,
+      fontSize: fs(2.2),
+    },
+    customCoordsDividerBorder: {
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      marginTop: hp(1.2),
+      paddingTop: hp(1),
+    },
+    flexInputsRow: {
+      flexDirection: "row",
+      gap: wp(1.5),
+      marginBottom: hp(0.75),
+    },
+    inlineFlexField: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(1.5),
+      height: hp(4.8),
+      paddingHorizontal: wp(2),
+      color: colors.text,
+      fontSize: fs(2.8),
+    },
+    customAddButtonTrigger: {
+      backgroundColor: colors.primary,
+      height: hp(4),
+      borderRadius: wp(1.5),
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: hp(0.5),
+    },
+    customAddButtonTriggerText: {
+      color: "#fff",
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    svgMapCanvasWrapper: {
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2),
+      padding: wp(2),
+      alignItems: "center",
+      marginTop: hp(1),
+    },
+    legendCanvasRow: {
+      flexDirection: "row",
+      gap: wp(3),
+      marginTop: hp(1),
+    },
+    legendItemInline: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+    },
+    legendDotItem: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    legendDotItemLabel: {
+      color: colors.textSecondary,
+      fontSize: fs(2.5),
+    },
+    emptyTimelineStateHolder: {
+      paddingVertical: hp(2.5),
+      alignItems: "center",
+    },
+    timelineVerticalTrackBranchContainer: {
+      paddingLeft: wp(2),
+      marginTop: hp(1.5),
+    },
+    timelineRowElementFrame: {
+      flexDirection: "row",
+      gap: wp(3),
+      marginBottom: hp(1.8),
+    },
+    timelineLeftConnectorBlock: {
+      alignItems: "center",
+      width: wp(4),
+    },
+    timelineStatusRingAnchor: {
+      width: wp(3),
+      height: wp(3),
+      borderRadius: wp(1.5),
+      borderWidth: 2,
+      backgroundColor: colors.background,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: hp(0.5),
+    },
+    timelineRingBlue: {
+      borderColor: "#3b82f6",
+    },
+    timelineRingEmerald: {
+      borderColor: "#10b981",
+    },
+    verticalInterconnectLineBar: {
+      flex: 1,
+      width: 1,
+      borderLeftWidth: 1,
+      borderColor: colors.border,
+      borderStyle: "dashed",
+      marginVertical: hp(0.5),
+    },
+    timelineDataContentBubbleCard: {
+      flex: 1,
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      padding: wp(2.5),
+    },
+    timelineContentBubbleTopBarMeta: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(0.75),
+    },
+    timelineTimeFrameBoxBadge: {
+      backgroundColor: "rgba(59, 130, 246, 0.1)",
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+    },
+    timelineTimeFrameBoxBadgeText: {
+      color: colors.accentText,
+      fontSize: fs(2.5),
+      fontWeight: "700",
+    },
+    timelineTaskMinsCountText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.5),
+    },
+    timelineItemHeadlineTextString: {
+      color: colors.text,
+      fontSize: fs(3.2),
+      fontWeight: "700",
+    },
+    timelineItemMetaAddressTruncated: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+      marginTop: hp(0.25),
+    },
+    travelTimeInterconnectLayoutAlertBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+      backgroundColor: "rgba(129, 140, 248, 0.08)",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1),
+      marginTop: hp(1),
+      alignSelf: "flex-start",
+    },
+    travelTimeInterconnectLayoutAlertBoxText: {
+      color: "#c7d2fe",
+      fontSize: fs(2.2),
+      fontWeight: "600",
+    },
+    finalEodBlockFrameBadge: {
+      backgroundColor: "rgba(129, 140, 248, 0.1)",
+      borderWidth: 1,
+      borderColor: "rgba(129, 140, 248, 0.2)",
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+    },
+    finalEodBlockFrameBadgeText: {
+      color: "#a5b4fc",
+      fontSize: fs(2.8),
+      fontWeight: "700",
+    },
+    modalOverlayContainer: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: "flex-end",
+    },
+    modalContentBody: {
+      backgroundColor: colors.modalBg,
+      borderTopLeftRadius: wp(4),
+      borderTopRightRadius: wp(4),
+      padding: wp(5),
+      maxHeight: "55%",
+    },
+    modalTitleHeadlineText: {
+      color: colors.textMuted,
+      fontSize: fs(3.8),
+      fontWeight: "800",
+      marginBottom: hp(1.5),
+      textAlign: "center",
+    },
+    modalSelectionListItemRow: {
+      paddingVertical: hp(1.5),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    modalSelectionListItemRowText: {
+      color: colors.textMuted,
+      fontSize: fs(3.5),
+    },
+    modalCloseTriggerBtn: {
+      backgroundColor: colors.border,
+      height: hp(4.8),
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: hp(1.5),
+    },
+    modalCloseTriggerBtnText: {
+      color: colors.textSecondary,
+      fontSize: fs(3.2),
+      fontWeight: "600",
+    },
+  });
+}
+
 export default function ItineraryBuilder() {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [locations, setLocations] = useState<LocationItem[]>([]);
@@ -86,27 +685,46 @@ export default function ItineraryBuilder() {
   const [loading, setLoading] = useState<boolean>(false);
   const { socket } = useSocket();
 
-  // Pickers Visibility State
   const [employeePickerVisible, setEmployeePickerVisible] = useState(false);
   const [navAppPickerVisible, setNavAppPickerVisible] = useState(false);
 
-  // Search & add stop state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
 
-  // Form input for new custom stop
   const [customTitle, setCustomTitle] = useState("");
   const [customAddress, setCustomAddress] = useState("");
   const [customLat, setCustomLat] = useState("34.0522");
   const [customLng, setCustomLng] = useState("-118.2437");
   const [customDuration, setCustomDuration] = useState("30");
 
-  // Custom simulation alert / toast controller helper
   const triggerToast = (title: string, description: string) => {
     Alert.alert(title, description);
   };
 
-  // Fetch baseline employees, tasks, locations
+  const fetchItinerary = async (employeeId = selectedEmployeeId, date = selectedDate) => {
+    if (!employeeId || !date) return;
+    setLoading(true);
+    try {
+      const res = (await apiFetch(
+        `/api/itineraries?employeeId=${employeeId}&date=${date}`
+      )) as { items: Itinerary[] };
+      if (res.items && res.items.length > 0) {
+        const item = res.items[0];
+        setItinerary(item);
+        setStartTime(item.startTime || "08:00");
+        const sortedStops = [...item.stops].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+        setStops(sortedStops);
+      } else {
+        setItinerary(null);
+        setStops([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch itinerary", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     async function fetchBaselines() {
       try {
@@ -116,16 +734,18 @@ export default function ItineraryBuilder() {
           apiFetch<any>("/api/locations")
         ]);
 
-        const emps = Array.isArray(empRes) ? empRes : (empRes?.items || []);
-        const tsk = Array.isArray(taskRes) ? taskRes : (taskRes?.items || []);
-        const loc = Array.isArray(locRes) ? locRes : (locRes?.items || []);
+        const emps = (Array.isArray(empRes) ? empRes : (empRes?.items || [])) as Employee[];
+        const tsk = (Array.isArray(taskRes) ? taskRes : (taskRes?.items || [])) as Task[];
+        const loc = (Array.isArray(locRes) ? locRes : (locRes?.items || [])) as LocationItem[];
 
         setEmployees(emps);
         setTasks(tsk);
         setLocations(loc);
 
         if (emps.length > 0) {
-          setSelectedEmployeeId(emps[0]._id || emps[0].id);
+          const firstId = emps[0]._id || emps[0].id;
+          setSelectedEmployeeId(firstId);
+          fetchItinerary(firstId, selectedDate);
         }
       } catch (err) {
         console.error("Error loading baseline data:", err);
@@ -134,10 +754,9 @@ export default function ItineraryBuilder() {
     fetchBaselines();
   }, []);
 
-  // Fetch itinerary whenever employee or date changes
   useEffect(() => {
     if (!selectedEmployeeId || !selectedDate) return;
-    fetchItinerary();
+    fetchItinerary(selectedEmployeeId, selectedDate);
   }, [selectedEmployeeId, selectedDate]);
 
   useEffect(() => {
@@ -165,30 +784,6 @@ export default function ItineraryBuilder() {
     };
   }, [socket, itinerary]);
 
-  async function fetchItinerary() {
-    setLoading(true);
-    try {
-      const res = await apiFetch<{ items: Itinerary[] }>(
-        `/api/itineraries?employeeId=${selectedEmployeeId}&date=${selectedDate}`
-      );
-      if (res.items && res.items.length > 0) {
-        const item = res.items[0];
-        setItinerary(item);
-        setStartTime(item.startTime || "08:00");
-        const sortedStops = [...item.stops].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-        setStops(sortedStops);
-      } else {
-        setItinerary(null);
-        setStops([]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch itinerary", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Create or save daily itinerary
   async function saveItinerary(updatedStops = stops) {
     if (!selectedEmployeeId) {
       triggerToast("Selection required", "Please select an employee.");
@@ -199,13 +794,13 @@ export default function ItineraryBuilder() {
         userId: selectedEmployeeId,
         date: selectedDate,
         startTime,
-        stops: updatedStops.map((s, idx) => ({ ...s, sequenceOrder: idx }))
+        stops: updatedStops.map((sItem, idx) => ({ ...sItem, sequenceOrder: idx }))
       };
 
-      const res = await apiFetch<{ item: Itinerary }>("/api/itineraries", {
+      const res = (await apiFetch("/api/itineraries", {
         method: "POST",
         body: JSON.stringify(payload)
-      });
+      })) as { item: Itinerary };
 
       setItinerary(res.item);
       const sortedStops = [...res.item.stops].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
@@ -216,13 +811,12 @@ export default function ItineraryBuilder() {
     }
   }
 
-  // Add search matches
   const searchResults = useMemo(() => {
     if (!searchQuery) return [];
     const q = searchQuery.toLowerCase();
 
     const matchedTasks = tasks
-      .filter(t => t.title.toLowerCase().includes(q))
+      .filter(t => t.title?.toLowerCase().includes(q))
       .map(t => ({
         type: "task" as const,
         id: t._id || t.id,
@@ -234,7 +828,7 @@ export default function ItineraryBuilder() {
       }));
 
     const matchedLocations = locations
-      .filter(l => l.name.toLowerCase().includes(q) || l.address.toLowerCase().includes(q))
+      .filter(l => l.name?.toLowerCase().includes(q) || l.address?.toLowerCase().includes(q))
       .map(l => ({
         type: "location" as const,
         id: l._id || l.id,
@@ -245,10 +839,9 @@ export default function ItineraryBuilder() {
         lng: -118.2537 + (Math.random() - 0.5) * 0.05
       }));
 
-    return [...matchedTasks, ...matchedLocations];
+    return [...matchedTasks, ...matchedLocations] as SearchResultItem[];
   }, [searchQuery, tasks, locations]);
 
-  // Add stop triggers
   function addStop(item: { title: string; address: string; lat: number; lng: number; type: "task" | "location"; id: string }) {
     const newStop: ItineraryStop = {
       title: item.title,
@@ -300,7 +893,6 @@ export default function ItineraryBuilder() {
     saveItinerary(nextStops);
   }
 
-  // Remove stop
   function removeStop(index: number) {
     const nextStops = stops.filter((_, idx) => idx !== index);
     setStops(nextStops);
@@ -308,7 +900,6 @@ export default function ItineraryBuilder() {
     saveItinerary(nextStops);
   }
 
-  // Manual re-sequence controls
   function moveStop(index: number, direction: "up" | "down") {
     if (direction === "up" && index === 0) return;
     if (direction === "down" && index === stops.length - 1) return;
@@ -319,12 +910,11 @@ export default function ItineraryBuilder() {
     nextStops[index] = nextStops[targetIdx];
     nextStops[targetIdx] = temp;
 
-    const updated = nextStops.map((s, idx) => ({ ...s, sequenceOrder: idx }));
+    const updated = nextStops.map((sItem, idx) => ({ ...sItem, sequenceOrder: idx }));
     setStops(updated);
     saveItinerary(updated);
   }
 
-  // Optimize stops trigger
   async function handleOptimize() {
     if (!itinerary || stops.length <= 1) {
       triggerToast("Insufficient stops", "Add at least 2 stops to optimize route.");
@@ -333,9 +923,9 @@ export default function ItineraryBuilder() {
 
     setLoading(true);
     try {
-      const res = await apiFetch<{ item: Itinerary }>(`/api/itineraries/${itinerary._id}/optimize`, {
+      const res = (await apiFetch(`/api/itineraries/${itinerary._id}/optimize`, {
         method: "POST"
-      });
+      })) as { item: Itinerary };
 
       setItinerary(res.item);
       const sortedStops = [...res.item.stops].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
@@ -348,24 +938,23 @@ export default function ItineraryBuilder() {
     }
   }
 
-  // Native Geolocation Handler
   async function sendLocationPing(reopt = false) {
     if (!itinerary) return triggerToast('No itinerary', 'Save or load an itinerary first');
     
-    let { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       return triggerToast('Permission Denied', 'Location accessibility permissions required.');
     }
 
     try {
       setLoading(true);
-      let location = await Location.getCurrentPositionAsync({});
+      const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
 
-      const res = await apiFetch<any>(`/api/itineraries/${itinerary._id}/location`, {
+      const res = (await apiFetch(`/api/itineraries/${itinerary._id}/location`, {
         method: 'POST',
         body: JSON.stringify({ latitude, longitude, reoptimize: reopt })
-      });
+      })) as { item: Itinerary };
       setItinerary(res.item);
       const sortedStops = [...res.item.stops].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
       setStops(sortedStops);
@@ -377,7 +966,6 @@ export default function ItineraryBuilder() {
     }
   }
 
-  // Generate full day timeline display helper
   const timelineData = useMemo(() => {
     if (stops.length === 0) return [];
 
@@ -385,7 +973,7 @@ export default function ItineraryBuilder() {
     const [h, m] = startTime.split(":").map(Number);
     if (!isNaN(h)) currentMinutes = h * 60 + (m || 0);
 
-    return stops.map((stop, idx) => {
+    return stops.map((stop) => {
       const startHour = Math.floor(currentMinutes / 60) % 24;
       const startMin = currentMinutes % 60;
       const startStr = `${String(startHour).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
@@ -417,7 +1005,6 @@ export default function ItineraryBuilder() {
     });
   }, [stops, startTime]);
 
-  // Deep Link Launching Map Configuration
   const openExternalMapApp = async (lat: number, lng: number, appMode = navApp) => {
     let url = "";
     if (appMode === "apple") {
@@ -433,7 +1020,6 @@ export default function ItineraryBuilder() {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        // Fallback for standard browsers or web
         const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
         await Linking.openURL(fallbackUrl);
       }
@@ -445,137 +1031,127 @@ export default function ItineraryBuilder() {
   const currentSelectedEmployeeName = employees.find(e => e.id === selectedEmployeeId || e._id === selectedEmployeeId)?.name || "Select Employee";
 
   return (
-    <ScrollView style={styles.appContainer} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={s(styles.appContainer)} contentContainerStyle={s(styles.scrollContent)}>
       
-      {/* ── Header ── */}
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Smart Daily Itinerary</Text>
-        <Text style={styles.headerSubtitle}>
+      <View style={s(styles.headerContainer)}>
+        <Text style={s(styles.headerTitle)}>Smart Daily Itinerary</Text>
+        <Text style={s(styles.headerSubtitle)}>
           Build, structure, and optimize staff schedules with GPS route matrices and dynamic TSP solvers.
         </Text>
       </View>
 
-      {/* ── Control Filters Panel ── */}
-      <View style={styles.controlPanelCard}>
-        {/* Employee Selector */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Select Employee</Text>
-          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setEmployeePickerVisible(true)}>
-            <Feather name="users" size={16} color="#94a3b8" style={styles.inputIcon} />
-            <Text style={styles.pickerTriggerText}>{currentSelectedEmployeeName}</Text>
-            <Feather name="chevron-down" size={14} color="#64748b" />
+      <View style={s(styles.controlPanelCard)}>
+        <View style={s(styles.inputGroup)}>
+          <Text style={s(styles.inputLabel)}>Select Employee</Text>
+          <TouchableOpacity style={s(styles.pickerTrigger)} onPress={() => setEmployeePickerVisible(true)}>
+            <Feather name="users" size={fs(4)} color={colors.textSecondary} style={s(styles.inputIcon)} />
+            <Text style={s(styles.pickerTriggerText)}>{currentSelectedEmployeeName}</Text>
+            <Feather name="chevron-down" size={fs(3.5)} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        {/* Date Input */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Itinerary Date</Text>
-          <View style={styles.pickerTrigger}>
-            <Feather name="calendar" size={16} color="#94a3b8" style={styles.inputIcon} />
+        <View style={s(styles.inputGroup)}>
+          <Text style={s(styles.inputLabel)}>Itinerary Date</Text>
+          <View style={s(styles.pickerTrigger)}>
+            <Feather name="calendar" size={fs(4)} color={colors.textSecondary} style={s(styles.inputIcon)} />
             <TextInput
-              style={styles.textInputStyle}
+              style={s(styles.textInputStyle)}
               value={selectedDate}
               placeholder="YYYY-MM-DD"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.textSecondary}
               onChangeText={setSelectedDate}
             />
           </View>
         </View>
 
-        {/* Time Input */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Start Work Day</Text>
-          <View style={styles.pickerTrigger}>
-            <Feather name="clock" size={16} color="#94a3b8" style={styles.inputIcon} />
+        <View style={s(styles.inputGroup)}>
+          <Text style={s(styles.inputLabel)}>Start Work Day</Text>
+          <View style={s(styles.pickerTrigger)}>
+            <Feather name="clock" size={fs(4)} color={colors.textSecondary} style={s(styles.inputIcon)} />
             <TextInput
-              style={styles.textInputStyle}
+              style={s(styles.textInputStyle)}
               value={startTime}
               placeholder="08:00"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.textSecondary}
               onChangeText={setStartTime}
             />
           </View>
         </View>
 
-        {/* Navigation App Picker */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Navigation App</Text>
-          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setNavAppPickerVisible(true)}>
-            <Text style={styles.pickerTriggerText}>{navApp.toUpperCase()} MAPS</Text>
-            <Feather name="chevron-down" size={14} color="#64748b" />
+        <View style={s(styles.inputGroup)}>
+          <Text style={s(styles.inputLabel)}>Navigation App</Text>
+          <TouchableOpacity style={s(styles.pickerTrigger)} onPress={() => setNavAppPickerVisible(true)}>
+            <Text style={s(styles.pickerTriggerText)}>{navApp.toUpperCase()} MAPS</Text>
+            <Feather name="chevron-down" size={fs(3.5)} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.primarySaveButton} onPress={() => saveItinerary()}>
-          <Text style={styles.primarySaveButtonText}>Apply Time Parameters</Text>
+        <TouchableOpacity style={s(styles.primarySaveButton)} onPress={() => saveItinerary()}>
+          <Text style={s(styles.primarySaveButtonText)}>Apply Time Parameters</Text>
         </TouchableOpacity>
 
-        {/* GPS Controls Row */}
-        <View style={styles.gpsSimulationButtonRow}>
-          <TouchableOpacity style={styles.gpsSimulationButton} onPress={() => sendLocationPing(false)}>
-            <Text style={styles.gpsSimulationButtonText}>Simulate GPS Ping</Text>
+        <View style={s(styles.gpsSimulationButtonRow)}>
+          <TouchableOpacity style={s(styles.gpsSimulationButton)} onPress={() => sendLocationPing(false)}>
+            <Text style={s(styles.gpsSimulationButtonText)}>Simulate GPS Ping</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.gpsSimulationButton, styles.gpsReoptButton]} onPress={() => sendLocationPing(true)}>
-            <Text style={[styles.gpsSimulationButtonText, styles.gpsReoptButtonText]}>Simulate GPS + Re-optimize</Text>
+          <TouchableOpacity style={s([styles.gpsSimulationButton, styles.gpsReoptButton])} onPress={() => sendLocationPing(true)}>
+            <Text style={s([styles.gpsSimulationButtonText, styles.gpsReoptButtonText])}>Simulate GPS + Re-optimize</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* ── Stop Manager Block ── */}
-      <View style={styles.sectionContainerCard}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>
-            <Feather name="layers" size={16} color="#60a5fa" /> Itinerary Stops ({stops.length})
+      <View style={s(styles.sectionContainerCard)}>
+        <View style={s(styles.sectionHeaderRow)}>
+          <Text style={s(styles.sectionTitle)}>
+            <Feather name="layers" size={fs(4)} color={colors.accentText} /> Itinerary Stops ({stops.length})
           </Text>
 
-          <View style={styles.actionHeaderRowRightButtons}>
-            <TouchableOpacity style={styles.smallAddStopBtn} onPress={() => setShowAddMenu(!showAddMenu)}>
-              <Feather name="plus" size={14} color="#93c5fd" />
-              <Text style={styles.smallAddStopBtnText}>Add</Text>
+          <View style={s(styles.actionHeaderRowRightButtons)}>
+            <TouchableOpacity style={s(styles.smallAddStopBtn)} onPress={() => setShowAddMenu(!showAddMenu)}>
+              <Feather name="plus" size={fs(3.5)} color={colors.accentText} />
+              <Text style={s(styles.smallAddStopBtnText)}>Add</Text>
             </TouchableOpacity>
 
             {stops.length > 1 && (
-              <TouchableOpacity style={styles.smallOptimizeBtn} onPress={handleOptimize} disabled={loading}>
-                {loading ? <ActivityIndicator size="small" color="#10b981" /> : <Feather name="shuffle" size={12} color="#34d399" />}
-                <Text style={styles.smallOptimizeBtnText}>Optimize</Text>
+              <TouchableOpacity style={s(styles.smallOptimizeBtn)} onPress={handleOptimize} disabled={loading}>
+                {loading ? <ActivityIndicator size="small" color="#10b981" /> : <Feather name="shuffle" size={fs(3)} color="#34d399" />}
+                <Text style={s(styles.smallOptimizeBtnText)}>Optimize</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* Dynamic Search & Add Menu Overlay Component */}
         {showAddMenu && (
-          <View style={styles.addMenuPopoverContainer}>
-            <Text style={styles.addMenuSubtitleText}>INTEGRATE TASKS & LOCATIONS</Text>
-            <View style={styles.searchBarInlineFrame}>
-              <Feather name="search" size={16} color="#64748b" style={styles.searchIcon} />
+          <View style={s(styles.addMenuPopoverContainer)}>
+            <Text style={s(styles.addMenuSubtitleText)}>INTEGRATE TASKS & LOCATIONS</Text>
+            <View style={s(styles.searchBarInlineFrame)}>
+              <Feather name="search" size={fs(4)} color={colors.textSecondary} style={s(styles.searchIcon)} />
               <TextInput
-                style={styles.searchTextInputElement}
+                style={s(styles.searchTextInputElement)}
                 placeholder="Search tasks, clients, locations..."
-                placeholderTextColor="#64748b"
+                placeholderTextColor={colors.textSecondary}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
             </View>
 
-            {/* Render Internal Match Query List */}
             {searchQuery.length > 0 && (
-              <View style={styles.searchResultsContainer}>
+              <View style={s(styles.searchResultsContainer)}>
                 {searchResults.length === 0 ? (
-                  <Text style={styles.emptyResultsText}>No database elements found.</Text>
+                  <Text style={s(styles.emptyResultsText)}>No database elements found.</Text>
                 ) : (
                   searchResults.map((item) => (
                     <TouchableOpacity
                       key={item.id}
-                      style={styles.searchResultListItem}
-                      onPress={() => addStop({ ...item, type: item.type as "task" | "location", id: item.id })}
+                      style={s(styles.searchResultListItem)}
+                      onPress={() => addStop({ ...item, type: item.type, id: item.id })}
                     >
                       <View>
-                        <Text style={styles.searchResultItemTitle}>{item.title}</Text>
-                        <Text style={styles.searchResultItemSubtitle}>{item.subtitle}</Text>
+                        <Text style={s(styles.searchResultItemTitle)}>{item.title}</Text>
+                        <Text style={s(styles.searchResultItemSubtitle)}>{item.subtitle}</Text>
                       </View>
-                      <View style={styles.badgeLabelItem}>
-                        <Text style={styles.badgeLabelItemText}>+ {item.type}</Text>
+                      <View style={s(styles.badgeLabelItem)}>
+                        <Text style={s(styles.badgeLabelItemText)}>+ {item.type}</Text>
                       </View>
                     </TouchableOpacity>
                   ))
@@ -583,79 +1159,76 @@ export default function ItineraryBuilder() {
               </View>
             )}
 
-            {/* Custom Coordinates Frame Input */}
-            <View style={styles.customCoordsDividerBorder}>
-              <Text style={styles.addMenuSubtitleText}>OR ADD CUSTOM COORDINATES</Text>
-              <View style={styles.flexInputsRow}>
-                <TextInput style={[styles.inlineFlexField, { flex: 1 }]} placeholder="Stop Title" placeholderTextColor="#475569" value={customTitle} onChangeText={setCustomTitle} />
-                <TextInput style={[styles.inlineFlexField, { flex: 1 }]} placeholder="Full Address" placeholderTextColor="#475569" value={customAddress} onChangeText={setCustomAddress} />
+            <View style={s(styles.customCoordsDividerBorder)}>
+              <Text style={s(styles.addMenuSubtitleText)}>OR ADD CUSTOM COORDINATES</Text>
+              <View style={s(styles.flexInputsRow)}>
+                <TextInput style={s([styles.inlineFlexField, { flex: 1 }])} placeholder="Stop Title" placeholderTextColor={colors.textSecondary} value={customTitle} onChangeText={setCustomTitle} />
+                <TextInput style={s([styles.inlineFlexField, { flex: 1 }])} placeholder="Full Address" placeholderTextColor={colors.textSecondary} value={customAddress} onChangeText={setCustomAddress} />
               </View>
-              <View style={styles.flexInputsRow}>
-                <TextInput style={[styles.inlineFlexField, { flex: 1 }]} placeholder="Lat" placeholderTextColor="#475569" value={customLat} onChangeText={setCustomLat} />
-                <TextInput style={[styles.inlineFlexField, { flex: 1 }]} placeholder="Lng" placeholderTextColor="#475569" value={customLng} onChangeText={setCustomLng} />
-                <TextInput style={[styles.inlineFlexField, { flex: 0.8 }]} placeholder="Mins" placeholderTextColor="#475569" keyboardType="numeric" value={customDuration} onChangeText={setCustomDuration} />
+              <View style={s(styles.flexInputsRow)}>
+                <TextInput style={s([styles.inlineFlexField, { flex: 1 }])} placeholder="Lat" placeholderTextColor={colors.textSecondary} value={customLat} onChangeText={setCustomLat} />
+                <TextInput style={s([styles.inlineFlexField, { flex: 1 }])} placeholder="Lng" placeholderTextColor={colors.textSecondary} value={customLng} onChangeText={setCustomLng} />
+                <TextInput style={s([styles.inlineFlexField, { flex: 0.8 }])} placeholder="Mins" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={customDuration} onChangeText={setCustomDuration} />
               </View>
-              <TouchableOpacity style={styles.customAddButtonTrigger} onPress={addCustomStop}>
-                <Text style={styles.customAddButtonTriggerText}>Add Custom Stop</Text>
+              <TouchableOpacity style={s(styles.customAddButtonTrigger)} onPress={addCustomStop}>
+                <Text style={s(styles.customAddButtonTriggerText)}>Add Custom Stop</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Listing Current Active Stops Feed */}
         {stops.length === 0 ? (
-          <View style={styles.fallbackEmptyStateFrame}>
-            <Feather name="compass" size={36} color="#475569" style={styles.centeredIconPulse} />
-            <Text style={styles.fallbackTitleHeadlineText}>No stops added yet</Text>
-            <Text style={styles.fallbackBodySubtitleText}>
+          <View style={s(styles.fallbackEmptyStateFrame)}>
+            <Feather name="compass" size={fs(9)} color={colors.textSecondary} style={s(styles.centeredIconPulse)} />
+            <Text style={s(styles.fallbackTitleHeadlineText)}>No stops added yet</Text>
+            <Text style={s(styles.fallbackBodySubtitleText)}>
               Click 'Add Stop' to select existing assigned tasks, company sites, or custom addresses for this daily route.
             </Text>
           </View>
         ) : (
-          <View style={styles.stopsNativeListWrapper}>
+          <View style={s(styles.stopsNativeListWrapper)}>
             {stops.map((stop, idx) => {
               const isCompleted = stop.completed;
               return (
-                <View key={idx} style={[styles.stopFeedItemNodeCard, isCompleted && styles.stopFeedItemNodeCardCompleted]}>
-                  <View style={styles.stopCardLeftSegment}>
-                    <View style={styles.stopSequenceCircleBadge}>
-                      <Text style={styles.stopSequenceCircleBadgeText}>{idx + 1}</Text>
+                <View key={idx} style={s([styles.stopFeedItemNodeCard, isCompleted && styles.stopFeedItemNodeCardCompleted])}>
+                  <View style={s(styles.stopCardLeftSegment)}>
+                    <View style={s(styles.stopSequenceCircleBadge)}>
+                      <Text style={s(styles.stopSequenceCircleBadgeText)}>{idx + 1}</Text>
                     </View>
-                    <View style={{ flex: 1, paddingRight: 4 }}>
-                      <View style={styles.stopItemHeadlineBadgeRow}>
-                        <Text style={[styles.stopItemTitleLabel, isCompleted && styles.lineThroughTextStyle]} numberOfLines={1}>
+                    <View style={s({ flex: 1, paddingRight: wp(1) })}>
+                      <View style={s(styles.stopItemHeadlineBadgeRow)}>
+                        <Text style={s([styles.stopItemTitleLabel, isCompleted && styles.lineThroughTextStyle])} numberOfLines={1}>
                           {stop.title}
                         </Text>
                         {stop.taskId && (
-                          <View style={styles.miniTypeBadgeElement}><Text style={styles.miniTypeBadgeElementText}>TASK</Text></View>
+                          <View style={s(styles.miniTypeBadgeElement)}><Text style={s(styles.miniTypeBadgeElementText)}>TASK</Text></View>
                         )}
                       </View>
-                      <Text style={styles.stopItemAddressMetaString} numberOfLines={1}>
-                        <Feather name="map-pin" size={10} color="#f87171" /> {stop.address}
+                      <Text style={s(styles.stopItemAddressMetaString)} numberOfLines={1}>
+                        <Feather name="map-pin" size={fs(2.5)} color="#f87171" /> {stop.address}
                       </Text>
-                      <Text style={styles.stopItemSubDurationMetaString}>
+                      <Text style={s(styles.stopItemSubDurationMetaString)}>
                         Duration: {stop.estimatedDurationMinutes} mins  •  GPS: {stop.latitude?.toFixed(2)}, {stop.longitude?.toFixed(2)}
                       </Text>
                     </View>
                   </View>
 
-                  {/* Actions Column Right */}
-                  <View style={styles.stopCardRightActionsTrack}>
-                    <View style={styles.actionControlsSequenceRowInline}>
-                      <TouchableOpacity style={styles.miniActionButtonNode} disabled={idx === 0} onPress={() => moveStop(idx, "up")}>
-                        <Feather name="arrow-up" size={12} color={idx === 0 ? "#1e293b" : "#94a3b8"} />
+                  <View style={s(styles.stopCardRightActionsTrack)}>
+                    <View style={s(styles.actionControlsSequenceRowInline)}>
+                      <TouchableOpacity style={s(styles.miniActionButtonNode)} disabled={idx === 0} onPress={() => moveStop(idx, "up")}>
+                        <Feather name="arrow-up" size={fs(3)} color={idx === 0 ? colors.border : colors.textSecondary} />
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.miniActionButtonNode} disabled={idx === stops.length - 1} onPress={() => moveStop(idx, "down")}>
-                        <Feather name="arrow-down" size={12} color={idx === stops.length - 1 ? "#1e293b" : "#94a3b8"} />
+                      <TouchableOpacity style={s(styles.miniActionButtonNode)} disabled={idx === stops.length - 1} onPress={() => moveStop(idx, "down")}>
+                        <Feather name="arrow-down" size={fs(3)} color={idx === stops.length - 1 ? colors.border : colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
 
-                    <View style={styles.actionControlsSequenceRowInline}>
-                      <TouchableOpacity style={styles.miniActionButtonNode} onPress={() => openExternalMapApp(stop.latitude, stop.longitude)}>
-                        <Feather name="external-link" size={12} color="#60a5fa" />
+                    <View style={s(styles.actionControlsSequenceRowInline)}>
+                      <TouchableOpacity style={s(styles.miniActionButtonNode)} onPress={() => openExternalMapApp(stop.latitude, stop.longitude)}>
+                        <Feather name="external-link" size={fs(3)} color={colors.accentText} />
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.miniActionButtonNode, styles.miniActionDeleteButtonNode]} onPress={() => removeStop(idx)}>
-                        <Feather name="trash-2" size={12} color="#f87171" />
+                      <TouchableOpacity style={s([styles.miniActionButtonNode, styles.miniActionDeleteButtonNode])} onPress={() => removeStop(idx)}>
+                        <Feather name="trash-2" size={fs(3)} color="#f87171" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -666,11 +1239,10 @@ export default function ItineraryBuilder() {
         )}
       </View>
 
-      {/* ── Route Schema Matrix Render SVG Map ── */}
       {stops.length > 0 && (
-        <View style={styles.sectionContainerCard}>
-          <Text style={styles.sectionTitle}><Feather name="compass" size={16} color="#818cf8" /> Route Schema Map</Text>
-          <View style={styles.svgMapCanvasWrapper}>
+        <View style={s(styles.sectionContainerCard)}>
+          <Text style={s(styles.sectionTitle)}><Feather name="compass" size={fs(4)} color="#818cf8" /> Route Schema Map</Text>
+          <View style={s(styles.svgMapCanvasWrapper)}>
             <Svg height="150" width="100%" viewBox="0 0 340 120">
               {stops.map((stop, idx) => {
                 if (idx === stops.length - 1) return null;
@@ -701,58 +1273,55 @@ export default function ItineraryBuilder() {
                   <G key={`node-${idx}`}>
                     <Circle cx={x} cy={y} r="10" fill="rgba(59, 130, 246, 0.15)" stroke="rgba(59, 130, 246, 0.5)" strokeWidth="1" />
                     <Circle cx={x} cy={y} r="6" fill={stop.completed ? "#10b981" : "#3b82f6"} />
-                    <SvgText x={x} y={y - 12} fill="#e2e8f0" fontSize="8" fontWeight="bold" textAnchor="middle">
+                    <SvgText x={x} y={y - 12} fill={colors.text} fontSize="8" fontWeight="bold" textAnchor="middle">
                       {idx + 1}
                     </SvgText>
                   </G>
                 );
               })}
             </Svg>
-            <View style={styles.legendCanvasRow}>
-              <View style={styles.legendItemInline}><View style={[styles.legendDotItem, { backgroundColor: '#3b82f6' }]} /><Text style={styles.legendDotItemLabel}>Pending</Text></View>
-              <View style={styles.legendItemInline}><View style={[styles.legendDotItem, { backgroundColor: '#10b981' }]} /><Text style={styles.legendDotItemLabel}>Completed</Text></View>
+            <View style={s(styles.legendCanvasRow)}>
+              <View style={s(styles.legendItemInline)}><View style={s([styles.legendDotItem, { backgroundColor: '#3b82f6' }])} /><Text style={s(styles.legendDotItemLabel)}>Pending</Text></View>
+              <View style={s(styles.legendItemInline)}><View style={s([styles.legendDotItem, { backgroundColor: '#10b981' }])} /><Text style={s(styles.legendDotItemLabel)}>Completed</Text></View>
             </View>
           </View>
         </View>
       )}
 
-      {/* ── Day Timeline View Section ── */}
-      <View style={styles.sectionContainerCard}>
-        <Text style={styles.sectionTitle}><Feather name="clock" size={16} color="#818cf8" /> Day Timeline View</Text>
+      <View style={s(styles.sectionContainerCard)}>
+        <Text style={s(styles.sectionTitle)}><Feather name="clock" size={fs(4)} color="#818cf8" /> Day Timeline View</Text>
         
         {timelineData.length === 0 ? (
-          <View style={styles.emptyTimelineStateHolder}>
-            <Text style={styles.fallbackBodySubtitleText}>Timeline details will compute automatically as stops are populated.</Text>
+          <View style={s(styles.emptyTimelineStateHolder)}>
+            <Text style={s(styles.fallbackBodySubtitleText)}>Timeline details will compute automatically as stops are populated.</Text>
           </View>
         ) : (
-          <View style={styles.timelineVerticalTrackBranchContainer}>
+          <View style={s(styles.timelineVerticalTrackBranchContainer)}>
             {timelineData.map((item, idx) => {
               const isCompleted = item.completed;
               return (
-                <View key={idx} style={styles.timelineRowElementFrame}>
-                  {/* Left structural node connection anchor */}
-                  <View style={styles.timelineLeftConnectorBlock}>
-                    <View style={[styles.timelineStatusRingAnchor, isCompleted ? styles.timelineRingEmerald : styles.timelineRingBlue]}>
-                      {isCompleted && <Feather name="check" size={8} color="#10b981" />}
+                <View key={idx} style={s(styles.timelineRowElementFrame)}>
+                  <View style={s(styles.timelineLeftConnectorBlock)}>
+                    <View style={s([styles.timelineStatusRingAnchor, isCompleted ? styles.timelineRingEmerald : styles.timelineRingBlue])}>
+                      {isCompleted && <Feather name="check" size={fs(2)} color="#10b981" />}
                     </View>
-                    {idx < timelineData.length - 1 && <View style={styles.verticalInterconnectLineBar} />}
+                    {idx < timelineData.length - 1 && <View style={s(styles.verticalInterconnectLineBar)} />}
                   </View>
 
-                  {/* Body Box */}
-                  <View style={styles.timelineDataContentBubbleCard}>
-                    <View style={styles.timelineContentBubbleTopBarMeta}>
-                      <View style={styles.timelineTimeFrameBoxBadge}>
-                        <Text style={styles.timelineTimeFrameBoxBadgeText}>{item.startTimeStr} - {item.endTimeStr}</Text>
+                  <View style={s(styles.timelineDataContentBubbleCard)}>
+                    <View style={s(styles.timelineContentBubbleTopBarMeta)}>
+                      <View style={s(styles.timelineTimeFrameBoxBadge)}>
+                        <Text style={s(styles.timelineTimeFrameBoxBadgeText)}>{item.startTimeStr} - {item.endTimeStr}</Text>
                       </View>
-                      <Text style={styles.timelineTaskMinsCountText}>{item.workDuration} min task</Text>
+                      <Text style={s(styles.timelineTaskMinsCountText)}>{item.workDuration} min task</Text>
                     </View>
-                    <Text style={[styles.timelineItemHeadlineTextString, isCompleted && styles.lineThroughTextStyle]}>{item.title}</Text>
-                    <Text style={styles.timelineItemMetaAddressTruncated} numberOfLines={1}>{item.address}</Text>
+                    <Text style={s([styles.timelineItemHeadlineTextString, isCompleted && styles.lineThroughTextStyle])}>{item.title}</Text>
+                    <Text style={s(styles.timelineItemMetaAddressTruncated)} numberOfLines={1}>{item.address}</Text>
 
                     {idx < timelineData.length - 1 && (
-                      <View style={styles.travelTimeInterconnectLayoutAlertBox}>
-                        <Feather name="navigation" size={10} color="#a5b4fc" style={{ transform: [{ rotate: '45deg' }] }} />
-                        <Text style={styles.travelTimeInterconnectLayoutAlertBoxText}>
+                      <View style={s(styles.travelTimeInterconnectLayoutAlertBox)}>
+                        <Feather name="navigation" size={fs(2.5)} color="#a5b4fc" style={s({ transform: [{ rotate: '45deg' }] })} />
+                        <Text style={s(styles.travelTimeInterconnectLayoutAlertBoxText)}>
                           Travel time to Stop {idx + 2}: {item.travelTimeToNext} mins
                         </Text>
                       </View>
@@ -762,65 +1331,62 @@ export default function ItineraryBuilder() {
               );
             })}
 
-            {/* End Day Marker Node */}
-            <View style={styles.timelineRowElementFrame}>
-              <View style={styles.timelineLeftConnectorBlock}>
-                <View style={[styles.timelineStatusRingAnchor, { borderColor: '#818cf8' }]} />
+            <View style={s(styles.timelineRowElementFrame)}>
+              <View style={s(styles.timelineLeftConnectorBlock)}>
+                <View style={s([styles.timelineStatusRingAnchor, { borderColor: '#818cf8' }])} />
               </View>
-              <View style={styles.finalEodBlockFrameBadge}>
-                <Text style={styles.finalEodBlockFrameBadgeText}>🏁 Estimated EOD: {timelineData[timelineData.length - 1]?.nextArrivalStr || "Complete"}</Text>
+              <View style={s(styles.finalEodBlockFrameBadge)}>
+                <Text style={s(styles.finalEodBlockFrameBadgeText)}>🏁 Estimated EOD: {timelineData[timelineData.length - 1]?.nextArrivalStr || "Complete"}</Text>
               </View>
             </View>
           </View>
         )}
       </View>
 
-      {/* ── Native Pickers (Employee Selector Modal) ── */}
       <Modal visible={employeePickerVisible} transparent animationType="slide">
-        <View style={styles.modalOverlayContainer}>
-          <View style={styles.modalContentBody}>
-            <Text style={styles.modalTitleHeadlineText}>Select Employee Staff</Text>
+        <View style={s(styles.modalOverlayContainer)}>
+          <View style={s(styles.modalContentBody)}>
+            <Text style={s(styles.modalTitleHeadlineText)}>Select Employee Staff</Text>
             <FlatList
               data={employees}
               keyExtractor={(item) => item.id || item._id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.modalSelectionListItemRow}
+                  style={s(styles.modalSelectionListItemRow)}
                   onPress={() => {
                     setSelectedEmployeeId(item.id || item._id);
                     setEmployeePickerVisible(false);
                   }}
                 >
-                  <Text style={styles.modalSelectionListItemRowText}>{item.name} ({item.role})</Text>
+                  <Text style={s(styles.modalSelectionListItemRowText)}>{item.name} ({item.role})</Text>
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={styles.modalCloseTriggerBtn} onPress={() => setEmployeePickerVisible(false)}>
-              <Text style={styles.modalCloseTriggerBtnText}>Cancel</Text>
+            <TouchableOpacity style={s(styles.modalCloseTriggerBtn)} onPress={() => setEmployeePickerVisible(false)}>
+              <Text style={s(styles.modalCloseTriggerBtnText)}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ── Native Pickers (Nav App Selector Modal) ── */}
       <Modal visible={navAppPickerVisible} transparent animationType="slide">
-        <View style={styles.modalOverlayContainer}>
-          <View style={styles.modalContentBody}>
-            <Text style={styles.modalTitleHeadlineText}>Select Navigation Mapping Preference</Text>
-            {(['google', 'apple', 'waze'] as const).map((appOption) => (
+        <View style={s(styles.modalOverlayContainer)}>
+          <View style={s(styles.modalContentBody)}>
+            <Text style={s(styles.modalTitleHeadlineText)}>Select Navigation Mapping Preference</Text>
+            {((['google', 'apple', 'waze'] as const)).map((appOption) => (
               <TouchableOpacity
                 key={appOption}
-                style={styles.modalSelectionListItemRow}
+                style={s(styles.modalSelectionListItemRow)}
                 onPress={() => {
                   setNavApp(appOption);
                   setNavAppPickerVisible(false);
                 }}
               >
-                <Text style={styles.modalSelectionListItemRowText}>{appOption.toUpperCase()} MAPS</Text>
+                <Text style={s(styles.modalSelectionListItemRowText)}>{appOption.toUpperCase()} MAPS</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={styles.modalCloseTriggerBtn} onPress={() => setNavAppPickerVisible(false)}>
-              <Text style={styles.modalCloseTriggerBtnText}>Cancel</Text>
+            <TouchableOpacity style={s(styles.modalCloseTriggerBtn)} onPress={() => setNavAppPickerVisible(false)}>
+              <Text style={s(styles.modalCloseTriggerBtnText)}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -829,568 +1395,3 @@ export default function ItineraryBuilder() {
     </ScrollView>
   );
 }
-
-/* ── StyleSheet Design Matrix Configurations ───────────────────── */
-const styles = StyleSheet.create({
-  appContainer: {
-    flex: 1,
-    backgroundColor: "#0b0c16",
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 48 : 24,
-    paddingBottom: 40,
-  },
-  headerContainer: {
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#60a5fa",
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#94a3b8",
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  controlPanelCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  inputGroup: {
-    marginBottom: 12,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    marginBottom: 6,
-    letterSpacing: 0.5,
-  },
-  pickerTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 40,
-  },
-  pickerTriggerText: {
-    color: "#fff",
-    fontSize: 13,
-    flex: 1,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  textInputStyle: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 13,
-    padding: 0,
-  },
-  primarySaveButton: {
-    backgroundColor: "#2563eb",
-    height: 42,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  primarySaveButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  gpsSimulationButtonRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  gpsSimulationButton: {
-    flex: 1,
-    backgroundColor: "rgba(51, 65, 85, 0.4)",
-    paddingVertical: 8,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  gpsSimulationButtonText: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  gpsReoptButton: {
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-  },
-  gpsReoptButtonText: {
-    color: "#34d399",
-  },
-  sectionContainerCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#fff",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  actionHeaderRowRightButtons: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  smallAddStopBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(37, 99, 235, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.3)",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    gap: 4,
-  },
-  smallAddStopBtnText: {
-    color: "#93c5fd",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  smallOptimizeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    gap: 4,
-  },
-  smallOptimizeBtnText: {
-    color: "#34d399",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  fallbackEmptyStateFrame: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 32,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderStyle: "dashed",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-  },
-  centeredIconPulse: {
-    marginBottom: 8,
-  },
-  fallbackTitleHeadlineText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  fallbackBodySubtitleText: {
-    color: "#64748b",
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 16,
-  },
-  stopsNativeListWrapper: {
-    gap: 10,
-  },
-  stopFeedItemNodeCard: {
-    flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.01)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 10,
-    padding: 12,
-    justifyContent: "space-between",
-  },
-  stopFeedItemNodeCardCompleted: {
-    backgroundColor: "rgba(16, 185, 129, 0.03)",
-    borderColor: "rgba(16, 185, 129, 0.15)",
-  },
-  stopCardLeftSegment: {
-    flexDirection: "row",
-    gap: 10,
-    flex: 1,
-  },
-  stopSequenceCircleBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stopSequenceCircleBadgeText: {
-    color: "#60a5fa",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  stopItemHeadlineBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  stopItemTitleLabel: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-    maxWidth: "75%",
-  },
-  lineThroughTextStyle: {
-    textDecorationLine: "line-through",
-    color: "#475569",
-  },
-  miniTypeBadgeElement: {
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  miniTypeBadgeElementText: {
-    color: "#60a5fa",
-    fontSize: 8,
-    fontWeight: "700",
-  },
-  stopItemAddressMetaString: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  stopItemSubDurationMetaString: {
-    color: "#475569",
-    fontSize: 10,
-    marginTop: 4,
-  },
-  stopCardRightActionsTrack: {
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 6,
-  },
-  actionControlsSequenceRowInline: {
-    flexDirection: "row",
-    gap: 4,
-  },
-  miniActionButtonNode: {
-    width: 24,
-    height: 24,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 4,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniActionDeleteButtonNode: {
-    backgroundColor: "rgba(248, 113, 113, 0.08)",
-  },
-  addMenuPopoverContainer: {
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 14,
-  },
-  addMenuSubtitleText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#60a5fa",
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  searchBarInlineFrame: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    height: 36,
-  },
-  searchIcon: {
-    marginRight: 6,
-  },
-  searchTextInputElement: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 12,
-  },
-  searchResultsContainer: {
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderRadius: 6,
-    marginTop: 6,
-    maxHeight: 120,
-    overflow: "scroll",
-  },
-  emptyResultsText: {
-    color: "#475569",
-    fontSize: 11,
-    padding: 8,
-  },
-  searchResultListItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 8,
-    borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  searchResultItemTitle: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  searchResultItemSubtitle: {
-    color: "#64748b",
-    fontSize: 10,
-  },
-  badgeLabelItem: {
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeLabelItemText: {
-    color: "#60a5fa",
-    fontSize: 9,
-  },
-  customCoordsDividerBorder: {
-    borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginTop: 10,
-    pt: 8,
-  },
-  flexInputsRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 6,
-  },
-  inlineFlexField: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 6,
-    height: 32,
-    paddingHorizontal: 8,
-    color: "#fff",
-    fontSize: 11,
-  },
-  customAddButtonTrigger: {
-    backgroundColor: "#2563eb",
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  customAddButtonTriggerText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  svgMapCanvasWrapper: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 8,
-    padding: 8,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  legendCanvasRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
-  legendItemInline: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  legendDotItem: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  legendDotItemLabel: {
-    color: "#94a3b8",
-    fontSize: 10,
-  },
-  emptyTimelineStateHolder: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-  timelineVerticalTrackBranchContainer: {
-    paddingLeft: 8,
-    marginTop: 12,
-  },
-  timelineRowElementFrame: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 14,
-  },
-  timelineLeftConnectorBlock: {
-    alignItems: "center",
-    width: 16,
-  },
-  timelineStatusRingAnchor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    backgroundColor: "#0b0c16",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  timelineRingBlue: {
-    borderColor: "#3b82f6",
-  },
-  timelineRingEmerald: {
-    borderColor: "#10b981",
-  },
-  verticalInterconnectLineBar: {
-    flex: 1,
-    width: 1,
-    borderLeftWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderStyle: "dashed",
-    marginVertical: 4,
-  },
-  timelineDataContentBubbleCard: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
-    borderRadius: 8,
-    padding: 10,
-  },
-  timelineContentBubbleTopBarMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  timelineTimeFrameBoxBadge: {
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  timelineTimeFrameBoxBadgeText: {
-    color: "#60a5fa",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  timelineTaskMinsCountText: {
-    color: "#64748b",
-    fontSize: 10,
-  },
-  timelineItemHeadlineTextString: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  timelineItemMetaAddressTruncated: {
-    color: "#64748b",
-    fontSize: 11,
-    marginTop: 2,
-  },
-  travelTimeInterconnectLayoutAlertBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(129, 140, 248, 0.08)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginTop: 8,
-    alignSelf: "flex-start",
-  },
-  travelTimeInterconnectLayoutAlertBoxText: {
-    color: "#c7d2fe",
-    fontSize: 9,
-    fontWeight: "600",
-  },
-  finalEodBlockFrameBadge: {
-    backgroundColor: "rgba(129, 140, 248, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(129, 140, 248, 0.2)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  finalEodBlockFrameBadgeText: {
-    color: "#a5b4fc",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  modalOverlayContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-end",
-  },
-  modalContentBody: {
-    backgroundColor: "#1e293b",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    maxHeight: "50%",
-  },
-  modalTitleHeadlineText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  modalSelectionListItemRow: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  modalSelectionListItemRowText: {
-    color: "#e2e8f0",
-    fontSize: 14,
-  },
-  modalCloseTriggerBtn: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    height: 38,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 12,
-  },
-  modalCloseTriggerBtnText: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});

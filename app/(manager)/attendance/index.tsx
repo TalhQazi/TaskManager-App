@@ -10,7 +10,6 @@ import {
   RefreshControl,
   Modal,
   Alert,
-  Dimensions,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -27,7 +26,7 @@ import {
 } from 'lucide-react-native';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { s } from '@/util/styles';
+import { s, wp, hp, fs } from '@/util/styles';
 
 interface TimeEntry {
   id: string;
@@ -41,8 +40,6 @@ interface TimeEntry {
   scrum?: string | null;
   employee?: string;
 }
-
-const { width } = Dimensions.get('window');
 
 function buildColors(uiTheme: any, isDark: boolean) {
   // Fix 1: Fall back to core theme primary or accent color if no explicit gold is passed
@@ -90,23 +87,23 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       backgroundColor: colors.background,
     },
     loadingText: {
-      marginTop: 10,
-      fontSize: 14,
+      marginTop: hp(1.2),
+      fontSize: fs(3.5),
       color: colors.text,
     },
     clockHeaderDeck: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingTop: 56,
-      paddingBottom: 16,
+      paddingHorizontal: wp(4),
+      paddingTop: hp(6.5),
+      paddingBottom: hp(2),
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderColor: colors.border,
     },
     appTitle: {
-      fontSize: 24,
+      fontSize: fs(6),
       fontWeight: '800',
       color: colors.text,
     },
@@ -114,24 +111,24 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       alignItems: 'flex-end',
     },
     liveTimeText: {
-      fontSize: 22,
+      fontSize: fs(5.5),
       fontWeight: '700',
       color: colors.golden,
     },
     liveDateText: {
-      fontSize: 12,
+      fontSize: fs(3),
       color: colors.text,
-      marginTop: 2,
+      marginTop: hp(0.25),
     },
     scrollArea: {
-      padding: 16,
-      paddingBottom: 40,
+      padding: wp(4),
+      paddingBottom: hp(5),
     },
     statusCard: {
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 16,
-      borderLeftWidth: 4,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2),
+      borderLeftWidth: wp(1),
       backgroundColor: colors.cardBg,
       borderColor: colors.text,
       shadowColor: '#000',
@@ -152,43 +149,43 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       flex: 1,
     },
     statusSubLabel: {
-      fontSize: 12,
+      fontSize: fs(3),
       color: colors.text,
     },
     statusMainLabel: {
-      fontSize: 18,
+      fontSize: fs(4.5),
       fontWeight: '700',
       color: colors.golden,
-      marginTop: 2,
+      marginTop: hp(0.25),
     },
     welcomeText: {
-      fontSize: 13,
+      fontSize: fs(3.2),
       color: colors.textSecondary,
-      marginTop: 1,
+      marginTop: hp(0.1),
     },
     statusBadge: {
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 6,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
       borderWidth: 1,
       borderColor: 'rgba(0,0,0,0.05)',
     },
     statusBadgeText: {
-      fontSize: 12,
+      fontSize: fs(3),
       fontWeight: '600',
     },
     statsRowGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
-      marginBottom: 16,
+      gap: wp(3),
+      marginBottom: hp(2),
     },
     statMiniCard: {
       backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      padding: 14,
+      borderRadius: wp(3),
+      padding: wp(3.5),
       flex: 1,
-      minWidth: (width - 44) / 2,
+      minWidth: (wp(100) - wp(8) - wp(3)) / 2,
       borderWidth: 1,
       borderColor: colors.border,
     },
@@ -196,45 +193,45 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       minWidth: '100%',
     },
     statIcon: {
-      marginBottom: 6,
+      marginBottom: hp(0.75),
     },
     statLabel: {
-      fontSize: 12,
+      fontSize: fs(3),
       color: colors.textSecondary,
     },
     statValue: {
-      fontSize: 18,
+      fontSize: fs(4.5),
       fontWeight: '700',
       color: colors.golden,
-      marginTop: 2,
+      marginTop: hp(0.25),
     },
     actionBlockCard: {
       backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 16,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2),
       borderWidth: 1,
       borderColor: colors.border,
     },
     blockTitle: {
-      fontSize: 16,
+      fontSize: fs(4),
       fontWeight: '700',
       color: colors.text,
     },
     blockDescription: {
-      fontSize: 13,
+      fontSize: fs(3.2),
       color: colors.textSecondary,
-      marginTop: 2,
-      marginBottom: 16,
+      marginTop: hp(0.25),
+      marginBottom: hp(2),
     },
     actionSplitButtons: {
       flexDirection: 'row',
-      gap: 12,
+      gap: wp(3),
     },
     baseBtn: {
       flex: 1,
-      height: 44,
-      borderRadius: 8,
+      height: hp(5.5),
+      borderRadius: wp(2),
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
@@ -244,56 +241,56 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     btnDisabled: { backgroundColor: colors.btnDisabledBg },
     btnText: {
       color: '#ffffff',
-      fontSize: 14,
+      fontSize: fs(3.5),
       fontWeight: '600',
     },
     inlineIconMargin: {
-      marginRight: 6,
+      marginRight: wp(1.5),
     },
     footerCompletionNotice: {
-      fontSize: 13,
+      fontSize: fs(3.2),
       color: colors.textSecondary,
       textAlign: 'center',
-      marginTop: 12,
+      marginTop: hp(1.5),
     },
     historySectionCard: {
       backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      padding: 16,
+      borderRadius: wp(3),
+      padding: wp(4),
       borderWidth: 1,
       borderColor: colors.border,
     },
     historyHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: hp(2),
     },
     historyIconSpacing: {
-      marginRight: 8,
+      marginRight: wp(2),
     },
     historyTitle: {
-      fontSize: 16,
+      fontSize: fs(4),
       fontWeight: '700',
       color: colors.golden,
     },
     emptyContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 32,
+      paddingVertical: hp(4),
     },
     emptyIconSpacing: {
-      marginBottom: 8,
+      marginBottom: hp(1),
     },
     emptyTableText: {
       color: colors.textSecondary,
-      fontSize: 13,
+      fontSize: fs(3.2),
     },
     tableBodyWrapper: {
       width: '100%',
     },
     tableRow: {
       flexDirection: 'row',
-      paddingVertical: 12,
+      paddingVertical: hp(1.5),
       borderBottomWidth: 1,
       borderColor: colors.borderLight,
       alignItems: 'center',
@@ -301,17 +298,17 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     tableHeaderRow: {
       borderBottomWidth: 2,
       borderColor: colors.border,
-      paddingVertical: 8,
+      paddingVertical: hp(1),
     },
     tableCell: {
       flex: 1,
-      fontSize: 13,
+      fontSize: fs(3.2),
       color: colors.textSecondary,
     },
     cellHeader: {
       fontWeight: '600',
       color: colors.golden,
-      fontSize: 12,
+      fontSize: fs(3),
     },
     cellDataText: {
       color: colors.text,
@@ -327,16 +324,16 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     },
     modalSurfaceCard: {
       backgroundColor: colors.cardBg,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: wp(4),
+      borderTopRightRadius: wp(4),
       maxHeight: '85%',
-      paddingBottom: 32,
+      paddingBottom: hp(4),
     },
     modalHeaderRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      padding: 16,
+      padding: wp(4),
       borderBottomWidth: 1,
       borderColor: colors.border,
     },
@@ -345,27 +342,27 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       alignItems: 'center',
     },
     modalTitleText: {
-      fontSize: 16,
+      fontSize: fs(4),
       fontWeight: '700',
       color: colors.text,
     },
     modalFormScroll: {
-      padding: 16,
+      padding: wp(4),
     },
     modalDisclaimer: {
-      fontSize: 13,
+      fontSize: fs(3.2),
       color: colors.textSecondary,
-      lineHeight: 18,
-      marginBottom: 16,
+      lineHeight: fs(4.5),
+      marginBottom: hp(2),
     },
     inputWrapperField: {
-      marginBottom: 14,
+      marginBottom: hp(1.8),
     },
     fieldLabelText: {
-      fontSize: 13,
+      fontSize: fs(3.2),
       fontWeight: '600',
       color: colors.textSecondary,
-      marginBottom: 6,
+      marginBottom: hp(0.75),
     },
     optionalText: {
       color: colors.textMuted,
@@ -374,19 +371,19 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     textInputBox: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 14,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(1.2),
+      fontSize: fs(3.5),
       color: colors.text,
       backgroundColor: colors.inputSurface,
       textAlignVertical: 'top',
-      minHeight: 64,
+      minHeight: hp(8),
     },
     inputHintText: {
-      fontSize: 11,
+      fontSize: fs(2.8),
       color: colors.textMuted,
-      marginTop: 4,
+      marginTop: hp(0.5),
     },
     validationErrorBox: {
       flexDirection: 'row',
@@ -394,29 +391,29 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       backgroundColor: colors.dangerBg,
       borderWidth: 1,
       borderColor: colors.dangerBorder,
-      padding: 10,
-      borderRadius: 8,
-      marginTop: 4,
+      padding: wp(2.5),
+      borderRadius: wp(2),
+      marginTop: hp(0.5),
     },
     errorIconSpacing: {
-      marginRight: 8,
-      marginTop: 2,
+      marginRight: wp(2),
+      marginTop: hp(0.25),
     },
     errorTextLabel: {
       color: colors.dangerText,
-      fontSize: 13,
+      fontSize: fs(3.2),
       flex: 1,
-      lineHeight: 18,
+      lineHeight: fs(4.5),
     },
     modalFooterPanel: {
       flexDirection: 'row',
-      paddingHorizontal: 16,
-      gap: 12,
+      paddingHorizontal: wp(4),
+      gap: wp(3),
     },
     footerBtn: {
       flex: 1,
-      height: 44,
-      borderRadius: 8,
+      height: hp(5.5),
+      borderRadius: wp(2),
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -683,7 +680,7 @@ export default function AttendanceScreen() {
 
         <View style={s(styles.statsRowGrid)}>
           <View style={s(styles.statMiniCard)}>
-            <LogIn size={20} color={colors.successText} style={s(styles.statIcon)} />
+            <LogIn size={fs(5)} color={colors.successText} style={s(styles.statIcon)} />
             <Text style={s(styles.statLabel)}>Clock In</Text>
             <Text style={s(styles.statValue)}>
               {formatLocalClock(todayEntry?.clockIn, todayEntry?.clockInAt)}
@@ -691,7 +688,7 @@ export default function AttendanceScreen() {
           </View>
 
           <View style={s(styles.statMiniCard)}>
-            <LogOut size={20} color={colors.dangerText} style={s(styles.statIcon)} />
+            <LogOut size={fs(5)} color={colors.dangerText} style={s(styles.statIcon)} />
             <Text style={s(styles.statLabel)}>Clock Out</Text>
             <Text style={s(styles.statValue)}>
               {formatLocalClock(todayEntry?.clockOut, todayEntry?.clockOutAt)}
@@ -699,7 +696,7 @@ export default function AttendanceScreen() {
           </View>
 
           <View style={s([styles.statMiniCard, styles.fullWidthMiniCard])}>
-            <Timer size={20} color={colors.durationText} style={s(styles.statIcon)} />
+            <Timer size={fs(5)} color={colors.durationText} style={s(styles.statIcon)} />
             <Text style={s(styles.statLabel)}>Duration</Text>
             <Text style={s(styles.statValue)}>
               {isClockedIn || isClockedOut ? durationText : '--:--:--'}
@@ -722,7 +719,7 @@ export default function AttendanceScreen() {
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
                 <>
-                  <LogIn size={18} color="#ffffff" style={s(styles.inlineIconMargin)} />
+                  <LogIn size={fs(4.5)} color="#ffffff" style={s(styles.inlineIconMargin)} />
                   <Text style={s(styles.btnText)}>Clock In</Text>
                 </>
               )}
@@ -734,7 +731,7 @@ export default function AttendanceScreen() {
               style={s([styles.baseBtn, styles.btnOut, !isClockedIn && styles.btnDisabled])}
               onPress={() => setShowScrumModal(true)}
             >
-              <LogOut size={18} color="#ffffff" style={s(styles.inlineIconMargin)} />
+              <LogOut size={fs(4.5)} color="#ffffff" style={s(styles.inlineIconMargin)} />
               <Text style={s(styles.btnText)}>Clock Out</Text>
             </TouchableOpacity>
           </View>
@@ -748,15 +745,15 @@ export default function AttendanceScreen() {
 
         <View style={s(styles.historySectionCard)}>
           <View style={s(styles.historyHeader)}>
-            <History size={18} color={colors.golden} style={s(styles.historyIconSpacing)} />
+            <History size={fs(4.5)} color={colors.golden} style={s(styles.historyIconSpacing)} />
             <Text style={s(styles.historyTitle)}>Attendance History</Text>
           </View>
 
           {isHistoryLoading ? (
-            <ActivityIndicator size="small" color={colors.primary} style={s({ marginVertical: 20 })} />
+            <ActivityIndicator size="small" color={colors.primary} style={s({ marginVertical: hp(2.5) })} />
           ) : !historyEntries || historyEntries.length === 0 ? (
             <View style={s(styles.emptyContainer)}>
-              <Calendar size={36} color={colors.border} style={s(styles.emptyIconSpacing)} />
+              <Calendar size={fs(9)} color={colors.border} style={s(styles.emptyIconSpacing)} />
               <Text style={s(styles.emptyTableText)}>No attendance records yet</Text>
             </View>
           ) : (
@@ -799,11 +796,11 @@ export default function AttendanceScreen() {
           <View style={s(styles.modalSurfaceCard)}>
             <View style={s(styles.modalHeaderRow)}>
               <View style={s(styles.modalHeaderTitleFlex)}>
-                <ClipboardList size={20} color={colors.primary} style={s(styles.historyIconSpacing)} />
+                <ClipboardList size={fs(5)} color={colors.primary} style={s(styles.historyIconSpacing)} />
                 <Text style={s(styles.modalTitleText)}>End-of-Day Report</Text>
               </View>
               <TouchableOpacity onPress={() => setShowScrumModal(false)}>
-                <X size={20} color={colors.mutedText} />
+                <X size={fs(5)} color={colors.mutedText} />
               </TouchableOpacity>
             </View>
 
@@ -856,7 +853,7 @@ export default function AttendanceScreen() {
 
               {!!validationError && (
                 <View style={s(styles.validationErrorBox)}>
-                  <AlertCircle size={16} color={colors.dangerText} style={s(styles.errorIconSpacing)} />
+                  <AlertCircle size={fs(4)} color={colors.dangerText} style={s(styles.errorIconSpacing)} />
                   <Text style={s(styles.errorTextLabel)}>{validationError}</Text>
                 </View>
               )}

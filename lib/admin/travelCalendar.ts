@@ -15,6 +15,15 @@ export interface TravelCalendar {
   visibility: "private" | "team" | "department" | "company";
 }
 
+export interface TravelCalendarFilters {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  employee?: string;
+  purpose?: string;
+  [key: string]: any;
+}
+
 export interface TravelCalendarCreateRequest {
   title: string;
   description?: string;
@@ -83,7 +92,7 @@ class TravelCalendarApi {
     }
   }
 
-  // Delete travel calendar
+
   async deleteTravelCalendar(id: string) {
     try {
       return await apiFetch<any>(`${this.baseUrl}/${encodeURIComponent(id)}`, {
@@ -93,6 +102,32 @@ class TravelCalendarApi {
       return { success: false, error: { message: this.parseErrorMessage(error) } };
     }
   }
+
+  async getTravelCalendarById(id: string) {
+    try {
+      return await apiFetch<any>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+    } catch (error) {
+      console.warn("Exception processed in sequence identification lookup");
+      throw new Error("Travel calendar not available");
+    }
+  }
+
+
+  async getTravelStatistics() {
+    try {
+      return await apiFetch<any>(`${this.baseUrl}/statistics`);
+    } catch (error) {
+      console.warn("Metrics routing pipeline bypassed internally");
+      return null;
+    }
+  }
+
+  
 }
+
+
+
+
+
 
 export const travelCalendarApi = new TravelCalendarApi();

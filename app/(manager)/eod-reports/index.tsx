@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ClipboardList,
-  Calendar,
   Clock,
   Search,
   CheckCircle,
@@ -27,28 +26,10 @@ import {
   X,
   ChevronDown,
 } from "lucide-react-native";
-
-// Custom API clients from project ecosystem
 import { getEODReports, getEODStatus } from "@/lib/admin/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
-// ── THEME CONFIGURATION ───────────────────────────────────────
-const THEME = {
-  background: "#09090b", // Absolute dark canvas background
-  card: "#121214",       // Premium dark container fill
-  surface: "#1a1a1e",    // Input and utility item backdrop
-  primary: "#ffd27a",    // Signature premium gold accent
-  text: "#f4f4f5",       // Off-white primary text 
-  muted: "#a1a1aa",       // Muted gray subtext
-  border: "#27272a",      // Zinc clean layout borders
-  
-  // Semantic Context Colors
-  success: "#10b981",
-  danger: "#ef4444",
-  warning: "#f59e0b",
-  info: "#3b82f6",
-};
-
-// ── TYPES & INTERFACES ────────────────────────────────────────
 interface EODReport {
   id: string;
   userId: string;
@@ -79,19 +60,512 @@ interface EODStatus {
   reportSubmittedAt?: string;
 }
 
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#f8fafc"),
+    card:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#121214" : "#ffffff"),
+    surface:       isDark ? "#1a1a1e" : "#f1f5f9",
+    primary:       uiTheme.customColors?.primary                || "#ffd27a",
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f4f4f5" : "#0f172a"),
+    muted:         isDark ? "#a1a1aa" : "#64748b",
+    border:        isDark ? "#27272a" : "#e2e8f0",
+    success:       "#10b981",
+    danger:        "#ef4444",
+    warning:       "#f59e0b",
+    info:          "#3b82f6",
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    safeContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      paddingHorizontal: wp(4),
+      paddingTop: hp(1),
+    },
+    centerSection: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    loadingText: {
+      color: colors.muted,
+      marginTop: hp(1.5),
+      fontSize: fs(3.5),
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(2),
+    },
+    title: {
+      fontSize: fs(5.5),
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    subtitle: {
+      fontSize: fs(3),
+      color: colors.muted,
+      marginTop: hp(0.25),
+    },
+    segmentedToggleGroup: {
+      flexDirection: "row",
+      backgroundColor: colors.card,
+      borderRadius: wp(2),
+      padding: wp(0.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    toggleSegmentBtn: {
+      paddingVertical: hp(0.75),
+      paddingHorizontal: wp(3),
+      borderRadius: wp(1.5),
+    },
+    toggleSegmentBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    toggleSegmentBtnText: {
+      fontSize: fs(3),
+      fontWeight: "600",
+      color: colors.muted,
+    },
+    toggleSegmentBtnTextActive: {
+      color: colors.background,
+    },
+    filterCard: {
+      backgroundColor: colors.card,
+      borderRadius: wp(3),
+      padding: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: hp(2),
+      gap: hp(1.2),
+    },
+    filterRowItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+    },
+    searchIcon: {
+      marginRight: wp(2),
+    },
+    searchInput: {
+      flex: 1,
+      height: hp(4.8),
+      fontSize: fs(3.2),
+      color: colors.text,
+    },
+    formSplitRow: {
+      flexDirection: "row",
+      gap: wp(2),
+      alignItems: "center",
+    },
+    dateInputText: {
+      flex: 1.2,
+      height: hp(4.8),
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+      fontSize: fs(3.2),
+      color: colors.muted,
+    },
+    dropdownSelector: {
+      flex: 1.5,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+      height: hp(4.8),
+    },
+    dropdownSelectorText: {
+      fontSize: fs(3),
+      color: colors.muted,
+      fontWeight: "500",
+    },
+    resetBtn: {
+      paddingHorizontal: wp(3),
+      height: hp(4.8),
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    resetBtnText: {
+      color: colors.muted,
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    scrollBodyContainer: {
+      paddingBottom: hp(3),
+    },
+    sectionHeaderTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: hp(1.8),
+    },
+    sectionTitleLabel: {
+      fontSize: fs(3.5),
+      fontWeight: "700",
+      color: colors.text,
+      marginLeft: wp(1.5),
+    },
+    countBadge: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+      marginLeft: wp(2),
+    },
+    countBadgeText: {
+      color: colors.primary,
+      fontSize: fs(2.5),
+      fontWeight: "600",
+    },
+    emptyContainer: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: hp(8),
+      gap: hp(1.5),
+    },
+    emptyTitle: {
+      fontSize: fs(3.2),
+      color: colors.muted,
+      textAlign: "center",
+    },
+    dashboardGridLayout: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: wp(2.5),
+    },
+    gridCardUnit: {
+      width: wp(44.5),
+      backgroundColor: colors.card,
+      borderRadius: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: wp(3),
+      position: "relative",
+    },
+    cardHeaderIndicatorRow: {
+      position: "absolute",
+      top: hp(1.5),
+      right: wp(3),
+      zIndex: 2,
+    },
+    statusDotElement: {
+      width: wp(1.8),
+      height: wp(1.8),
+      borderRadius: wp(0.9),
+    },
+    gridAvatarBlock: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(2),
+    },
+    avatarBox: {
+      width: wp(7),
+      height: wp(7),
+      borderRadius: wp(3.5),
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    gridEmployeeName: {
+      fontSize: fs(3),
+      fontWeight: "700",
+      color: colors.text,
+    },
+    gridMetaClockText: {
+      fontSize: fs(2.5),
+      color: colors.muted,
+      marginTop: hp(0.25),
+    },
+    cardDrilldownHint: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      marginTop: hp(1.2),
+      paddingTop: hp(0.8),
+      alignItems: "center",
+    },
+    drilldownHintText: {
+      fontSize: fs(2.5),
+      color: colors.primary,
+      fontWeight: "600",
+    },
+    reportListItemCard: {
+      backgroundColor: colors.card,
+      borderRadius: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: wp(3.5),
+      marginBottom: hp(1.2),
+    },
+    reportListItemTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+    reportItemNameText: {
+      fontSize: fs(3.5),
+      fontWeight: "700",
+      color: colors.text,
+    },
+    reportItemDateText: {
+      fontSize: fs(2.8),
+      color: colors.muted,
+      marginTop: hp(0.25),
+    },
+    badgeStyle: {
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+    },
+    badgeSuccess: { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)" },
+    badgeDanger: { backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "rgba(239, 68, 68, 0.2)" },
+    badgeWarning: { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)" },
+    badgeMuted: { backgroundColor: "rgba(161, 161, 170, 0.08)", borderColor: "rgba(161, 161, 170, 0.2)" },
+    badgeText: {
+      fontSize: fs(2.5),
+      fontWeight: "700",
+    },
+    reportItemMiddlePreviewBlock: {
+      marginVertical: hp(1.2),
+    },
+    reportItemPreviewContentText: {
+      fontSize: fs(3),
+      color: colors.text,
+      lineHeight: fs(4),
+    },
+    reportItemFooterSummaryRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: hp(1),
+    },
+    reportFooterHoursLabel: {
+      fontSize: fs(2.8),
+      color: colors.muted,
+    },
+    actionIconButtonLink: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    actionViewLabelText: {
+      fontSize: fs(2.8),
+      color: colors.primary,
+      fontWeight: "600",
+    },
+    modalBackdropOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "flex-end",
+    },
+    bottomSheetWrapper: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: wp(4),
+      borderTopRightRadius: wp(4),
+      padding: wp(4),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    bottomSheetHeaderTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(2),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingBottom: hp(1.5),
+    },
+    bottomSheetHeaderTitle: {
+      fontSize: fs(4),
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: -0.3,
+    },
+    pickerItemRowUnit: {
+      paddingVertical: hp(1.5),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface,
+    },
+    pickerItemLabelText: {
+      fontSize: fs(3.2),
+      color: colors.text,
+      fontWeight: "500",
+    },
+    fullscreenDialogContainer: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: wp(5),
+      borderTopRightRadius: wp(5),
+      height: "85%",
+      padding: wp(4),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    closeOverlayBtnCircle: {
+      width: wp(7),
+      height: wp(7),
+      borderRadius: wp(3.5),
+      backgroundColor: colors.surface,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    dialogFormScrollContainer: {
+      flex: 1,
+    },
+    dialogMetadataGridContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      backgroundColor: colors.surface,
+      borderRadius: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: wp(2),
+      marginBottom: hp(1.8),
+    },
+    metadataGridHalfItem: {
+      width: "50%",
+      padding: wp(1.5),
+    },
+    metadataItemLabel: {
+      fontSize: fs(2.5),
+      color: colors.muted,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+    },
+    metadataItemValue: {
+      fontSize: fs(3.2),
+      fontWeight: "600",
+      color: colors.text,
+      marginTop: hp(0.25),
+    },
+    metricCardBlockContainer: {
+      marginBottom: hp(1.5),
+    },
+    metricBlockHeaderLabel: {
+      fontSize: fs(3),
+      fontWeight: "700",
+      color: colors.muted,
+      marginBottom: hp(0.8),
+      paddingLeft: wp(0.5),
+    },
+    metricContentCardBodyBox: {
+      padding: wp(3),
+      borderRadius: wp(2),
+      borderWidth: 1,
+    },
+    metricContentDetailsText: {
+      fontSize: fs(3),
+      color: colors.text,
+      lineHeight: fs(4.5),
+    },
+    aiInsightBodyOverride: {
+      backgroundColor: "rgba(147, 51, 234, 0.05)",
+      borderColor: "rgba(147, 51, 234, 0.2)",
+    },
+    insightRawTextContent: {
+      fontSize: fs(3),
+      color: "#d8b4fe",
+      lineHeight: fs(4.5),
+    },
+    flaggedIncidentBodyOverride: {
+      backgroundColor: "rgba(245, 158, 11, 0.05)",
+      borderColor: "rgba(245, 158, 11, 0.2)",
+    },
+    horizontalTagWrapperList: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: wp(1.5),
+    },
+    flaggedPillBadge: {
+      backgroundColor: "rgba(245, 158, 11, 0.15)",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(1),
+      borderWidth: 1,
+      borderColor: "rgba(245, 158, 11, 0.3)",
+    },
+    flaggedPillTextLabel: {
+      color: colors.warning,
+      fontSize: fs(2.5),
+      fontWeight: "700",
+    },
+    successMetricsCardBox: {
+      backgroundColor: "rgba(16, 185, 129, 0.03)",
+      borderColor: colors.border,
+    },
+    warningMetricsCardBox: {
+      backgroundColor: "rgba(239, 68, 68, 0.03)",
+      borderColor: colors.border,
+    },
+    standardMetricsCardBox: {
+      backgroundColor: "rgba(59, 130, 246, 0.03)",
+      borderColor: colors.border,
+    },
+    dialogFooterActionBar: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: hp(1.5),
+      paddingBottom: Platform.OS === "ios" ? hp(1.5) : hp(0.5),
+    },
+    footerActionSubmitBtn: {
+      backgroundColor: colors.primary,
+      height: hp(5.2),
+      borderRadius: wp(2),
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    footerActionSubmitBtnText: {
+      color: colors.background,
+      fontSize: fs(3.5),
+      fontWeight: "700",
+    },
+  });
+}
+
 export default function ManagerEODReports() {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [reports, setReports] = useState<EODReport[]>([]);
   const [statusList, setStatusList] = useState<EODStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   
   const today = new Date().toISOString().split("T")[0];
-  const [dateFilter, setDateFilter] = useState(today);
+  const [viewMode, setViewMode] = useState<"status" | "reports">("reports");
+  const [dateFilter, setDateFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedReport, setSelectedReport] = useState<EODReport | null>(null);
-  const [viewMode, setViewMode] = useState<"status" | "reports">("reports");
-  
-  // Custom Pickers State
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
 
   useEffect(() => {
@@ -108,8 +582,8 @@ export default function ManagerEODReports() {
         }),
         getEODStatus(dateFilter || today),
       ]);
-      setReports(reportsRes?.items || []);
-      setStatusList(statusRes?.items || []);
+      setReports((reportsRes as any)?.items || []);
+      setStatusList((statusRes as any)?.items || []);
     } catch (err) {
       console.error("Failed to load EOD data:", err);
       Alert.alert("Error", "Failed to load EOD data");
@@ -161,36 +635,36 @@ export default function ManagerEODReports() {
     switch (status) {
       case "submitted":
         return (
-          <View style={[styles.badgeStyle, styles.badgeSuccess]}>
-            <CheckCircle size={11} color={THEME.success} style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: THEME.success }]}>Submitted</Text>
+          <View style={s([styles.badgeStyle, styles.badgeSuccess])}>
+            <CheckCircle size={fs(2.8)} color={colors.success} style={s({ marginRight: wp(1) })} />
+            <Text style={s([styles.badgeText, { color: colors.success }])}>Submitted</Text>
           </View>
         );
       case "missing":
         return (
-          <View style={[styles.badgeStyle, styles.badgeDanger]}>
-            <XCircle size={11} color={THEME.danger} style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: THEME.danger }]}>Missing</Text>
+          <View style={s([styles.badgeStyle, styles.badgeDanger])}>
+            <XCircle size={fs(2.8)} color={colors.danger} style={s({ marginRight: wp(1) })} />
+            <Text style={s([styles.badgeText, { color: colors.danger }])}>Missing</Text>
           </View>
         );
       case "late":
         return (
-          <View style={[styles.badgeStyle, styles.badgeWarning]}>
-            <AlertCircle size={11} color={THEME.warning} style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: THEME.warning }]}>Late</Text>
+          <View style={s([styles.badgeStyle, styles.badgeWarning])}>
+            <AlertCircle size={fs(2.8)} color={colors.warning} style={s({ marginRight: wp(1) })} />
+            <Text style={s([styles.badgeText, { color: colors.warning }])}>Late</Text>
           </View>
         );
       case "not_clocked_in":
         return (
-          <View style={[styles.badgeStyle, styles.badgeMuted]}>
-            <Clock size={11} color={THEME.muted} style={{ marginRight: 4 }} />
-            <Text style={[styles.badgeText, { color: THEME.muted }]}>Not Clocked In</Text>
+          <View style={s([styles.badgeStyle, styles.badgeMuted])}>
+            <Clock size={fs(2.8)} color={colors.muted} style={s({ marginRight: wp(1) })} />
+            <Text style={s([styles.badgeText, { color: colors.muted }])}>Not Clocked In</Text>
           </View>
         );
       default:
         return (
-          <View style={[styles.badgeStyle, { borderColor: THEME.border }]}>
-            <Text style={[styles.badgeText, { color: THEME.text }]}>{status}</Text>
+          <View style={s([styles.badgeStyle, { borderColor: colors.border }])}>
+            <Text style={s([styles.badgeText, { color: colors.text }])}>{status}</Text>
           </View>
         );
     }
@@ -198,97 +672,94 @@ export default function ManagerEODReports() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeContainer}>
-        <View style={styles.centerSection}>
-          <ActivityIndicator size="large" color={THEME.primary} />
-          <Text style={styles.loadingText}>Loading EOD data...</Text>
+      <SafeAreaView style={s(styles.safeContainer)}>
+        <View style={s(styles.centerSection)}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={s(styles.loadingText)}>Loading EOD data...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      <View style={styles.container}>
+    <SafeAreaView style={s(styles.safeContainer)}>
+      <View style={s(styles.container)}>
         
-        {/* ── HEADER ──────────────────────────────────────────────── */}
-        <View style={styles.header}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.title}>End-of-Day Reports</Text>
-            <Text style={styles.subtitle}>Monitor daily activities & workforce alignment</Text>
+        <View style={s(styles.header)}>
+          <View style={s({ flex: 1, marginRight: wp(2) })}>
+            <Text style={s(styles.title)}>End-of-Day Reports</Text>
+            <Text style={s(styles.subtitle)}>Monitor daily activities & workforce alignment</Text>
           </View>
-          <View style={styles.segmentedToggleGroup}>
+          <View style={s(styles.segmentedToggleGroup)}>
             <TouchableOpacity
-              style={[styles.toggleSegmentBtn, viewMode === "reports" && styles.toggleSegmentBtnActive]}
+              style={s([styles.toggleSegmentBtn, viewMode === "reports" && styles.toggleSegmentBtnActive])}
               onPress={() => { setViewMode("reports"); setDateFilter(""); }}
             >
-              <Text style={[styles.toggleSegmentBtnText, viewMode === "reports" && styles.toggleSegmentBtnTextActive]}>Reports</Text>
+              <Text style={s([styles.toggleSegmentBtnText, viewMode === "reports" && styles.toggleSegmentBtnTextActive])}>Reports</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.toggleSegmentBtn, viewMode === "status" && styles.toggleSegmentBtnActive]}
+              style={s([styles.toggleSegmentBtn, viewMode === "status" && styles.toggleSegmentBtnActive])}
               onPress={() => { setViewMode("status"); setDateFilter(today); }}
             >
-              <Text style={[styles.toggleSegmentBtnText, viewMode === "status" && styles.toggleSegmentBtnTextActive]}>Dashboard</Text>
+              <Text style={s([styles.toggleSegmentBtnText, viewMode === "status" && styles.toggleSegmentBtnTextActive])}>Dashboard</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ── FILTERING SUITE ────────────────────────────────────── */}
-        <View style={styles.filterCard}>
-          <View style={styles.filterRowItem}>
-            <Search size={16} color={THEME.muted} style={styles.searchIcon} />
+        <View style={s(styles.filterCard)}>
+          <View style={s(styles.filterRowItem)}>
+            <Search size={fs(4)} color={colors.muted} style={s(styles.searchIcon)} />
             <TextInput
-              style={styles.searchInput}
+              style={s(styles.searchInput)}
               placeholder="Search employee name..."
-              placeholderTextColor={THEME.muted}
+              placeholderTextColor={colors.muted}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
           </View>
 
-          <View style={styles.formSplitRow}>
+          <View style={s(styles.formSplitRow)}>
             <TextInput
-              style={styles.dateInputText}
+              style={s(styles.dateInputText)}
               value={dateFilter}
               placeholder="YYYY-MM-DD"
-              placeholderTextColor={THEME.muted}
+              placeholderTextColor={colors.muted}
               onChangeText={setDateFilter}
             />
 
-            <TouchableOpacity style={styles.dropdownSelector} onPress={() => setStatusPickerOpen(true)}>
-              <Text style={styles.dropdownSelectorText} numberOfLines={1}>
+            <TouchableOpacity style={s(styles.dropdownSelector)} onPress={() => setStatusPickerOpen(true)}>
+              <Text style={s(styles.dropdownSelectorText)} numberOfLines={1}>
                 {statusFilter === "all" ? "All Status" : statusFilter.toUpperCase()}
               </Text>
-              <ChevronDown size={14} color={THEME.muted} />
+              <ChevronDown size={fs(3.5)} color={colors.muted} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.resetBtn}
+              style={s(styles.resetBtn)}
               onPress={() => { setDateFilter(viewMode === "status" ? today : ""); setStatusFilter("all"); setSearchQuery(""); }}
             >
-              <Text style={styles.resetBtnText}>Reset</Text>
+              <Text style={s(styles.resetBtnText)}>Reset</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ── STATUS DASHBOARD VIEW (GRID VIEW ASSEMBLY) ──────────── */}
         {viewMode === "status" && (
-          <ScrollView contentContainerStyle={styles.scrollBodyContainer} showsVerticalScrollIndicator={false}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <ClipboardList size={16} color={THEME.primary} />
-              <Text style={styles.sectionTitleLabel}>Employee EOD Status</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{filteredStatus.length} Employees</Text>
+          <ScrollView contentContainerStyle={s(styles.scrollBodyContainer)} showsVerticalScrollIndicator={false}>
+            <View style={s(styles.sectionHeaderTitleRow)}>
+              <ClipboardList size={fs(4)} color={colors.primary} />
+              <Text style={s(styles.sectionTitleLabel)}>Employee EOD Status</Text>
+              <View style={s(styles.countBadge)}>
+                <Text style={s(styles.countBadgeText)}>{filteredStatus.length} Employees</Text>
               </View>
             </View>
 
             {filteredStatus.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <ClipboardList size={40} color={THEME.border} />
-                <Text style={styles.emptyTitle}>No tracking match records found</Text>
+              <View style={s(styles.emptyContainer)}>
+                <ClipboardList size={fs(10)} color={colors.border} />
+                <Text style={s(styles.emptyTitle)}>No tracking match records found</Text>
               </View>
             ) : (
-              <View style={styles.dashboardGridLayout}>
+              <View style={s(styles.dashboardGridLayout)}>
                 {filteredStatus.map((statusItem) => {
                   const isGreen = statusItem.status === "submitted";
                   const isYellow = statusItem.status === "late";
@@ -298,12 +769,12 @@ export default function ManagerEODReports() {
                   return (
                     <TouchableOpacity
                       key={statusItem.employeeId}
-                      style={[
+                      style={s([
                         styles.gridCardUnit,
                         isGreen && { borderColor: "rgba(16, 185, 129, 0.4)" },
                         isYellow && { borderColor: "rgba(245, 158, 11, 0.4)" },
                         isRed && { borderColor: "rgba(239, 68, 68, 0.4)" },
-                      ]}
+                      ])}
                       onPress={() => {
                         const matchedReport = reports.find((r) => r.employeeName === statusItem.employeeName);
                         if (matchedReport) {
@@ -314,47 +785,47 @@ export default function ManagerEODReports() {
                       }}
                       disabled={isGray}
                     >
-                      <View style={styles.cardHeaderIndicatorRow}>
-                        <View style={[
+                      <View style={s(styles.cardHeaderIndicatorRow)}>
+                        <View style={s([
                           styles.statusDotElement,
-                          isGreen && { backgroundColor: THEME.success },
-                          isYellow && { backgroundColor: THEME.warning },
-                          isRed && { backgroundColor: THEME.danger },
-                          isGray && { backgroundColor: THEME.muted }
-                        ]} />
+                          isGreen && { backgroundColor: colors.success },
+                          isYellow && { backgroundColor: colors.warning },
+                          isRed && { backgroundColor: colors.danger },
+                          isGray && { backgroundColor: colors.muted }
+                        ])} />
                       </View>
 
-                      <View style={styles.gridAvatarBlock}>
-                        <View style={styles.avatarBox}>
-                          <User size={16} color={THEME.primary} />
+                      <View style={s(styles.gridAvatarBlock)}>
+                        <View style={s(styles.avatarBox)}>
+                          <User size={fs(4)} color={colors.primary} />
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.gridEmployeeName} numberOfLines={1}>{statusItem.employeeName}</Text>
-                          <Text style={styles.gridMetaClockText} numberOfLines={1}>
+                        <View style={s({ flex: 1 })}>
+                          <Text style={s(styles.gridEmployeeName)} numberOfLines={1}>{statusItem.employeeName}</Text>
+                          <Text style={s(styles.gridMetaClockText)} numberOfLines={1}>
                             {statusItem.clockIn ? `In: ${formatLocalClock(statusItem.clockIn, statusItem.clockInAt)}` : "Not Clocked In"}
                           </Text>
                         </View>
                       </View>
 
-                      <View style={{ marginTop: 6, alignItems: "flex-start" }}>
+                      <View style={s({ marginTop: hp(0.8), alignItems: "flex-start" })}>
                         {renderStatusBadge(statusItem.status)}
                       </View>
 
                       {statusItem.clockOut && (
-                        <Text style={[styles.gridMetaClockText, { marginTop: 4 }]}>
+                        <Text style={s([styles.gridMetaClockText, { marginTop: hp(0.5) }])}>
                           Out: {formatLocalClock(statusItem.clockOut, statusItem.clockOutAt)}
                         </Text>
                       )}
 
                       {statusItem.reportSubmittedAt && (
-                        <Text style={[styles.gridMetaClockText, { marginTop: 2, color: THEME.primary }]}>
+                        <Text style={s([styles.gridMetaClockText, { marginTop: hp(0.25), color: colors.primary }])}>
                           Sent: {new Date(statusItem.reportSubmittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </Text>
                       )}
 
                       {!isGray && (
-                        <View style={styles.cardDrilldownHint}>
-                          <Text style={styles.drilldownHintText}>View Parameters</Text>
+                        <View style={s(styles.cardDrilldownHint)}>
+                          <Text style={s(styles.drilldownHintText)}>View Parameters</Text>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -365,21 +836,20 @@ export default function ManagerEODReports() {
           </ScrollView>
         )}
 
-        {/* ── ALL REPORTS LOG VIEW (HISTORICAL FLUID LIST ASSEMBLY) ── */}
         {viewMode === "reports" && (
-          <View style={{ flex: 1 }}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <ClipboardList size={16} color={THEME.primary} />
-              <Text style={styles.sectionTitleLabel}>Historical Summaries</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{filteredReports.length} Logs</Text>
+          <View style={s({ flex: 1 })}>
+            <View style={s(styles.sectionHeaderTitleRow)}>
+              <ClipboardList size={fs(4)} color={colors.primary} />
+              <Text style={s(styles.sectionTitleLabel)}>Historical Summaries</Text>
+              <View style={s(styles.countBadge)}>
+                <Text style={s(styles.countBadgeText)}>{filteredReports.length} Logs</Text>
               </View>
             </View>
 
             {filteredReports.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <ClipboardList size={40} color={THEME.border} />
-                <Text style={styles.emptyTitle}>No historical submissions logged</Text>
+              <View style={s(styles.emptyContainer)}>
+                <ClipboardList size={fs(10)} color={colors.border} />
+                <Text style={s(styles.emptyTitle)}>No historical submissions logged</Text>
               </View>
             ) : (
               <FlatList
@@ -388,60 +858,59 @@ export default function ManagerEODReports() {
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item: reportItem }) => (
                   <TouchableOpacity
-                    style={styles.reportListItemCard}
+                    style={s(styles.reportListItemCard)}
                     onPress={() => setSelectedReport(reportItem)}
                   >
-                    <View style={styles.reportListItemTopRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.reportItemNameText}>{reportItem.employeeName}</Text>
-                        <Text style={styles.reportItemDateText}>{formatDate(reportItem.date)}</Text>
+                    <View style={s(styles.reportListItemTopRow)}>
+                      <View style={s({ flex: 1 })}>
+                        <Text style={s(styles.reportItemNameText)}>{reportItem.employeeName}</Text>
+                        <Text style={s(styles.reportItemDateText)}>{formatDate(reportItem.date)}</Text>
                       </View>
                       <View>{renderStatusBadge(reportItem.status)}</View>
                     </View>
 
-                    <View style={styles.reportItemMiddlePreviewBlock}>
-                      <Text style={styles.reportItemPreviewContentText} numberOfLines={2}>
+                    <View style={s(styles.reportItemMiddlePreviewBlock)}>
+                      <Text style={s(styles.reportItemPreviewContentText)} numberOfLines={2}>
                         {parseEODData(reportItem.rawInput).tasksCompleted || "No metrics compiled."}
                       </Text>
                     </View>
 
-                    <View style={styles.reportItemFooterSummaryRow}>
-                      <Text style={styles.reportFooterHoursLabel}>
-                        Duration: <Text style={{ color: THEME.primary, fontWeight: "600" }}>{reportItem.totalHours ? `${reportItem.totalHours.toFixed(2)}h` : "—"}</Text>
+                    <View style={s(styles.reportItemFooterSummaryRow)}>
+                      <Text style={s(styles.reportFooterHoursLabel)}>
+                        Duration: <Text style={s({ color: colors.primary, fontWeight: "600" })}>{reportItem.totalHours ? `${reportItem.totalHours.toFixed(2)}h` : "—"}</Text>
                       </Text>
-                      <View style={styles.actionIconButtonLink}>
-                        <Eye size={14} color={THEME.primary} style={{ marginRight: 4 }} />
-                        <Text style={styles.actionViewLabelText}>Metrics</Text>
+                      <View style={s(styles.actionIconButtonLink)}>
+                        <Eye size={fs(3.5)} color={colors.primary} style={s({ marginRight: wp(1) })} />
+                        <Text style={s(styles.actionViewLabelText)}>Metrics</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
                 )}
-                contentContainerStyle={{ paddingBottom: 24 }}
+                contentContainerStyle={s({ paddingBottom: hp(3) })}
               />
             )}
           </View>
         )}
 
-        {/* ── DISCRETE FILTER OVERLAY SHEET ─────────────────────── */}
         <Modal visible={statusPickerOpen} transparent animationType="slide">
-          <View style={styles.modalBackdropOverlay}>
-            <View style={styles.bottomSheetWrapper}>
-              <View style={styles.bottomSheetHeaderTitleRow}>
-                <Text style={styles.bottomSheetHeaderTitle}>Select Status Filter</Text>
+          <View style={s(styles.modalBackdropOverlay)}>
+            <View style={s(styles.bottomSheetWrapper)}>
+              <View style={s(styles.bottomSheetHeaderTitleRow)}>
+                <Text style={s(styles.bottomSheetHeaderTitle)}>Select Status Filter</Text>
                 <TouchableOpacity onPress={() => setStatusPickerOpen(false)}>
-                  <X size={20} color={THEME.text} />
+                  <X size={fs(5)} color={colors.text} />
                 </TouchableOpacity>
               </View>
               {["all", "submitted", "missing", "late"].map((statusOption) => (
                 <TouchableOpacity
                   key={statusOption}
-                  style={styles.pickerItemRowUnit}
+                  style={s(styles.pickerItemRowUnit)}
                   onPress={() => {
                     setStatusFilter(statusOption);
                     setStatusPickerOpen(false);
                   }}
                 >
-                  <Text style={styles.pickerItemLabelText}>
+                  <Text style={s(styles.pickerItemLabelText)}>
                     {statusOption === "all" ? "All Status Metrics" : statusOption.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
@@ -450,55 +919,51 @@ export default function ManagerEODReports() {
           </View>
         </Modal>
 
-        {/* ── METRICS DRILLDOWN DETAIL DIALOG OVERLAY ───────────── */}
         <Modal visible={!!selectedReport} transparent animationType="fade">
-          <View style={styles.modalBackdropOverlay}>
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "flex-end", width: "100%" }}>
-              <View style={styles.fullscreenDialogContainer}>
-                <View style={[styles.bottomSheetHeaderTitleRow, { paddingHorizontal: 4 }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.bottomSheetHeaderTitle}>EOD Summary Metrics</Text>
-                    <Text style={{ color: THEME.muted, fontSize: 12, marginTop: 2 }}>Comprehensive workspace activity evaluation</Text>
+          <View style={s(styles.modalBackdropOverlay)}>
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s({ flex: 1, justifyContent: "flex-end", width: "100%" })}>
+              <View style={s(styles.fullscreenDialogContainer)}>
+                <View style={s([styles.bottomSheetHeaderTitleRow, { paddingHorizontal: wp(1) }])}>
+                  <View style={s({ flex: 1 })}>
+                    <Text style={s(styles.bottomSheetHeaderTitle)}>EOD Summary Metrics</Text>
+                    <Text style={s({ color: colors.muted, fontSize: fs(3), marginTop: hp(0.25) })}>Comprehensive workspace activity evaluation</Text>
                   </View>
-                  <TouchableOpacity style={styles.closeOverlayBtnCircle} onPress={() => setSelectedReport(null)}>
-                    <X size={18} color={THEME.text} />
+                  <TouchableOpacity style={s(styles.closeOverlayBtnCircle)} onPress={() => setSelectedReport(null)}>
+                    <X size={fs(4.5)} color={colors.text} />
                   </TouchableOpacity>
                 </View>
 
                 {selectedReport && (
-                  <ScrollView style={styles.dialogFormScrollContainer} showsVerticalScrollIndicator={false}>
+                  <ScrollView style={s(styles.dialogFormScrollContainer)} showsVerticalScrollIndicator={false}>
                     
-                    {/* Meta Parameters Block Grid layout */}
-                    <View style={styles.dialogMetadataGridContainer}>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Employee</Text><Text style={styles.metadataItemValue}>{selectedReport.employeeName}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Date</Text><Text style={styles.metadataItemValue}>{formatDate(selectedReport.date)}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Clock In</Text><Text style={styles.metadataItemValue}>{formatLocalClock(selectedReport.clockIn, selectedReport.clockInAt)}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Clock Out</Text><Text style={styles.metadataItemValue}>{formatLocalClock(selectedReport.clockOut, selectedReport.clockOutAt)}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Total Duration</Text><Text style={[styles.metadataItemValue, { color: THEME.primary }]}>{selectedReport.totalHours ? `${selectedReport.totalHours.toFixed(2)} Hours` : "—"}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Submission Status</Text><View style={{ marginTop: 4, alignItems: "flex-start" }}>{renderStatusBadge(selectedReport.status)}</View></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Input Channel</Text><Text style={[styles.metadataItemValue, { textTransform: "capitalize" }]}>{selectedReport.inputType || "UI Layout"}</Text></View>
-                      <View style={styles.metadataGridHalfItem}><Text style={styles.metadataItemLabel}>Productivity Score</Text><Text style={[styles.metadataItemValue, { color: THEME.primary, fontWeight: "700" }]}>{selectedReport.productivityScore !== undefined ? `${selectedReport.productivityScore} / 10` : "—"}</Text></View>
+                    <View style={s(styles.dialogMetadataGridContainer)}>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Employee</Text><Text style={s(styles.metadataItemValue)}>{selectedReport.employeeName}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Date</Text><Text style={s(styles.metadataItemValue)}>{formatDate(selectedReport.date)}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Clock In</Text><Text style={s(styles.metadataItemValue)}>{formatLocalClock(selectedReport.clockIn, selectedReport.clockInAt)}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Clock Out</Text><Text style={s(styles.metadataItemValue)}>{formatLocalClock(selectedReport.clockOut, selectedReport.clockOutAt)}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Total Duration</Text><Text style={s([styles.metadataItemValue, { color: colors.primary }])}>{selectedReport.totalHours ? `${selectedReport.totalHours.toFixed(2)} Hours` : "—"}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Submission Status</Text><View style={s({ marginTop: hp(0.5), alignItems: "flex-start" })}>{renderStatusBadge(selectedReport.status)}</View></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Input Channel</Text><Text style={s([styles.metadataItemValue, { textTransform: "capitalize" }])}>{selectedReport.inputType || "UI Layout"}</Text></View>
+                      <View style={s(styles.metadataGridHalfItem)}><Text style={s(styles.metadataItemLabel)}>Productivity Score</Text><Text style={s([styles.metadataItemValue, { color: colors.primary, fontWeight: "700" }])}>{selectedReport.productivityScore !== undefined ? `${selectedReport.productivityScore} / 10` : "—"}</Text></View>
                     </View>
 
-                    {/* AI Processed Insight */}
                     {selectedReport.aiSummary && (
-                      <View style={styles.metricCardBlockContainer}>
-                        <Text style={styles.metricBlockHeaderLabel}>✨ AI Core Insight Engine</Text>
-                        <View style={[styles.metricContentCardBodyBox, styles.aiInsightBodyOverride]}>
-                          <Text style={styles.insightRawTextContent}>{selectedReport.aiSummary}</Text>
+                      <View style={s(styles.metricCardBlockContainer)}>
+                        <Text style={s(styles.metricBlockHeaderLabel)}>✨ AI Core Insight Engine</Text>
+                        <View style={s([styles.metricContentCardBodyBox, styles.aiInsightBodyOverride])}>
+                          <Text style={s(styles.insightRawTextContent)}>{selectedReport.aiSummary}</Text>
                         </View>
                       </View>
                     )}
 
-                    {/* Operational Risk Flags */}
                     {selectedReport.flags && selectedReport.flags.length > 0 && (
-                      <View style={styles.metricCardBlockContainer}>
-                        <Text style={styles.metricBlockHeaderLabel}>⚠️ Operational Compliance Exception Flags</Text>
-                        <View style={[styles.metricContentCardBodyBox, styles.flaggedIncidentBodyOverride]}>
-                          <View style={styles.horizontalTagWrapperList}>
+                      <View style={s(styles.metricCardBlockContainer)}>
+                        <Text style={s(styles.metricBlockHeaderLabel)}>⚠️ Operational Compliance Exception Flags</Text>
+                        <View style={s([styles.metricContentCardBodyBox, styles.flaggedIncidentBodyOverride])}>
+                          <View style={s(styles.horizontalTagWrapperList)}>
                             {selectedReport.flags.map((flagItem, index) => (
-                              <View key={index} style={styles.flaggedPillBadge}>
-                                <Text style={styles.flaggedPillTextLabel}>{flagItem}</Text>
+                              <View key={index} style={s(styles.flaggedPillBadge)}>
+                                <Text style={s(styles.flaggedPillTextLabel)}>{flagItem}</Text>
                               </View>
                             ))}
                           </View>
@@ -506,47 +971,46 @@ export default function ManagerEODReports() {
                       </View>
                     )}
 
-                    {/* Tasks Details Map Blocks */}
                     {(() => {
                       const computedDataMap = parseEODData(selectedReport.rawInput);
                       return (
-                        <View style={{ gap: 12, marginTop: 12 }}>
-                          <View style={styles.metricCardBlockContainer}>
-                            <Text style={styles.metricBlockHeaderLabel}>✅ Tasks Completed Log</Text>
-                            <View style={[styles.metricContentCardBodyBox, styles.successMetricsCardBox]}>
-                              <Text style={styles.metricContentDetailsText}>
+                        <View style={s({ gap: hp(1.5), marginTop: hp(1.5) })}>
+                          <View style={s(styles.metricCardBlockContainer)}>
+                            <Text style={s(styles.metricBlockHeaderLabel)}>✅ Tasks Completed Log</Text>
+                            <View style={s([styles.metricContentCardBodyBox, styles.successMetricsCardBox])}>
+                              <Text style={s(styles.metricContentDetailsText)}>
                                 {computedDataMap.tasksCompleted || "No task context parameters provided."}
                               </Text>
                             </View>
                           </View>
 
                           {computedDataMap.issuesBlockers ? (
-                            <View style={styles.metricCardBlockContainer}>
-                              <Text style={styles.metricBlockHeaderLabel}>🚨 Operational Escapes & System Blockers</Text>
-                              <View style={[styles.metricContentCardBodyBox, styles.warningMetricsCardBox]}>
-                                <Text style={styles.metricContentDetailsText}>{computedDataMap.issuesBlockers}</Text>
+                            <View style={s(styles.metricCardBlockContainer)}>
+                              <Text style={s(styles.metricBlockHeaderLabel)}>🚨 Operational Escapes & System Blockers</Text>
+                              <View style={s([styles.metricContentCardBodyBox, styles.warningMetricsCardBox])}>
+                                <Text style={s(styles.metricContentDetailsText)}>{computedDataMap.issuesBlockers}</Text>
                               </View>
                             </View>
                           ) : null}
 
                           {computedDataMap.notes ? (
-                            <View style={styles.metricCardBlockContainer}>
-                              <Text style={styles.metricBlockHeaderLabel}>📝 Operational Log Notes</Text>
-                              <View style={[styles.metricContentCardBodyBox, styles.standardMetricsCardBox]}>
-                                <Text style={styles.metricContentDetailsText}>{computedDataMap.notes}</Text>
+                            <View style={s(styles.metricCardBlockContainer)}>
+                              <Text style={s(styles.metricBlockHeaderLabel)}>📝 Operational Log Notes</Text>
+                              <View style={s([styles.metricContentCardBodyBox, styles.standardMetricsCardBox])}>
+                                <Text style={s(styles.metricContentDetailsText)}>{computedDataMap.notes}</Text>
                               </View>
                             </View>
                           ) : null}
                         </View>
                       );
                     })()}
-                    <View style={{ height: 40 }} />
+                    <View style={s({ height: hp(5) })} />
                   </ScrollView>
                 )}
 
-                <View style={styles.dialogFooterActionBar}>
-                  <TouchableOpacity style={styles.footerActionSubmitBtn} onPress={() => setSelectedReport(null)}>
-                    <Text style={styles.footerActionSubmitBtnText}>Dismiss View </Text>
+                <View style={s(styles.dialogFooterActionBar)}>
+                  <TouchableOpacity style={s(styles.footerActionSubmitBtn)} onPress={() => setSelectedReport(null)}>
+                    <Text style={s(styles.footerActionSubmitBtnText)}>Dismiss View</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -558,476 +1022,3 @@ export default function ManagerEODReports() {
     </SafeAreaView>
   );
 }
-
-// ── COMPONENT MOUNT STYLESHEET ────────────────────────────────
-const styles = StyleSheet.create({
-  safeContainer: {
-    flex: 1,
-    backgroundColor: THEME.background,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  centerSection: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    color: THEME.muted,
-    marginTop: 12,
-    fontSize: 14,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: THEME.text,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: THEME.muted,
-    marginTop: 2,
-  },
-  segmentedToggleGroup: {
-    flexDirection: "row",
-    backgroundColor: THEME.card,
-    borderRadius: 8,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  toggleSegmentBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  toggleSegmentBtnActive: {
-    backgroundColor: THEME.primary,
-  },
-  toggleSegmentBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: THEME.muted,
-  },
-  toggleSegmentBtnTextActive: {
-    color: THEME.background,
-  },
-  filterCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    marginBottom: 16,
-    gap: 10,
-  },
-  filterRowItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 38,
-    fontSize: 13,
-    color: THEME.text,
-  },
-  formSplitRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  dateInputText: {
-    flex: 1.2,
-    height: 38,
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    color: THEME.text,
-  },
-  dropdownSelector: {
-    flex: 1.5,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    height: 38,
-  },
-  dropdownSelectorText: {
-    fontSize: 12,
-    color: THEME.text,
-    fontWeight: "500",
-  },
-  resetBtn: {
-    paddingHorizontal: 12,
-    height: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    backgroundColor: THEME.surface,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resetBtnText: {
-    color: THEME.text,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  scrollBodyContainer: {
-    paddingBottom: 24,
-  },
-  sectionHeaderTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  sectionTitleLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: THEME.text,
-    marginLeft: 6,
-  },
-  countBadge: {
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 8,
-  },
-  countBadgeText: {
-    color: THEME.primary,
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 64,
-    gap: 12,
-  },
-  emptyTitle: {
-    fontSize: 13,
-    color: THEME.muted,
-    textAlign: "center",
-  },
-  dashboardGridLayout: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  gridCardUnit: {
-    width: "48.5%",
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    padding: 12,
-    position: "relative",
-  },
-  cardHeaderIndicatorRow: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    zIndex: 2,
-  },
-  statusDotElement: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  gridAvatarBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  avatarBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: THEME.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  gridEmployeeName: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: THEME.text,
-  },
-  gridMetaClockText: {
-    fontSize: 10,
-    color: THEME.muted,
-    marginTop: 1,
-  },
-  cardDrilldownHint: {
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    marginTop: 10,
-    paddingTop: 6,
-    alignItems: "center",
-  },
-  drilldownHintText: {
-    fontSize: 10,
-    color: THEME.primary,
-    fontWeight: "600",
-  },
-  reportListItemCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    padding: 14,
-    marginBottom: 10,
-  },
-  reportListItemTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  reportItemNameText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: THEME.text,
-  },
-  reportItemDateText: {
-    fontSize: 11,
-    color: THEME.muted,
-    marginTop: 2,
-  },
-  badgeStyle: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-  },
-  badgeSuccess: { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)" },
-  badgeDanger: { backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "rgba(239, 68, 68, 0.2)" },
-  badgeWarning: { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)" },
-  badgeMuted: { backgroundColor: "rgba(161, 161, 170, 0.08)", borderColor: "rgba(161, 161, 170, 0.2)" },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  reportItemMiddlePreviewBlock: {
-    marginVertical: 10,
-  },
-  reportItemPreviewContentText: {
-    fontSize: 12,
-    color: THEME.text,
-    lineHeight: 16,
-  },
-  reportItemFooterSummaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    paddingTop: 8,
-  },
-  reportFooterHoursLabel: {
-    fontSize: 11,
-    color: THEME.muted,
-  },
-  actionIconButtonLink: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionViewLabelText: {
-    fontSize: 11,
-    color: THEME.primary,
-    fontWeight: "600",
-  },
-  modalBackdropOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "flex-end",
-  },
-  bottomSheetWrapper: {
-    backgroundColor: THEME.card,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  bottomSheetHeaderTitleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-    paddingBottom: 12,
-  },
-  bottomSheetHeaderTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: THEME.text,
-    letterSpacing: -0.3,
-  },
-  pickerItemRowUnit: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.surface,
-  },
-  pickerItemLabelText: {
-    fontSize: 13,
-    color: THEME.text,
-    fontWeight: "500",
-  },
-  fullscreenDialogContainer: {
-    backgroundColor: THEME.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: "85%",
-    padding: 16,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  closeOverlayBtnCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: THEME.surface,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  dialogFormScrollContainer: {
-    flex: 1,
-  },
-  dialogMetadataGridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    backgroundColor: THEME.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    padding: 8,
-    marginBottom: 14,
-  },
-  metadataGridHalfItem: {
-    width: "50%",
-    padding: 6,
-  },
-  metadataItemLabel: {
-    fontSize: 10,
-    color: THEME.muted,
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  metadataItemValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: THEME.text,
-    marginTop: 2,
-  },
-  metricCardBlockContainer: {
-    marginBottom: 12,
-  },
-  metricBlockHeaderLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: THEME.muted,
-    marginBottom: 6,
-    paddingLeft: 2,
-  },
-  metricContentCardBodyBox: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  metricContentDetailsText: {
-    fontSize: 12,
-    color: THEME.text,
-    lineHeight: 18,
-  },
-  aiInsightBodyOverride: {
-    backgroundColor: "rgba(147, 51, 234, 0.05)",
-    borderColor: "rgba(147, 51, 234, 0.2)",
-  },
-  insightRawTextContent: {
-    fontSize: 12,
-    color: "#d8b4fe",
-    lineHeight: 18,
-  },
-  flaggedIncidentBodyOverride: {
-    backgroundColor: "rgba(245, 158, 11, 0.05)",
-    borderColor: "rgba(245, 158, 11, 0.2)",
-  },
-  horizontalTagWrapperList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  flaggedPillBadge: {
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.3)",
-  },
-  flaggedPillTextLabel: {
-    color: THEME.warning,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  successMetricsCardBox: {
-    backgroundColor: "rgba(16, 185, 129, 0.03)",
-    borderColor: THEME.border,
-  },
-  warningMetricsCardBox: {
-    backgroundColor: "rgba(239, 68, 68, 0.03)",
-    borderColor: THEME.border,
-  },
-  standardMetricsCardBox: {
-    backgroundColor: "rgba(59, 130, 246, 0.03)",
-    borderColor: THEME.border,
-  },
-  dialogFooterActionBar: {
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === "ios" ? 12 : 4,
-  },
-  footerActionSubmitBtn: {
-    backgroundColor: THEME.primary,
-    height: 44,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  footerActionSubmitBtnText: {
-    color: THEME.background,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-});

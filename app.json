@@ -8,6 +8,7 @@
     "scheme": "rork-app",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -18,6 +19,7 @@
       "bundleIdentifier": "app.rork.employee-mobile-app-50y6sgn"
     },
     "android": {
+      "largeHeap": true,
       "intentFilters": [
     {
       "action": "VIEW",

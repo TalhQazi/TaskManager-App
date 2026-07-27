@@ -13,31 +13,26 @@ import {
   Dimensions,
 } from 'react-native';
 import { apiFetch } from '@/lib/admin/apiClient';
-import Colors from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, wp, hp, fs } from '@/util/styles';
 
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 
-/* ── Constants ───────────────────────────────────────────────────── */
 const TYPE_OPTIONS     = ['All', 'Follow-up Call', 'Meeting', 'Reminder'];
 const PRIORITY_OPTIONS = ['All', 'Low', 'Medium', 'High', 'Urgent'];
 
-const TYPE_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string; icon: string }> = {
-  'Follow-up Call': { bg: '#f0f2ff', text: '#4338ca', border: '#c7d2fe', dot: '#6366f1', icon: '📞' },
-  'Meeting':        { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', dot: '#10b981', icon: '🤝' },
-  'Reminder':       { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe', dot: '#8b5cf6', icon: '🔔' },
-  'Other':          { bg: '#f9fafb', text: '#4b5563', border: '#e5e7eb', dot: '#9ca3af', icon: '📋' },
-};
-
-const PRIORITY_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string; bar: string }> = {
-  Low:    { bg: '#f8fafc', text: '#475569', border: '#e2e8f0', dot: '#94a3b8', bar: '#cbd5e1' },
-  Medium: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', dot: '#3b82f6', bar: '#60a5fa' },
-  High:   { bg: '#fffbeb', text: '#b45309', border: '#fde68a', dot: '#f59e0b', bar: '#fbbf24' },
-  Urgent: { bg: '#fef2f2', text: '#b91c1c', border: '#fee2e2', dot: '#ef4444', bar: '#ef4444' },
-};
-
-/* ── Helpers ─────────────────────────────────────────────────────── */
-const getTypeConfig     = (t: string) => TYPE_CONFIG[t] || TYPE_CONFIG['Other'];
-const getPriorityConfig = (p: string) => PRIORITY_CONFIG[p] || PRIORITY_CONFIG['Low'];
+interface Task {
+  id?: string;
+  _id: string;
+  title: string;
+  type: string;
+  priority: string;
+  assignedTo?: string;
+  linkedEntity?: string;
+  dueDate: string;
+  status: string;
+  notes?: string;
+}
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '—';
@@ -49,52 +44,586 @@ const isOverdue = (dateStr: string, status: string) => {
   return new Date(dateStr) < new Date(new Date().toDateString());
 };
 
-/* ── Shared UI Subcomponents ─────────────────────────────────────── */
-function TypeBadge({ type }: { type: string }) {
-  const cfg = getTypeConfig(type);
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isDark ? '#090a0f' : '#f8fafc'),
+    cardBg:        uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#0f1117' : '#ffffff'),
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isDark ? '#ffffff' : '#0f172a'),
+    textSecondary: isDark ? '#a3a3a3' : '#64748b',
+    textMuted:     isDark ? '#525252' : '#94a3b8',
+    textDark:      isDark ? '#404040' : '#475569',
+    border:        isDark ? '#171717' : '#e2e8f0',
+    borderLight:   isDark ? '#262626' : '#f1f5f9',
+    inputBg:       isDark ? 'rgba(0, 0, 0, 0.2)' : '#f8fafc',
+    primary:       uiTheme.customColors?.primary || (isDark ? '#6366f1' : '#4f46e5'),
+    overlayBg:     'rgba(15, 23, 42, 0.55)',
+    readOnlyBg:    isDark ? 'rgba(245, 158, 11, 0.1)' : '#fffbeb',
+    readOnlyBorder:isDark ? 'rgba(245, 158, 11, 0.25)' : '#fde68a',
+    readOnlyText:  '#b45309',
+    typeColors: {
+      'Follow-up Call': { bg: isDark ? 'rgba(99, 102, 241, 0.15)' : '#f0f2ff', text: isDark ? '#818cf8' : '#4338ca', border: isDark ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe', dot: '#6366f1', icon: '📞' },
+      'Meeting':        { bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5', text: isDark ? '#34d399' : '#047857', border: isDark ? 'rgba(16, 185, 129, 0.3)' : '#a7f3d0', dot: '#10b981', icon: '🤝' },
+      'Reminder':       { bg: isDark ? 'rgba(139, 92, 246, 0.15)' : '#f5f3ff', text: isDark ? '#a78bfa' : '#6d28d9', border: isDark ? 'rgba(139, 92, 246, 0.3)' : '#ddd6fe', dot: '#8b5cf6', icon: '🔔' },
+      'Other':          { bg: isDark ? '#27272a' : '#f9fafb', text: isDark ? '#9ca3af' : '#4b5563', border: isDark ? '#3f3f46' : '#e5e7eb', dot: '#9ca3af', icon: '📋' },
+    },
+    priorityColors: {
+      Low:    { bg: isDark ? 'rgba(148, 163, 184, 0.1)' : '#f8fafc', text: isDark ? '#94a3b8' : '#475569', border: isDark ? 'rgba(148, 163, 184, 0.2)' : '#e2e8f0', dot: '#94a3b8', bar: '#cbd5e1' },
+      Medium: { bg: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', text: isDark ? '#60a5fa' : '#1d4ed8', border: isDark ? 'rgba(59, 130, 246, 0.25)' : '#bfdbfe', dot: '#3b82f6', bar: '#60a5fa' },
+      High:   { bg: isDark ? 'rgba(245, 158, 11, 0.1)' : '#fffbeb', text: isDark ? '#fbbf24' : '#b45309', border: isDark ? 'rgba(245, 158, 11, 0.25)' : '#fde68a', dot: '#f59e0b', bar: '#fbbf24' },
+      Urgent: { bg: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2', text: isDark ? '#f87171' : '#b91c1c', border: isDark ? 'rgba(239, 68, 68, 0.25)' : '#fee2e2', dot: '#ef4444', bar: '#ef4444' },
+    }
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    appSafeAreaViewContainerBackground: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerPanelSectionRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: wp(4),
+      paddingTop: Platform.OS === 'android' ? hp(5.5) : hp(2),
+      paddingBottom: hp(2),
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    headerLeftMetaStack: {
+      flex: 1,
+      gap: hp(0.25),
+    },
+    headerTitleAndAlertIndicatorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(2),
+    },
+    headerPrimaryHeadlineTextText: {
+      fontSize: fs(5.5),
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    headerOverdueCounterBadgePill: {
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.25)',
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(10),
+    },
+    headerOverdueCounterBadgePillTextString: {
+      color: '#ef4444',
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    headerSecondarySubheadlineTextString: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+    },
+    readOnlyFloatingStatusBadgeFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.readOnlyBg,
+      borderWidth: 1,
+      borderColor: colors.readOnlyBorder,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.6),
+      borderRadius: wp(10),
+      gap: wp(1.5),
+    },
+    readOnlyStatusIndicatorPulseDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+      backgroundColor: '#f59e0b',
+    },
+    readOnlyStatusIndicatorLabelTextString: {
+      color: colors.readOnlyText,
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    filterWidgetCardWrapperBox: {
+      backgroundColor: colors.cardBg,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      padding: wp(4),
+      gap: hp(1.5),
+    },
+    searchBarBoxInputFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      paddingHorizontal: wp(3),
+      height: hp(5.5),
+    },
+    searchBarMagnifierIconGlyph: {
+      fontSize: fs(3.5),
+      marginRight: wp(2),
+    },
+    searchBarInputElementTextNode: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fs(3.5),
+    },
+    searchFieldClearButtonHitbox: {
+      padding: wp(1),
+    },
+    searchFieldClearButtonHitboxTextChar: {
+      color: colors.textSecondary,
+      fontSize: fs(4.5),
+      fontWeight: 'bold',
+    },
+    scrollCategoryAxisTrackContainerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    scrollCategoryAxisTrackInlineLabelText: {
+      fontSize: fs(2.8),
+      fontWeight: '800',
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      width: wp(15),
+    },
+    horizontalScrollTrackContainerGapPadding: {
+      gap: wp(1.5),
+      alignItems: 'center',
+      paddingRight: wp(4),
+    },
+    filterSelectionButtonChipFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(10),
+      gap: wp(1),
+    },
+    chipEmbeddedIconEmoji: {
+      fontSize: fs(2.8),
+    },
+    chipEmbeddedColorIndicatorDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    filterSelectionButtonChipLabelTextString: {
+      fontSize: fs(3),
+    },
+    centralizedStateFeedbackLayoutContainerBox: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: hp(10),
+      paddingHorizontal: wp(8),
+      gap: hp(1.5),
+    },
+    centralizedStateFeedbackLayoutContainerDescriptionString: {
+      color: colors.textSecondary,
+      fontSize: fs(3.5),
+      fontWeight: '500',
+    },
+    errorTextPromptLabel: {
+      color: '#ef4444',
+      textAlign: 'center',
+      fontSize: fs(3.5),
+      fontWeight: '500',
+    },
+    errorActionRetryTriggerButtonFrame: {
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1),
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+    },
+    errorActionRetryTriggerButtonTextLabel: {
+      color: colors.primary,
+      fontSize: fs(3.2),
+      fontWeight: '600',
+    },
+    emptyGraphicPlaceholderIconString: {
+      fontSize: fs(8),
+    },
+    emptyGraphicPlaceholderHeadlineString: {
+      fontSize: fs(3.5),
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    verticalCardsLayoutListScrollTrack: {
+      padding: wp(4),
+      gap: hp(1.5),
+    },
+    taskItemCardContainerBox: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderRadius: wp(4),
+      padding: wp(4),
+      gap: hp(1.5),
+    },
+    cardHeaderFlexRowContainerSplit: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: wp(3),
+    },
+    cardHeaderFlexLeftGroupWithIcon: {
+      flex: 1,
+      flexDirection: 'row',
+      gap: wp(2.5),
+    },
+    cardHeaderEmbeddedStatusBoxIconFrame: {
+      width: wp(9),
+      height: wp(9),
+      borderRadius: wp(2.5),
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cardHeaderEmbeddedStatusBoxIconEmoji: {
+      fontSize: fs(4),
+    },
+    cardHeaderHeadlineIdentityTextStack: {
+      flex: 1,
+      gap: hp(0.25),
+    },
+    cardHeaderTaskHeadingHeadlineText: {
+      fontSize: fs(3.5),
+      fontWeight: '700',
+      lineHeight: fs(4.5),
+    },
+    textColorHeadlineOverdueRed: {
+      color: '#ef4444',
+    },
+    textColorHeadlineNormalBlack: {
+      color: colors.text,
+    },
+    cardHeaderTaskAssigneeMetaStringLabel: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    cardMetadataWrapContainerInlineFlowLayoutRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: wp(1.5),
+    },
+    maxWLinkedEntityBadgeWidthLimiter: {
+      maxWidth: wp(38),
+    },
+    cardProgressBarTrackBackgroundFrame: {
+      height: hp(0.5),
+      backgroundColor: colors.borderLight,
+      borderRadius: wp(10),
+      overflow: 'hidden',
+      width: '100%',
+    },
+    cardProgressBarTrackFillBarNode: {
+      height: '100%',
+      borderRadius: wp(10),
+    },
+    cardActionSimulatedFooterPanelBar: {
+      borderTopWidth: 1,
+      borderColor: colors.borderLight,
+      paddingTop: hp(1.2),
+      marginTop: hp(0.25),
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
+    cardActionSimulatedFooterPanelBarLeftIconTextRowGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1),
+    },
+    cardActionSimulatedFooterPanelBarInteractiveLabelString: {
+      fontSize: fs(3),
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    cardActionSimulatedFooterPanelBarInteractiveArrowSymbol: {
+      fontSize: fs(3),
+      color: colors.primary,
+      fontWeight: 'bold',
+    },
+    aggregatedListSummaryCalculationMetaCardLabelStringText: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      textAlign: 'center',
+      fontWeight: '500',
+      marginTop: hp(0.5),
+      marginBottom: hp(3),
+    },
+    badgeFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(10),
+      gap: wp(1),
+    },
+    badgeIconText: {
+      fontSize: fs(2.8),
+    },
+    badgeIndicatorDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    badgeLabelText: {
+      fontSize: fs(2.8),
+      fontWeight: '600',
+      color: colors.textDark,
+    },
+    dueDateWrapperInlineRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1.5),
+    },
+    dueDateLabelStringText: {
+      fontSize: fs(3.5),
+    },
+    textColorOverdueRed: {
+      color: '#dc2626',
+      fontWeight: '600',
+    },
+    textColorNormalGray: {
+      color: colors.textDark,
+    },
+    overdueAlertInlinePill: {
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.15),
+      borderRadius: wp(1),
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.2)',
+    },
+    overdueAlertInlinePillText: {
+      color: '#ef4444',
+      fontSize: fs(2.2),
+      fontWeight: '800',
+      textTransform: 'uppercase',
+    },
+    modalOverlayDimBackdropContainerMask: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: 'flex-end',
+    },
+    modalProfileBottomSheetCardBodyStructure: {
+      backgroundColor: colors.cardBg,
+      borderTopLeftRadius: wp(6),
+      borderTopRightRadius: wp(6),
+      height: hp(75),
+      overflow: 'hidden',
+    },
+    bottomSheetTopStructuralDragHandleBarStrip: {
+      width: wp(9),
+      height: hp(0.5),
+      backgroundColor: colors.border,
+      borderRadius: wp(0.5),
+      alignSelf: 'center',
+      marginTop: hp(1.5),
+    },
+    sheetLayoutIdentityHeaderContainerSectionBlock: {
+      padding: wp(5),
+      borderBottomWidth: 1,
+      marginTop: hp(1.5),
+    },
+    sheetLayoutIdentityHeaderFlexAlignmentRowWrapper: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      position: 'relative',
+    },
+    sheetLayoutHeaderIdentityIconSquareBoxFrame: {
+      width: wp(11),
+      height: wp(11),
+      borderRadius: wp(3),
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sheetLayoutHeaderIdentityIconSquareBoxFrameEmojiText: {
+      fontSize: fs(5),
+    },
+    sheetLayoutIdentityHeaderPropertiesStackGroup: {
+      flex: 1,
+      marginLeft: wp(3),
+      marginRight: wp(9),
+      gap: hp(0.25),
+    },
+    sheetLayoutIdentityHeaderTaskNameHeadingText: {
+      fontSize: fs(4),
+      fontWeight: '800',
+      color: colors.text,
+      lineHeight: fs(5),
+    },
+    sheetLayoutIdentityHeaderContextLabelSubtextString: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+    },
+    sheetLayoutIdentityHeaderCloseActionCircularButtonFrame: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      width: wp(7),
+      height: wp(7),
+      borderRadius: wp(10),
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText: {
+      fontSize: fs(4),
+      color: colors.textSecondary,
+      fontWeight: 'bold',
+      lineHeight: fs(4),
+    },
+    sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.25)',
+      borderRadius: wp(3),
+      padding: wp(2.5),
+      marginTop: hp(1.8),
+      gap: wp(2),
+    },
+    sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRowLabelStringText: {
+      fontSize: fs(3),
+      fontWeight: '600',
+      color: '#ef4444',
+    },
+    sheetFieldsScrollTrackContainer: {
+      flex: 1,
+      padding: wp(5),
+    },
+    sheetFieldsVerticalStackSpacingLayout: {
+      paddingBottom: hp(4),
+    },
+    sheetFieldsStructuralTwoColumnFlexWrapGridSystem: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: hp(2.2),
+    },
+    sheetFieldsTwoColumnFlexCellBlock: {
+      width: '50%',
+      paddingRight: wp(2),
+      gap: hp(0.5),
+    },
+    sheetFieldsFullWidthColumnFlexCellBlock: {
+      width: '100%',
+      gap: hp(0.5),
+    },
+    sheetFieldDefinitionUppercaseLabelHeadingText: {
+      fontSize: fs(2.5),
+      fontWeight: '800',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+    },
+    sheetFieldsCellContentBadgePositionerAlignWrapper: {
+      alignSelf: 'flex-start',
+      marginTop: hp(0.25),
+    },
+    sheetFieldsCellContentPrimaryNormalDataStringText: {
+      fontSize: fs(3.5),
+      fontWeight: '600',
+      color: colors.textDark,
+    },
+    sheetFieldsCellContentNotesParagraphDataStringText: {
+      fontSize: fs(3.2),
+      color: colors.textDark,
+      lineHeight: fs(4.5),
+      fontWeight: '500',
+    },
+    sheetLayoutFooterActionControlPanelRowFrameBox: {
+      padding: wp(4),
+      backgroundColor: colors.inputBg,
+      borderTopWidth: 1,
+      borderColor: colors.borderLight,
+      paddingBottom: Platform.OS === 'ios' ? hp(4.2) : hp(2),
+    },
+    sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      paddingVertical: hp(1.5),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel: {
+      color: colors.textDark,
+      fontSize: fs(3.5),
+      fontWeight: '600',
+    },
+  });
+}
+
+function TypeBadge({ type, colors, styles }: { type: string; colors: any; styles: any }) {
+  const cfg = colors.typeColors[type as keyof typeof colors.typeColors] || colors.typeColors['Other'];
   return (
-    <View style={[styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-      <Text style={styles.badgeIconText}>{cfg.icon}</Text>
-      <Text style={[styles.badgeLabelText, { color: cfg.text }]}>{type || 'Other'}</Text>
+    <View style={s([styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }])}>
+      <Text style={s(styles.badgeIconText)}>{cfg.icon}</Text>
+      <Text style={s([styles.badgeLabelText, { color: cfg.text }])}>{type || 'Other'}</Text>
     </View>
   );
 }
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const cfg = getPriorityConfig(priority);
+function PriorityBadge({ priority, colors, styles }: { priority: string; colors: any; styles: any }) {
+  const cfg = colors.priorityColors[priority as keyof typeof colors.priorityColors] || colors.priorityColors['Low'];
   return (
-    <View style={[styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-      <View style={[styles.badgeIndicatorDot, { backgroundColor: cfg.dot }]} />
-      <Text style={[styles.badgeLabelText, { color: cfg.text }]}>{priority || '—'}</Text>
+    <View style={s([styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }])}>
+      <View style={s([styles.badgeIndicatorDot, { backgroundColor: cfg.dot }])} />
+      <Text style={s([styles.badgeLabelText, { color: cfg.text }])}>{priority || '—'}</Text>
     </View>
   );
 }
 
-function DueDate({ dateStr, status }: { dateStr: string; status: string }) {
+function DueDate({ dateStr, status, styles }: { dateStr: string; status: string; styles: any }) {
   const overdue = isOverdue(dateStr, status);
   return (
-    <View style={styles.dueDateWrapperInlineRow}>
-      <Text style={[styles.dueDateLabelStringText, overdue ? styles.textColorOverdueRed : styles.textColorNormalGray]}>
+    <View style={s(styles.dueDateWrapperInlineRow)}>
+      <Text style={s([styles.dueDateLabelStringText, overdue ? styles.textColorOverdueRed : styles.textColorNormalGray])}>
         {overdue ? '⚠ ' : ''}{formatDate(dateStr)}
       </Text>
       {overdue && (
-        <View style={styles.overdueAlertInlinePill}>
-          <Text style={styles.overdueAlertInlinePillText}>Overdue</Text>
+        <View style={s(styles.overdueAlertInlinePill)}>
+          <Text style={s(styles.overdueAlertInlinePillText)}>Overdue</Text>
         </View>
       )}
     </View>
   );
 }
 
-/* ── Main Component Export ───────────────────────────────────────── */
 export default function CRMTasks() {
-  const [tasks, setTasks]                   = useState<any[]>([]);
-  const [searchQuery, setSearchQuery]       = useState('');
-  const [typeFilter, setTypeFilter]         = useState('All');
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
-  const [selectedTask, setSelectedTask]     = useState<any>(null);
-  const [loading, setLoading]               = useState(true);
-  const [error, setError]                   = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchTasks = async () => {
     try {
@@ -143,63 +672,59 @@ export default function CRMTasks() {
   }, [tasks]);
 
   return (
-    <SafeAreaView style={styles.appSafeAreaViewContainerBackground}>
+    <SafeAreaView style={s(styles.appSafeAreaViewContainerBackground)}>
       
-      {/* Page Header Area */}
-      <View style={styles.headerPanelSectionRow}>
-        <View style={styles.headerLeftMetaStack}>
-          <View style={styles.headerTitleAndAlertIndicatorRow}>
-            <Text style={styles.headerPrimaryHeadlineTextText}>Tasks</Text>
+      <View style={s(styles.headerPanelSectionRow)}>
+        <View style={s(styles.headerLeftMetaStack)}>
+          <View style={s(styles.headerTitleAndAlertIndicatorRow)}>
+            <Text style={s(styles.headerPrimaryHeadlineTextText)}>Tasks</Text>
             {overdueCount > 0 ? (
-              <View style={styles.headerOverdueCounterBadgePill}>
-                <Text style={styles.headerOverdueCounterBadgePillTextString}>⚠ {overdueCount} overdue</Text>
+              <View style={s(styles.headerOverdueCounterBadgePill)}>
+                <Text style={s(styles.headerOverdueCounterBadgePillTextString)}>⚠ {overdueCount} overdue</Text>
               </View>
             ) : null}
           </View>
-          <Text style={styles.headerSecondarySubheadlineTextString}>Browse CRM task assignments and work.</Text>
+          <Text style={s(styles.headerSecondarySubheadlineTextString)}>Browse CRM task assignments and work.</Text>
         </View>
-        <View style={styles.readOnlyFloatingStatusBadgeFrame}>
-          <View style={styles.readOnlyStatusIndicatorPulseDot} />
-          <Text style={styles.readOnlyStatusIndicatorLabelTextString}>Read-only</Text>
+        <View style={s(styles.readOnlyFloatingStatusBadgeFrame)}>
+          <View style={s(styles.readOnlyStatusIndicatorPulseDot)} />
+          <Text style={s(styles.readOnlyStatusIndicatorLabelTextString)}>Read-only</Text>
         </View>
       </View>
 
-      {/* Control Widgets Panel Wrapper (Search Input + Horizontal Chips Scroller) */}
-      <View style={styles.filterWidgetCardWrapperBox}>
-        {/* Search Field Group */}
-        <View style={styles.searchBarBoxInputFrame}>
-          <Text style={styles.searchBarMagnifierIconGlyph}>🔍</Text>
+      <View style={s(styles.filterWidgetCardWrapperBox)}>
+        <View style={s(styles.searchBarBoxInputFrame)}>
+          <Text style={s(styles.searchBarMagnifierIconGlyph)}>🔍</Text>
           <TextInput
             placeholder="Search by title, assignee, or linked entity…"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            style={styles.searchBarInputElementTextNode}
+            style={s(styles.searchBarInputElementTextNode)}
             autoCapitalize="none"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchFieldClearButtonHitbox}>
-              <Text style={styles.searchFieldClearButtonHitboxTextChar}>×</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={s(styles.searchFieldClearButtonHitbox)}>
+              <Text style={s(styles.searchFieldClearButtonHitboxTextChar)}>×</Text>
             </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* Type Category Selection Track */}
-        <View style={styles.scrollCategoryAxisTrackContainerRow}>
-          <Text style={styles.scrollCategoryAxisTrackInlineLabelText}>Type</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScrollTrackContainerGapPadding}>
+        <View style={s(styles.scrollCategoryAxisTrackContainerRow)}>
+          <Text style={s(styles.scrollCategoryAxisTrackInlineLabelText)}>Type</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s(styles.horizontalScrollTrackContainerGapPadding)}>
             {TYPE_OPTIONS.map((type) => {
               const active = typeFilter === type;
-              const cfg = getTypeConfig(type);
+              const cfg = colors.typeColors[type as keyof typeof colors.typeColors] || colors.typeColors['Other'];
               
-              let chipBg = '#ffffff';
-              let chipBorderColor = '#e5e7eb';
-              let chipTextColor = '#6b7280';
+              let chipBg = colors.cardBg;
+              let chipBorderColor = colors.border;
+              let chipTextColor = colors.textSecondary;
 
               if (active) {
                 if (type === 'All') {
-                  chipBg = '#4f46e5';
-                  chipBorderColor = '#4f46e5';
+                  chipBg = colors.primary;
+                  chipBorderColor = colors.primary;
                   chipTextColor = '#ffffff';
                 } else {
                   chipBg = cfg.bg;
@@ -213,10 +738,10 @@ export default function CRMTasks() {
                   key={type}
                   activeOpacity={0.7}
                   onPress={() => setTypeFilter(type)}
-                  style={[styles.filterSelectionButtonChipFrame, { backgroundColor: chipBg, borderColor: chipBorderColor }]}
+                  style={s([styles.filterSelectionButtonChipFrame, { backgroundColor: chipBg, borderColor: chipBorderColor }])}
                 >
-                  {type !== 'All' && <Text style={styles.chipEmbeddedIconEmoji}>{cfg.icon}</Text>}
-                  <Text style={[styles.filterSelectionButtonChipLabelTextString, { color: chipTextColor, fontWeight: active ? '700' : '600' }]}>
+                  {type !== 'All' && <Text style={s(styles.chipEmbeddedIconEmoji)}>{cfg.icon}</Text>}
+                  <Text style={s([styles.filterSelectionButtonChipLabelTextString, { color: chipTextColor, fontWeight: active ? '700' : '600' }])}>
                     {type} {typeCounts[type] !== undefined ? `(${typeCounts[type] || 0})` : ''}
                   </Text>
                 </TouchableOpacity>
@@ -225,22 +750,21 @@ export default function CRMTasks() {
           </ScrollView>
         </View>
 
-        {/* Priority Level Selection Track */}
-        <View style={styles.scrollCategoryAxisTrackContainerRow}>
-          <Text style={styles.scrollCategoryAxisTrackInlineLabelText}>Priority</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScrollTrackContainerGapPadding}>
+        <View style={s(styles.scrollCategoryAxisTrackContainerRow)}>
+          <Text style={s(styles.scrollCategoryAxisTrackInlineLabelText)}>Priority</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s(styles.horizontalScrollTrackContainerGapPadding)}>
             {PRIORITY_OPTIONS.map((p) => {
               const active = priorityFilter === p;
-              const cfg = getPriorityConfig(p);
+              const cfg = colors.priorityColors[p as keyof typeof colors.priorityColors] || colors.priorityColors['Low'];
 
-              let chipBg = '#ffffff';
-              let chipBorderColor = '#e5e7eb';
-              let chipTextColor = '#6b7280';
+              let chipBg = colors.cardBg;
+              let chipBorderColor = colors.border;
+              let chipTextColor = colors.textSecondary;
 
               if (active) {
                 if (p === 'All') {
-                  chipBg = '#4f46e5';
-                  chipBorderColor = '#4f46e5';
+                  chipBg = colors.primary;
+                  chipBorderColor = colors.primary;
                   chipTextColor = '#ffffff';
                 } else {
                   chipBg = cfg.bg;
@@ -254,10 +778,10 @@ export default function CRMTasks() {
                   key={p}
                   activeOpacity={0.7}
                   onPress={() => setPriorityFilter(p)}
-                  style={[styles.filterSelectionButtonChipFrame, { backgroundColor: chipBg, borderColor: chipBorderColor }]}
+                  style={s([styles.filterSelectionButtonChipFrame, { backgroundColor: chipBg, borderColor: chipBorderColor }])}
                 >
-                  {p !== 'All' && active && <View style={[styles.chipEmbeddedColorIndicatorDot, { backgroundColor: cfg.dot }]} />}
-                  <Text style={[styles.filterSelectionButtonChipLabelTextString, { color: chipTextColor, fontWeight: active ? '700' : '600' }]}>
+                  {p !== 'All' && active && <View style={s([styles.chipEmbeddedColorIndicatorDot, { backgroundColor: cfg.dot }])} />}
+                  <Text style={s([styles.filterSelectionButtonChipLabelTextString, { color: chipTextColor, fontWeight: active ? '700' : '600' }])}>
                     {p} {priorityCounts[p] !== undefined ? `(${priorityCounts[p] || 0})` : ''}
                   </Text>
                 </TouchableOpacity>
@@ -267,36 +791,35 @@ export default function CRMTasks() {
         </View>
       </View>
 
-      {/* Dynamic Activity Layers Rendering Context */}
       {loading && (
-        <View style={styles.centralizedStateFeedbackLayoutContainerBox}>
-          <ActivityIndicator size="large" color="#4f46e5" />
-          <Text style={styles.centralizedStateFeedbackLayoutContainerDescriptionString}>Loading tasks…</Text>
+        <View style={s(styles.centralizedStateFeedbackLayoutContainerBox)}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={s(styles.centralizedStateFeedbackLayoutContainerDescriptionString)}>Loading tasks…</Text>
         </View>
       )}
 
       {!loading && error && (
-        <View style={styles.centralizedStateFeedbackLayoutContainerBox}>
-          <Text style={styles.errorTextPromptLabel}>{error}</Text>
-          <TouchableOpacity onPress={fetchTasks} style={styles.errorActionRetryTriggerButtonFrame}>
-            <Text style={styles.errorActionRetryTriggerButtonTextLabel}>Try again</Text>
+        <View style={s(styles.centralizedStateFeedbackLayoutContainerBox)}>
+          <Text style={s(styles.errorTextPromptLabel)}>{error}</Text>
+          <TouchableOpacity onPress={fetchTasks} style={s(styles.errorActionRetryTriggerButtonFrame)}>
+            <Text style={s(styles.errorActionRetryTriggerButtonTextLabel)}>Try again</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {!loading && !error && filteredTasks.length === 0 && (
-        <View style={styles.centralizedStateFeedbackLayoutContainerBox}>
-          <Text style={styles.emptyGraphicPlaceholderIconString}>📋</Text>
-          <Text style={styles.emptyGraphicPlaceholderHeadlineString}>No tasks found.</Text>
+        <View style={s(styles.centralizedStateFeedbackLayoutContainerBox)}>
+          <Text style={s(styles.emptyGraphicPlaceholderIconString)}>📋</Text>
+          <Text style={s(styles.emptyGraphicPlaceholderHeadlineString)}>No tasks found.</Text>
         </View>
       )}
 
-      {/* Main Core Feed List Container Scroll Axis */}
       {!loading && !error && filteredTasks.length > 0 && (
-        <ScrollView contentContainerStyle={styles.verticalCardsLayoutListScrollTrack} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={s(styles.verticalCardsLayoutListScrollTrack)} showsVerticalScrollIndicator={false}>
           {filteredTasks.map((task) => {
             const overdue = isOverdue(task.dueDate, task.status);
-            const priCfg  = getPriorityConfig(task.priority);
+            const priCfg  = colors.priorityColors[task.priority as keyof typeof colors.priorityColors] || colors.priorityColors['Low'];
+            const typeCfg = colors.typeColors[task.type as keyof typeof colors.typeColors] || colors.typeColors['Other'];
 
             let priorityPctWidth: '25%' | '50%' | '75%' | '100%' = '25%';
             if (task.priority === 'Urgent') priorityPctWidth = '100%';
@@ -308,142 +831,134 @@ export default function CRMTasks() {
                 key={task.id || task._id}
                 activeOpacity={0.85}
                 onPress={() => setSelectedTask(task)}
-                style={[styles.taskItemCardContainerBox, { borderColor: overdue ? '#fca5a5' : '#e5e7eb' }]}
+                style={s([styles.taskItemCardContainerBox, { borderColor: overdue ? '#ef4444' : colors.border }])}
               >
-                {/* Header Information Identification Section Segment Block */}
-                <View style={styles.cardHeaderFlexRowContainerSplit}>
-                  <View style={styles.cardHeaderFlexLeftGroupWithIcon}>
-                    <View style={styles.cardHeaderEmbeddedStatusBoxIconFrame}>
-                      <Text style={styles.cardHeaderEmbeddedStatusBoxIconEmoji}>{getTypeConfig(task.type).icon}</Text>
+                <View style={s(styles.cardHeaderFlexRowContainerSplit)}>
+                  <View style={s(styles.cardHeaderFlexLeftGroupWithIcon)}>
+                    <View style={s(styles.cardHeaderEmbeddedStatusBoxIconFrame)}>
+                      <Text style={s(styles.cardHeaderEmbeddedStatusBoxIconEmoji)}>{typeCfg.icon}</Text>
                     </View>
-                    <View style={styles.cardHeaderHeadlineIdentityTextStack}>
-                      <Text style={[styles.cardHeaderTaskHeadingHeadlineText, overdue ? styles.textColorHeadlineOverdueRed : styles.textColorHeadlineNormalBlack]} numberOfLines={2}>
+                    <View style={s(styles.cardHeaderHeadlineIdentityTextStack)}>
+                      <Text style={s([styles.cardHeaderTaskHeadingHeadlineText, overdue ? styles.textColorHeadlineOverdueRed : styles.textColorHeadlineNormalBlack])} numberOfLines={2}>
                         {task.title}
                       </Text>
                       {task.assignedTo ? (
-                        <Text style={styles.cardHeaderTaskAssigneeMetaStringLabel} numberOfLines={1}>
+                        <Text style={s(styles.cardHeaderTaskAssigneeMetaStringLabel)} numberOfLines={1}>
                           👤 {task.assignedTo}
                         </Text>
                       ) : null}
                     </View>
                   </View>
-                  <PriorityBadge priority={task.priority} />
+                  <PriorityBadge priority={task.priority} colors={colors} styles={styles} />
                 </View>
 
-                {/* Sub-Property Feature Information Tags Alignment Layout Frame */}
-                <View style={styles.cardMetadataWrapContainerInlineFlowLayoutRow}>
-                  <TypeBadge type={task.type} />
-                  <View style={[styles.badgeFrame, { backgroundColor: overdue ? '#fef2f2' : '#f9fafb', borderColor: overdue ? '#fca5a5' : '#e5e7eb' }]}>
-                    <Text style={[styles.badgeLabelText, overdue ? styles.textColorOverdueRed : styles.textColorNormalGray]}>
+                <View style={s(styles.cardMetadataWrapContainerInlineFlowLayoutRow)}>
+                  <TypeBadge type={task.type} colors={colors} styles={styles} />
+                  <View style={s([styles.badgeFrame, { backgroundColor: overdue ? 'rgba(239, 68, 68, 0.1)' : colors.cardBg, borderColor: overdue ? '#ef4444' : colors.border }])}>
+                    <Text style={s([styles.badgeLabelText, overdue ? styles.textColorOverdueRed : styles.textColorNormalGray])}>
                       📅 {formatDate(task.dueDate)} {overdue ? '· Overdue' : ''}
                     </Text>
                   </View>
                   {task.linkedEntity ? (
-                    <View style={[styles.badgeFrame, styles.maxWLinkedEntityBadgeWidthLimiter]}>
-                      <Text style={styles.badgeLabelText} numberOfLines={1}>🔗 {task.linkedEntity}</Text>
+                    <View style={s([styles.badgeFrame, styles.maxWLinkedEntityBadgeWidthLimiter])}>
+                      <Text style={s(styles.badgeLabelText)} numberOfLines={1}>🔗 {task.linkedEntity}</Text>
                     </View>
                   ) : null}
                 </View>
 
-                {/* Simulated Linear Priority Distribution Bar Component Block */}
-                <View style={styles.cardProgressBarTrackBackgroundFrame}>
-                  <View style={[styles.cardProgressBarTrackFillBarNode, { backgroundColor: priCfg.bar, width: priorityPctWidth }]} />
+                <View style={s(styles.cardProgressBarTrackBackgroundFrame)}>
+                  <View style={s([styles.cardProgressBarTrackFillBarNode, { backgroundColor: priCfg.bar, width: priorityPctWidth }])} />
                 </View>
 
-                {/* Footer Simulated Actions Sheet Panel Row Component Trigger */}
-                <View style={styles.cardActionSimulatedFooterPanelBar}>
-                  <View style={styles.cardActionSimulatedFooterPanelBarLeftIconTextRowGroup}>
-                    <Text style={styles.cardActionSimulatedFooterPanelBarInteractiveLabelString}>View Details</Text>
-                    <Text style={styles.cardActionSimulatedFooterPanelBarInteractiveArrowSymbol}>→</Text>
+                <View style={s(styles.cardActionSimulatedFooterPanelBar)}>
+                  <View style={s(styles.cardActionSimulatedFooterPanelBarLeftIconTextRowGroup)}>
+                    <Text style={s(styles.cardActionSimulatedFooterPanelBarInteractiveLabelString)}>View Details</Text>
+                    <Text style={s(styles.cardActionSimulatedFooterPanelBarInteractiveArrowSymbol)}>→</Text>
                   </View>
-                </View> {/* <-- Corrected closing View tag here */}
+                </View>
               </TouchableOpacity>
             );
           })}
           
-          <Text style={styles.aggregatedListSummaryCalculationMetaCardLabelStringText}>
+          <Text style={s(styles.aggregatedListSummaryCalculationMetaCardLabelStringText)}>
             Showing {filteredTasks.length} of {tasks.length} tasks
           </Text>
         </ScrollView>
       )}
 
-      {/* ── Native Slide Overlay Specification Profile Bottom Sheet Modal ── */}
       <Modal visible={selectedTask !== null} transparent={true} animationType="slide" onRequestClose={() => setSelectedTask(null)}>
-        <TouchableOpacity style={styles.modalOverlayDimBackdropContainerMask} activeOpacity={1} onPress={() => setSelectedTask(null)}>
+        <TouchableOpacity style={s(styles.modalOverlayDimBackdropContainerMask)} activeOpacity={1} onPress={() => setSelectedTask(null)}>
           {selectedTask && (
-            <View style={styles.modalProfileBottomSheetCardBodyStructure} onStartShouldSetResponder={() => true}>
+            <View style={s(styles.modalProfileBottomSheetCardBodyStructure)} onStartShouldSetResponder={() => true}>
               
-              {/* Drag Handle Cosmetic Bar Design Accent Strip */}
-              <View style={styles.bottomSheetTopStructuralDragHandleBarStrip} />
+              <View style={s(styles.bottomSheetTopStructuralDragHandleBarStrip)} />
 
-              {/* Sheet Core Dynamic Title Panel Layout Segment Area */}
-              <View style={[styles.sheetLayoutIdentityHeaderContainerSectionBlock, { backgroundColor: getTypeConfig(selectedTask.type).bg, borderColor: getTypeConfig(selectedTask.type).border }]}>
-                <View style={styles.sheetLayoutIdentityHeaderFlexAlignmentRowWrapper}>
-                  <View style={styles.sheetLayoutHeaderIdentityIconSquareBoxFrame}>
-                    <Text style={styles.sheetLayoutHeaderIdentityIconSquareBoxFrameEmojiText}>{getTypeConfig(selectedTask.type).icon}</Text>
+              <View style={s([styles.sheetLayoutIdentityHeaderContainerSectionBlock, { backgroundColor: (colors.typeColors[selectedTask.type as keyof typeof colors.typeColors] || colors.typeColors['Other']).bg, borderColor: (colors.typeColors[selectedTask.type as keyof typeof colors.typeColors] || colors.typeColors['Other']).border }])}>
+                <View style={s(styles.sheetLayoutIdentityHeaderFlexAlignmentRowWrapper)}>
+                  <View style={s(styles.sheetLayoutHeaderIdentityIconSquareBoxFrame)}>
+                    <Text style={s(styles.sheetLayoutHeaderIdentityIconSquareBoxFrameEmojiText)}>{(colors.typeColors[selectedTask.type as keyof typeof colors.typeColors] || colors.typeColors['Other']).icon}</Text>
                   </View>
-                  <View style={styles.sheetLayoutIdentityHeaderPropertiesStackGroup}>
-                    <Text style={styles.sheetLayoutIdentityHeaderTaskNameHeadingText} numberOfLines={3}>
+                  <View style={s(styles.sheetLayoutIdentityHeaderPropertiesStackGroup)}>
+                    <Text style={s(styles.sheetLayoutIdentityHeaderTaskNameHeadingText)} numberOfLines={3}>
                       {selectedTask.title}
                     </Text>
-                    <Text style={styles.sheetLayoutIdentityHeaderContextLabelSubtextString}>Task information and assignment details.</Text>
+                    <Text style={s(styles.sheetLayoutIdentityHeaderContextLabelSubtextString)}>Task information and assignment details.</Text>
                   </View>
-                  <TouchableOpacity onPress={() => setSelectedTask(null)} style={styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrame}>
-                    <Text style={styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText}>×</Text>
+                  <TouchableOpacity onPress={() => setSelectedTask(null)} style={s(styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrame)}>
+                    <Text style={s(styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText)}>×</Text>
                   </TouchableOpacity>
                 </View>
 
                 {isOverdue(selectedTask.dueDate, selectedTask.status) ? (
-                  <View style={styles.sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRow}>
-                    <Text style={styles.sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRowLabelStringText}>⚠ This task is currently overdue</Text>
+                  <View style={s(styles.sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRow)}>
+                    <Text style={s(styles.sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRowLabelStringText)}>⚠ This task is currently overdue</Text>
                   </View>
                 ) : null}
               </View>
 
-              {/* Scrolling Detail Fields Definition Track Structure Grid */}
-              <ScrollView style={styles.sheetFieldsScrollTrackContainer} showsVerticalScrollIndicator={false}>
-                <View style={styles.sheetFieldsVerticalStackSpacingLayout}>
+              <ScrollView style={s(styles.sheetFieldsScrollTrackContainer)} showsVerticalScrollIndicator={false}>
+                <View style={s(styles.sheetFieldsVerticalStackSpacingLayout)}>
                   
-                  <View style={styles.sheetFieldsStructuralTwoColumnFlexWrapGridSystem}>
+                  <View style={s(styles.sheetFieldsStructuralTwoColumnFlexWrapGridSystem)}>
                     
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>TYPE</Text>
-                      <View style={styles.sheetFieldsCellContentBadgePositionerAlignWrapper}>
-                        <TypeBadge type={selectedTask.type} />
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>TYPE</Text>
+                      <View style={s(styles.sheetFieldsCellContentBadgePositionerAlignWrapper)}>
+                        <TypeBadge type={selectedTask.type} colors={colors} styles={styles} />
                       </View>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>PRIORITY</Text>
-                      <View style={styles.sheetFieldsCellContentBadgePositionerAlignWrapper}>
-                        <PriorityBadge priority={selectedTask.priority} />
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>PRIORITY</Text>
+                      <View style={s(styles.sheetFieldsCellContentBadgePositionerAlignWrapper)}>
+                        <PriorityBadge priority={selectedTask.priority} colors={colors} styles={styles} />
                       </View>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>ASSIGNED TO</Text>
-                      <Text style={styles.sheetFieldsCellContentPrimaryNormalDataStringText}>{selectedTask.assignedTo || 'Unassigned'}</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>ASSIGNED TO</Text>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryNormalDataStringText)}>{selectedTask.assignedTo || 'Unassigned'}</Text>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>STATUS</Text>
-                      <Text style={styles.sheetFieldsCellContentPrimaryNormalDataStringText}>{selectedTask.status || '—'}</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>STATUS</Text>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryNormalDataStringText)}>{selectedTask.status || '—'}</Text>
                     </View>
 
-                    <View style={styles.sheetFieldsFullWidthColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>DUE DATE</Text>
-                      <DueDate dateStr={selectedTask.dueDate} status={selectedTask.status} />
+                    <View style={s(styles.sheetFieldsFullWidthColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>DUE DATE</Text>
+                      <DueDate dateStr={selectedTask.dueDate} status={selectedTask.status} styles={styles} />
                     </View>
 
-                    <View style={styles.sheetFieldsFullWidthColumnFlexCellBlock}>
-                      <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>LINKED CONTACT / DEAL</Text>
-                      <Text style={styles.sheetFieldsCellContentPrimaryNormalDataStringText}>{selectedTask.linkedEntity || '—'}</Text>
+                    <View style={s(styles.sheetFieldsFullWidthColumnFlexCellBlock)}>
+                      <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>LINKED CONTACT / DEAL</Text>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryNormalDataStringText)}>{selectedTask.linkedEntity || '—'}</Text>
                     </View>
 
                     {selectedTask.notes ? (
-                      <View style={styles.sheetFieldsFullWidthColumnFlexCellBlock}>
-                        <Text style={styles.sheetFieldDefinitionUppercaseLabelHeadingText}>NOTES</Text>
-                        <Text style={styles.sheetFieldsCellContentNotesParagraphDataStringText}>{selectedTask.notes}</Text>
+                      <View style={s(styles.sheetFieldsFullWidthColumnFlexCellBlock)}>
+                        <Text style={s(styles.sheetFieldDefinitionUppercaseLabelHeadingText)}>NOTES</Text>
+                        <Text style={s(styles.sheetFieldsCellContentNotesParagraphDataStringText)}>{selectedTask.notes}</Text>
                       </View>
                     ) : null}
 
@@ -451,10 +966,9 @@ export default function CRMTasks() {
                 </View>
               </ScrollView>
 
-              {/* Base Controls Actions Panel Dismiss Area Frame Component */}
-              <View style={styles.sheetLayoutFooterActionControlPanelRowFrameBox}>
-                <TouchableOpacity onPress={() => setSelectedTask(null)} style={styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame}>
-                  <Text style={styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel}>Close</Text>
+              <View style={s(styles.sheetLayoutFooterActionControlPanelRowFrameBox)}>
+                <TouchableOpacity onPress={() => setSelectedTask(null)} style={s(styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame)}>
+                  <Text style={s(styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel)}>Close</Text>
                 </TouchableOpacity>
               </View>
 
@@ -466,512 +980,3 @@ export default function CRMTasks() {
     </SafeAreaView>
   );
 }
-
-/* ── Native Stylesheet Definition Declarations ──────────────────── */
-const styles = StyleSheet.create({
-  appSafeAreaViewContainerBackground: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  headerPanelSectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 40 : 16,
-    paddingBottom: 16,
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  headerLeftMetaStack: {
-    flex: 1,
-    gap: 2,
-  },
-  headerTitleAndAlertIndicatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerPrimaryHeadlineTextText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.surface,
-    letterSpacing: -0.5,
-  },
-  headerOverdueCounterBadgePill: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fee2e2',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 99,
-  },
-  headerOverdueCounterBadgePillTextString: {
-    color: '#b91c1c',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  headerSecondarySubheadlineTextString: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  readOnlyFloatingStatusBadgeFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fffbeb',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-    gap: 6,
-  },
-  readOnlyStatusIndicatorPulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#f59e0b',
-  },
-  readOnlyStatusIndicatorLabelTextString: {
-    color: '#b45309',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  filterWidgetCardWrapperBox: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    gap: 12,
-  },
-  searchBarBoxInputFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-  },
-  searchBarMagnifierIconGlyph: {
-    fontSize: 14,
-    marginRight: 8,
-  },
-  searchBarInputElementTextNode: {
-    flex: 1,
-    color: '#0f172a',
-    fontSize: 14,
-  },
-  searchFieldClearButtonHitbox: {
-    padding: 4,
-  },
-  searchFieldClearButtonHitboxTextChar: {
-    color: '#94a3b8',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  scrollCategoryAxisTrackContainerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scrollCategoryAxisTrackInlineLabelText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    width: 60,
-  },
-  horizontalScrollTrackContainerGapPadding: {
-    gap: 6,
-    alignItems: 'center',
-    paddingRight: 16,
-  },
-  filterSelectionButtonChipFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 99,
-    gap: 4,
-  },
-  chipEmbeddedIconEmoji: {
-    fontSize: 11,
-  },
-  chipEmbeddedColorIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  filterSelectionButtonChipLabelTextString: {
-    fontSize: 12,
-  },
-  centralizedStateFeedbackLayoutContainerBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 32,
-    gap: 12,
-  },
-  centralizedStateFeedbackLayoutContainerDescriptionString: {
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  errorTextPromptLabel: {
-    color: '#ef4444',
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  errorActionRetryTriggerButtonFrame: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-  },
-  errorActionRetryTriggerButtonTextLabel: {
-    color: '#4f46e5',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  emptyGraphicPlaceholderIconString: {
-    fontSize: 32,
-  },
-  emptyGraphicPlaceholderHeadlineString: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  verticalCardsLayoutListScrollTrack: {
-    padding: 16,
-    gap: 12,
-  },
-  taskItemCardContainerBox: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  cardHeaderFlexRowContainerSplit: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  cardHeaderFlexLeftGroupWithIcon: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  cardHeaderEmbeddedStatusBoxIconFrame: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardHeaderEmbeddedStatusBoxIconEmoji: {
-    fontSize: 16,
-  },
-  cardHeaderHeadlineIdentityTextStack: {
-    flex: 1,
-    gap: 2,
-  },
-  cardHeaderTaskHeadingHeadlineText: {
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  textColorHeadlineOverdueRed: {
-    color: '#991b1b',
-  },
-  textColorHeadlineNormalBlack: {
-    color: '#0f172a',
-  },
-  cardHeaderTaskAssigneeMetaStringLabel: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontWeight: '500',
-  },
-  cardMetadataWrapContainerInlineFlowLayoutRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  maxWLinkedEntityBadgeWidthLimiter: {
-    maxWidth: 150,
-  },
-  cardProgressBarTrackBackgroundFrame: {
-    height: 4,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 99,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  cardProgressBarTrackFillBarNode: {
-    height: '100%',
-    borderRadius: 99,
-  },
-  cardActionSimulatedFooterPanelBar: {
-    borderTopWidth: 1,
-    borderColor: '#f1f5f9',
-    paddingTop: 10,
-    marginTop: 2,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  cardActionSimulatedFooterPanelBarLeftIconTextRowGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  cardActionSimulatedFooterPanelBarInteractiveLabelString: {
-    fontSize: 12,
-    color: '#4f46e5',
-    fontWeight: '700',
-  },
-  cardActionSimulatedFooterPanelBarInteractiveArrowSymbol: {
-    fontSize: 12,
-    color: '#4f46e5',
-    fontWeight: 'bold',
-  },
-  aggregatedListSummaryCalculationMetaCardLabelStringText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    textAlign: 'center',
-    fontWeight: '500',
-    marginTop: 4,
-    marginBottom: 24,
-  },
-  badgeFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 99,
-    gap: 4,
-  },
-  badgeIconText: {
-    fontSize: 11,
-  },
-  badgeIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  badgeLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  dueDateWrapperInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dueDateLabelStringText: {
-    fontSize: 14,
-  },
-  textColorOverdueRed: {
-    color: '#dc2626',
-    fontWeight: '600',
-  },
-  textColorNormalGray: {
-    color: '#475569',
-  },
-  overdueAlertInlinePill: {
-    backgroundColor: '#fef2f2',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#fee2e2',
-  },
-  overdueAlertInlinePillText: {
-    color: '#ef4444',
-    fontSize: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  modalOverlayDimBackdropContainerMask: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalProfileBottomSheetCardBodyStructure: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: WINDOW_HEIGHT * 0.75,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 20,
-    overflow: 'hidden',
-  },
-  bottomSheetTopStructuralDragHandleBarStrip: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-  },
-  sheetLayoutIdentityHeaderContainerSectionBlock: {
-    padding: 20,
-    borderBottomWidth: 1,
-    marginTop: 12,
-  },
-  sheetLayoutIdentityHeaderFlexAlignmentRowWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    position: 'relative',
-  },
-  sheetLayoutHeaderIdentityIconSquareBoxFrame: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sheetLayoutHeaderIdentityIconSquareBoxFrameEmojiText: {
-    fontSize: 20,
-  },
-  sheetLayoutIdentityHeaderPropertiesStackGroup: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 36,
-    gap: 2,
-  },
-  sheetLayoutIdentityHeaderTaskNameHeadingText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    lineHeight: 20,
-  },
-  sheetLayoutIdentityHeaderContextLabelSubtextString: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  sheetLayoutIdentityHeaderCloseActionCircularButtonFrame: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 99,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText: {
-    fontSize: 16,
-    color: '#64748b',
-    fontWeight: 'bold',
-    lineHeight: 16,
-  },
-  sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fee2e2',
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 14,
-    gap: 8,
-  },
-  sheetLayoutHeaderOverdueWarningAlertBannerCardBlockRowLabelStringText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#b91c1c',
-  },
-  sheetFieldsScrollTrackContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  sheetFieldsVerticalStackSpacingLayout: {
-    paddingBottom: 32,
-  },
-  sheetFieldsStructuralTwoColumnFlexWrapGridSystem: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 18,
-  },
-  sheetFieldsTwoColumnFlexCellBlock: {
-    width: '50%',
-    paddingRight: 8,
-    gap: 4,
-  },
-  sheetFieldsFullWidthColumnFlexCellBlock: {
-    width: '100%',
-    gap: 4,
-  },
-  sheetFieldDefinitionUppercaseLabelHeadingText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94a3b8',
-    letterSpacing: 0.8,
-  },
-  sheetFieldsCellContentBadgePositionerAlignWrapper: {
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  sheetFieldsCellContentPrimaryNormalDataStringText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  sheetFieldsCellContentNotesParagraphDataStringText: {
-    fontSize: 13,
-    color: '#475569',
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-  sheetLayoutFooterActionControlPanelRowFrameBox: {
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderTopWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingBottom: Platform.OS === 'ios' ? 36 : 16,
-  },
-  sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

@@ -16,10 +16,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { apiFetch } from "@/lib/admin/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
-/* ── Interfaces & Normalization ──────────────────────────────────── */
 interface DoNotHireEntry {
   id: string;
   fullName: string;
@@ -46,7 +46,6 @@ function normalizeEntry(e: DoNotHireApi): DoNotHireEntry {
   };
 }
 
-/* ── Zod Validation Schema ───────────────────────────────────────── */
 const schema = z.object({
   fullName: z.string().min(1, "Full name is required"),
   phone: z.string().optional(),
@@ -61,7 +60,420 @@ interface DoNotHireProps {
   initialViewId?: string;
 }
 
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isDark ? "#090a10" : "#f8fafc"),
+    cardBg:        uiTheme.panelColors?.dashboardCardBackground || (isDark ? "rgba(255,255,255,0.02)" : "#ffffff"),
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f1f5f9" : "#0f172a"),
+    textSecondary: isDark ? "#64748b" : "#475569",
+    textMuted:     isDark ? "#94a3b8" : "#64748b",
+    textDark:      isDark ? "#475569" : "#94a3b8",
+    border:        isDark ? "rgba(255,255,255,0.07)" : "#e2e8f0",
+    borderLight:   isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
+    inputBg:       isDark ? "rgba(0,0,0,0.3)" : "#f1f5f9",
+    primary:       uiTheme.customColors?.primary || "#dc2626",
+    overlayBg:     "rgba(0,0,0,0.75)",
+    modalBg:       isDark ? "#11121a" : "#ffffff",
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    appContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      paddingHorizontal: wp(4),
+      paddingTop: Platform.OS === 'ios' ? hp(6) : hp(3),
+      paddingBottom: hp(5),
+    },
+    headerContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: hp(2.2),
+      flexWrap: "wrap",
+      gap: wp(3),
+    },
+    headerTextWrapper: {
+      flex: 1,
+      minWidth: wp(50),
+    },
+    headerTitle: {
+      fontSize: fs(6),
+      fontWeight: "900",
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: fs(3.2),
+      color: colors.textSecondary,
+      marginTop: hp(0.25),
+    },
+    addNewButtonTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.primary,
+      paddingHorizontal: wp(3.5),
+      height: hp(4.8),
+      borderRadius: wp(2),
+      gap: wp(1.5),
+    },
+    addNewButtonTriggerText: {
+      color: "#fff",
+      fontSize: fs(3.2),
+      fontWeight: "700",
+    },
+    searchBarContainerFrame: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      height: hp(5.2),
+      marginBottom: hp(2),
+    },
+    searchIconLayout: {
+      marginRight: wp(2),
+    },
+    searchTextInputElement: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fs(3.2),
+    },
+    mainFeedCardContainer: {
+      marginBottom: hp(2),
+    },
+    statusFeedbackContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: hp(3.8),
+      gap: wp(2),
+    },
+    statusFeedbackText: {
+      color: colors.textSecondary,
+      fontSize: fs(3.2),
+    },
+    errorTextColored: {
+      color: "#ef4444",
+    },
+    emptyStateContainerFrame: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: hp(5),
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      borderStyle: "dashed",
+      borderRadius: wp(3),
+      paddingHorizontal: wp(5),
+    },
+    emptyIconCircleWrapper: {
+      width: wp(14),
+      height: wp(14),
+      borderRadius: wp(7),
+      backgroundColor: "rgba(239, 68, 68, 0.1)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: hp(1.5),
+    },
+    emptyStateTitleText: {
+      color: colors.text,
+      fontSize: fs(4),
+      fontWeight: "700",
+      marginBottom: hp(0.5),
+    },
+    emptyStateBodyText: {
+      color: colors.textSecondary,
+      fontSize: fs(3),
+      textAlign: "center",
+      lineHeight: fs(4),
+      marginBottom: hp(2),
+    },
+    emptyStateActionBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.borderLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: wp(3),
+      height: hp(4),
+      borderRadius: wp(1.5),
+      gap: wp(1),
+    },
+    emptyStateActionBtnText: {
+      color: "#fff",
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    cardsNativeListWrapper: {
+      gap: hp(1.5),
+    },
+    entryDataRowCardNode: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2.5),
+      padding: wp(3.5),
+    },
+    cardHeaderRowInline: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+    candidateNameHeadlineText: {
+      color: colors.text,
+      fontSize: fs(3.8),
+      fontWeight: "700",
+    },
+    candidateReasonExcerptText: {
+      color: "#f87171",
+      fontSize: fs(3),
+      fontWeight: "500",
+      marginTop: hp(0.25),
+    },
+    cardTimestampText: {
+      color: colors.textDark,
+      fontSize: fs(2.5),
+      fontWeight: "600",
+    },
+    cardNotesExcerptBlock: {
+      color: colors.textMuted,
+      fontSize: fs(3),
+      marginTop: hp(1),
+      lineHeight: fs(4),
+      backgroundColor: "rgba(0,0,0,0.15)",
+      padding: wp(2),
+      borderRadius: wp(1.5),
+    },
+    cardMetaContactsFooterTrack: {
+      flexDirection: "row",
+      marginTop: hp(1.2),
+      gap: wp(3.5),
+    },
+    metaBadgeContactItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+      flex: 1,
+    },
+    metaBadgeContactItemText: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+    },
+    statsPanelFooterRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: hp(1),
+      paddingTop: hp(1.5),
+      borderTopWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    statsCountDisplayLabel: {
+      color: colors.textDark,
+      fontSize: fs(3),
+    },
+    statsIndicatorStatusBadgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+    },
+    redPulseDotMarkerIndicator: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+      backgroundColor: "#ef4444",
+    },
+    modalOverlayScrimContainer: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: wp(4),
+    },
+    modalScrollableWindowBodyContainer: {
+      position: "relative",
+      width: "100%",
+      maxWidth: 500,
+      backgroundColor: colors.modalBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3.5),
+      maxHeight: "85%",
+    },
+    modalTopRightCloseButton: {
+      position: "absolute",
+      top: hp(1.8),
+      right: wp(3.5),
+      zIndex: 10,
+      padding: wp(1.5),
+      borderRadius: wp(5),
+      backgroundColor: colors.borderLight,
+    },
+    modalFormContentLayoutView: {
+      padding: wp(4.5),
+    },
+    modalHeaderTitleBlockRow: {
+      marginBottom: hp(2),
+      paddingRight: wp(6),
+    },
+    modalHeaderFlexHeadlineRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(2),
+    },
+    modalTitleHeadlineLabelText: {
+      color: colors.textMuted,
+      fontSize: fs(4),
+      fontWeight: "800",
+    },
+    modalSubtitleDescriptionText: {
+      color: colors.textSecondary,
+      fontSize: fs(3),
+      marginTop: hp(0.5),
+    },
+    formInputFieldsVerticalStack: {
+      gap: hp(1.5),
+    },
+    formFieldBlockControlItem: {
+      gap: hp(0.6),
+    },
+    formFieldLabelText: {
+      color: colors.textMuted,
+      fontSize: fs(2.8),
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+    },
+    formBaseTextInputField: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(2.5),
+      color: colors.text,
+      fontSize: fs(3.2),
+    },
+    formTextAreaInputElement: {
+      height: hp(10),
+      paddingTop: hp(1),
+      paddingBottom: hp(1),
+    },
+    formFieldErrorBorderHighlight: {
+      borderColor: "#ef4444",
+    },
+    fieldValidationErrorMessageText: {
+      color: "#f87171",
+      fontSize: fs(2.5),
+      fontWeight: "500",
+    },
+    modalActionButtonsFooterLayoutRow: {
+      flexDirection: "row",
+      gap: wp(2.5),
+      marginTop: hp(2.5),
+    },
+    modalCancelDismissBtn: {
+      flex: 1,
+      height: hp(4.8),
+      backgroundColor: colors.borderLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalCancelDismissBtnText: {
+      color: colors.textMuted,
+      fontSize: fs(3.2),
+      fontWeight: "600",
+    },
+    modalSubmitConfirmBtn: {
+      flex: 1,
+      height: hp(4.8),
+      backgroundColor: colors.primary,
+      borderRadius: wp(2),
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: wp(1.5),
+    },
+    modalSubmitConfirmBtnText: {
+      color: "#fff",
+      fontSize: fs(3.2),
+      fontWeight: "700",
+    },
+    detailModalModifierPaddingSize: {
+      padding: wp(5),
+    },
+    detailViewHeaderLabelRow: {
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderColor: colors.borderLight,
+      paddingBottom: hp(1.8),
+      paddingTop: hp(1),
+      marginBottom: hp(1.8),
+    },
+    detailTitleNameTextLabel: {
+      color: colors.text,
+      fontSize: fs(4.5),
+      fontWeight: "900",
+      marginTop: hp(0.75),
+      textAlign: "center",
+    },
+    detailDateBadgeTextLabel: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+      fontWeight: "600",
+      marginTop: hp(0.25),
+    },
+    detailInformationTextScrollFrame: {
+      maxHeight: hp(28),
+    },
+    detailGroupSectionLabelText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.5),
+      fontWeight: "700",
+      letterSpacing: 0.5,
+      marginBottom: hp(0.5),
+    },
+    detailGroupReasonPrimaryTextText: {
+      color: "#f87171",
+      fontSize: fs(3.2),
+      fontWeight: "600",
+    },
+    detailGroupNotesBodyTextText: {
+      color: colors.text,
+      fontSize: fs(3),
+      lineHeight: fs(4.5),
+      backgroundColor: "rgba(0,0,0,0.2)",
+      padding: wp(2.5),
+      borderRadius: wp(2),
+    },
+    detailContactBadgeRowBlock: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(2),
+      marginTop: hp(0.5),
+    },
+    detailContactBadgeRowBlockText: {
+      color: colors.textMuted,
+      fontSize: fs(3),
+    },
+  });
+}
+
 export default function DoNotHire({ initialViewId }: DoNotHireProps) {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -141,7 +553,7 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
         form.reset();
         Alert.alert("Entry added", "Do Not Hire record has been saved.");
       },
-      onError: (err) => {
+      onError: (err: any) => {
         Alert.alert(
           "Failed to add entry",
           err instanceof Error ? err.message : "Something went wrong"
@@ -151,100 +563,97 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
   };
 
   return (
-    <ScrollView style={styles.appContainer} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={s(styles.appContainer)} contentContainerStyle={s(styles.scrollContent)}>
       
-      {/* ── Header ── */}
-      <View style={styles.headerContainer}>
-        <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerTitle}>Do Not Hire List</Text>
-          <Text style={styles.headerSubtitle}>Track and review restricted candidates</Text>
+      <View style={s(styles.headerContainer)}>
+        <View style={s(styles.headerTextWrapper)}>
+          <Text style={s(styles.headerTitle)}>Do Not Hire List</Text>
+          <Text style={s(styles.headerSubtitle)}>Track and review restricted candidates</Text>
         </View>
-        <TouchableOpacity style={styles.addNewButtonTrigger} onPress={() => setOpen(true)}>
-          <Feather name="plus" size={16} color="#fff" />
-          <Text style={styles.addNewButtonTriggerText}>Add Entry</Text>
+        <TouchableOpacity style={s(styles.addNewButtonTrigger)} onPress={() => setOpen(true)}>
+          <Feather name="plus" size={fs(4)} color="#fff" />
+          <Text style={s(styles.addNewButtonTriggerText)}>Add Entry</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Search Bar ── */}
-      <View style={styles.searchBarContainerFrame}>
-        <Feather name="search" size={16} color="#64748b" style={styles.searchIconLayout} />
+      <View style={s(styles.searchBarContainerFrame)}>
+        <Feather name="search" size={fs(4)} color={colors.textSecondary} style={s(styles.searchIconLayout)} />
         <TextInput
           placeholder="Search name, phone, email, or reason..."
-          placeholderTextColor="#64748b"
-          style={styles.searchTextInputElement}
+          placeholderTextColor={colors.textSecondary}
+          style={s(styles.searchTextInputElement)}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
       </View>
 
-      {/* ── Main Feed ── */}
-      <View style={styles.mainFeedCardContainer}>
+      <View style={s(styles.mainFeedCardContainer)}>
         {entriesQuery.isLoading ? (
-          <View style={styles.statusFeedbackContainer}>
-            <ActivityIndicator size="small" color="#ef4444" />
-            <Text style={styles.statusFeedbackText}>Loading entries...</Text>
+          <View style={s(styles.statusFeedbackContainer)}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={s(styles.statusFeedbackText)}>Loading entries...</Text>
           </View>
         ) : entriesQuery.isError ? (
-          <View style={styles.statusFeedbackContainer}>
-            <Feather name="alert-triangle" size={18} color="#ef4444" />
-            <Text style={[styles.statusFeedbackText, styles.errorTextColored]}>
+          <View style={s(styles.statusFeedbackContainer)}>
+            <Feather name="alert-triangle" size={fs(4.5)} color="#ef4444" />
+            <Text style={s([styles.statusFeedbackText, styles.errorTextColored])}>
               {entriesQuery.error instanceof Error ? entriesQuery.error.message : "Failed to load entries"}
             </Text>
           </View>
         ) : filtered.length === 0 ? (
-          <View style={styles.emptyStateContainerFrame}>
-            <View style={styles.emptyIconCircleWrapper}>
-              <Feather name="user-x" size={28} color="#f87171" />
+          <View style={s(styles.emptyStateContainerFrame)}>
+            <View style={s(styles.emptyIconCircleWrapper)}>
+              <Feather name="user-x" size={fs(7)} color="#f87171" />
             </View>
-            <Text style={styles.emptyStateTitleText}>No entries found</Text>
-            <Text style={styles.emptyStateBodyText}>
+            <Text style={s(styles.emptyStateTitleText)}>No entries found</Text>
+            <Text style={s(styles.emptyStateBodyText)}>
               {searchQuery ? "Try adjusting your query filter parameters." : "Get started by adding your first record entry."}
             </Text>
             {!searchQuery && (
-              <TouchableOpacity style={styles.emptyStateActionBtn} onPress={() => setOpen(true)}>
-                <Feather name="plus" size={14} color="#fff" />
-                <Text style={styles.emptyStateActionBtnText}>Add Record Entry</Text>
+              <TouchableOpacity style={s(styles.emptyStateActionBtn)} onPress={() => setOpen(true)}>
+                <Feather name="plus" size={fs(3.5)} color="#fff" />
+                <Text style={s(styles.emptyStateActionBtnText)}>Add Record Entry</Text>
               </TouchableOpacity>
             )}
           </View>
         ) : (
-          <View style={styles.cardsNativeListWrapper}>
+          <View style={s(styles.cardsNativeListWrapper)}>
             {filtered.map((entry) => (
               <TouchableOpacity
                 key={entry.id}
-                style={styles.entryDataRowCardNode}
+                style={s(styles.entryDataRowCardNode)}
                 onPress={() => {
                   setSelected(entry);
                   setViewOpen(true);
                 }}
                 activeOpacity={0.7}
               >
-                <View style={styles.cardHeaderRowInline}>
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={styles.candidateNameHeadlineText}>{entry.fullName}</Text>
-                    <Text style={styles.candidateReasonExcerptText} numberOfLines={1}>
+                <View style={s(styles.cardHeaderRowInline)}>
+                  <View style={s({ flex: 1, paddingRight: wp(2) })}>
+                    <Text style={s(styles.candidateNameHeadlineText)}>{entry.fullName}</Text>
+                    <Text style={s(styles.candidateReasonExcerptText)} numberOfLines={1}>
                       Reason: {entry.reason}
                     </Text>
                   </View>
-                  <Text style={styles.cardTimestampText}>
+                  <Text style={s(styles.cardTimestampText)}>
                     {new Date(entry.createdAt).toLocaleDateString()}
                   </Text>
                 </View>
 
-                <Text style={styles.cardNotesExcerptBlock} numberOfLines={1}>
+                <Text style={s(styles.cardNotesExcerptBlock)} numberOfLines={1}>
                   {entry.incidentNotes}
                 </Text>
 
-                <View style={styles.cardMetaContactsFooterTrack}>
-                  <View style={styles.metaBadgeContactItem}>
-                    <Feather name="phone" size={11} color="#94a3b8" />
-                    <Text style={styles.metaBadgeContactItemText} numberOfLines={1}>
+                <View style={s(styles.cardMetaContactsFooterTrack)}>
+                  <View style={s(styles.metaBadgeContactItem)}>
+                    <Feather name="phone" size={fs(2.8)} color={colors.textMuted} />
+                    <Text style={s(styles.metaBadgeContactItemText)} numberOfLines={1}>
                       {entry.phone?.trim() || "—"}
                     </Text>
                   </View>
-                  <View style={styles.metaBadgeContactItem}>
-                    <Feather name="mail" size={11} color="#94a3b8" />
-                    <Text style={styles.metaBadgeContactItemText} numberOfLines={1}>
+                  <View style={s(styles.metaBadgeContactItem)}>
+                    <Feather name="mail" size={fs(2.8)} color={colors.textMuted} />
+                    <Text style={s(styles.metaBadgeContactItemText)} numberOfLines={1}>
                       {entry.email?.trim() || "—"}
                     </Text>
                   </View>
@@ -255,144 +664,136 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
         )}
       </View>
 
-      {/* ── Stats Metric Footer ── */}
       {filtered.length > 0 && (
-        <View style={styles.statsPanelFooterRow}>
-          <Text style={styles.statsCountDisplayLabel}>
+        <View style={s(styles.statsPanelFooterRow)}>
+          <Text style={s(styles.statsCountDisplayLabel)}>
             Showing {filtered.length} of {entries.length} entries
           </Text>
-          <View style={styles.statsIndicatorStatusBadgeRow}>
-            <View style={styles.redPulseDotMarkerIndicator} />
-            <Text style={styles.statsCountDisplayLabel}>Restricted candidates</Text>
+          <View style={s(styles.statsIndicatorStatusBadgeRow)}>
+            <View style={s(styles.redPulseDotMarkerIndicator)} />
+            <Text style={s(styles.statsCountDisplayLabel)}>Restricted candidates</Text>
           </View>
         </View>
       )}
 
-      {/* ── Modal: Add Entry Form ── */}
       <Modal visible={open} animationType="slide" transparent>
-        <View style={styles.modalOverlayScrimContainer}>
-          <View style={styles.modalScrollableWindowBodyContainer}>
+        <View style={s(styles.modalOverlayScrimContainer)}>
+          <View style={s(styles.modalScrollableWindowBodyContainer)}>
             
-            {/* Top Right Close 'X' Button */}
-            <TouchableOpacity style={styles.modalTopRightCloseButton} onPress={() => setOpen(false)}>
-              <Feather name="x" size={20} color="#94a3b8" />
+            <TouchableOpacity style={s(styles.modalTopRightCloseButton)} onPress={() => setOpen(false)}>
+              <Feather name="x" size={fs(5)} color={colors.textMuted} />
             </TouchableOpacity>
 
-            <ScrollView contentContainerStyle={styles.modalFormContentLayoutView}>
-              <View style={styles.modalHeaderTitleBlockRow}>
-                <View style={styles.modalHeaderFlexHeadlineRow}>
-                  <Feather name="user-x" size={18} color="#ef4444" />
-                  <Text style={styles.modalTitleHeadlineLabelText}>Add Do Not Hire Entry</Text>
+            <ScrollView contentContainerStyle={s(styles.modalFormContentLayoutView)}>
+              <View style={s(styles.modalHeaderTitleBlockRow)}>
+                <View style={s(styles.modalHeaderFlexHeadlineRow)}>
+                  <Feather name="user-x" size={fs(4.5)} color="#ef4444" />
+                  <Text style={s(styles.modalTitleHeadlineLabelText)}>Add Do Not Hire Entry</Text>
                 </View>
-                <Text style={styles.modalSubtitleDescriptionText}>
+                <Text style={s(styles.modalSubtitleDescriptionText)}>
                   Save an incident record block to prevent future hiring pipelines.
                 </Text>
               </View>
 
-              <View style={styles.formInputFieldsVerticalStack}>
-                {/* Full Name */}
-                <View style={styles.formFieldBlockControlItem}>
-                  <Text style={styles.formFieldLabelText}>Full Name</Text>
+              <View style={s(styles.formInputFieldsVerticalStack)}>
+                <View style={s(styles.formFieldBlockControlItem)}>
+                  <Text style={s(styles.formFieldLabelText)}>Full Name</Text>
                   <Controller
                     control={form.control}
                     name="fullName"
                     render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
                       <>
                         <TextInput
-                          style={[styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight]}
+                          style={s([styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight])}
                           placeholder="Candidate complete name"
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={colors.textSecondary}
                           onBlur={onBlur}
                           onChangeText={onChange}
                           value={value}
                         />
-                        {error && <Text style={styles.fieldValidationErrorMessageText}>{error.message}</Text>}
+                        {error && <Text style={s(styles.fieldValidationErrorMessageText)}>{error.message}</Text>}
                       </>
                     )}
                   />
                 </View>
 
-                {/* Phone */}
-                <View style={styles.formFieldBlockControlItem}>
-                  <Text style={styles.formFieldLabelText}>Phone</Text>
+                <View style={s(styles.formFieldBlockControlItem)}>
+                  <Text style={s(styles.formFieldLabelText)}>Phone</Text>
                   <Controller
                     control={form.control}
                     name="phone"
                     render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
                       <>
                         <TextInput
-                          style={[styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight]}
+                          style={s([styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight])}
                           placeholder="Optional contact string"
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={colors.textSecondary}
                           keyboardType="phone-pad"
                           onBlur={onBlur}
                           onChangeText={onChange}
                           value={value}
                         />
-                        {error && <Text style={styles.fieldValidationErrorMessageText}>{error.message}</Text>}
+                        {error && <Text style={s(styles.fieldValidationErrorMessageText)}>{error.message}</Text>}
                       </>
                     )}
                   />
                 </View>
 
-                {/* Email */}
-                <View style={styles.formFieldBlockControlItem}>
-                  <Text style={styles.formFieldLabelText}>Email</Text>
+                <View style={s(styles.formFieldBlockControlItem)}>
+                  <Text style={s(styles.formFieldLabelText)}>Email</Text>
                   <Controller
                     control={form.control}
                     name="email"
                     render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
                       <>
                         <TextInput
-                          style={[styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight]}
+                          style={s([styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight])}
                           placeholder="Optional candidate email address"
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={colors.textSecondary}
                           keyboardType="email-address"
                           autoCapitalize="none"
                           onBlur={onBlur}
                           onChangeText={onChange}
                           value={value}
                         />
-                        {error && <Text style={styles.fieldValidationErrorMessageText}>{error.message}</Text>}
+                        {error && <Text style={s(styles.fieldValidationErrorMessageText)}>{error.message}</Text>}
                       </>
                     )}
                   />
                 </View>
 
-                {/* Reason */}
-                <View style={styles.formFieldBlockControlItem}>
-                  <Text style={styles.formFieldLabelText}>Reason Tag</Text>
+                <View style={s(styles.formFieldBlockControlItem)}>
+                  <Text style={s(styles.formFieldLabelText)}>Reason Tag</Text>
                   <Controller
                     control={form.control}
                     name="reason"
                     render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
                       <>
                         <TextInput
-                          style={[styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight]}
+                          style={s([styles.formBaseTextInputField, error && styles.formFieldErrorBorderHighlight])}
                           placeholder="Why is this candidate restricted?"
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={colors.textSecondary}
                           onBlur={onBlur}
                           onChangeText={onChange}
                           value={value}
                         />
-                        {error && <Text style={styles.fieldValidationErrorMessageText}>{error.message}</Text>}
+                        {error && <Text style={s(styles.fieldValidationErrorMessageText)}>{error.message}</Text>}
                       </>
                     )}
                   />
                 </View>
 
-                {/* Incident Notes */}
-                <View style={styles.formFieldBlockControlItem}>
-                  <Text style={styles.formFieldLabelText}>Incident Narrative Notes</Text>
+                <View style={s(styles.formFieldBlockControlItem)}>
+                  <Text style={s(styles.formFieldLabelText)}>Incident Narrative Notes</Text>
                   <Controller
                     control={form.control}
                     name="incidentNotes"
                     render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
                       <>
                         <TextInput
-                          style={[styles.formBaseTextInputField, styles.formTextAreaInputElement, error && styles.formFieldErrorBorderHighlight]}
+                          style={s([styles.formBaseTextInputField, styles.formTextAreaInputElement, error && styles.formFieldErrorBorderHighlight])}
                           placeholder="Provide context regarding the restriction incident..."
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={colors.textSecondary}
                           multiline
                           numberOfLines={4}
                           textAlignVertical="top"
@@ -400,20 +801,20 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
                           onChangeText={onChange}
                           value={value}
                         />
-                        {error && <Text style={styles.fieldValidationErrorMessageText}>{error.message}</Text>}
+                        {error && <Text style={s(styles.fieldValidationErrorMessageText)}>{error.message}</Text>}
                       </>
                     )}
                   />
                 </View>
               </View>
 
-              <View style={styles.modalActionButtonsFooterLayoutRow}>
-                <TouchableOpacity style={styles.modalCancelDismissBtn} onPress={() => setOpen(false)}>
-                  <Text style={styles.modalCancelDismissBtnText}>Cancel</Text>
+              <View style={s(styles.modalActionButtonsFooterLayoutRow)}>
+                <TouchableOpacity style={s(styles.modalCancelDismissBtn)} onPress={() => setOpen(false)}>
+                  <Text style={s(styles.modalCancelDismissBtnText)}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalSubmitConfirmBtn} onPress={form.handleSubmit(onSubmit)}>
-                  <Feather name="plus" size={14} color="#fff" />
-                  <Text style={styles.modalSubmitConfirmBtnText}>Add Entry</Text>
+                <TouchableOpacity style={s(styles.modalSubmitConfirmBtn)} onPress={form.handleSubmit(onSubmit)}>
+                  <Feather name="plus" size={fs(3.5)} color="#fff" />
+                  <Text style={s(styles.modalSubmitConfirmBtnText)}>Add Entry</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -421,44 +822,42 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
         </View>
       </Modal>
 
-      {/* ── Modal: View Details ── */}
       <Modal visible={viewOpen} animationType="fade" transparent>
-        <View style={styles.modalOverlayScrimContainer}>
-          <View style={[styles.modalScrollableWindowBodyContainer, styles.detailModalModifierPaddingSize]}>
+        <View style={s(styles.modalOverlayScrimContainer)}>
+          <View style={s([styles.modalScrollableWindowBodyContainer, styles.detailModalModifierPaddingSize])}>
             
-            {/* Top Right Close 'X' Button */}
-            <TouchableOpacity style={styles.modalTopRightCloseButton} onPress={() => setViewOpen(false)}>
-              <Feather name="x" size={20} color="#94a3b8" />
+            <TouchableOpacity style={s(styles.modalTopRightCloseButton)} onPress={() => setViewOpen(false)}>
+              <Feather name="x" size={fs(5)} color={colors.textMuted} />
             </TouchableOpacity>
 
             {selected && (
               <>
-                <View style={styles.detailViewHeaderLabelRow}>
-                  <Feather name="user-x" size={22} color="#ef4444" />
-                  <Text style={styles.detailTitleNameTextLabel}>{selected.fullName}</Text>
-                  <Text style={styles.detailDateBadgeTextLabel}>Added: {selected.createdAt}</Text>
+                <View style={s(styles.detailViewHeaderLabelRow)}>
+                  <Feather name="user-x" size={fs(5.5)} color="#ef4444" />
+                  <Text style={s(styles.detailTitleNameTextLabel)}>{selected.fullName}</Text>
+                  <Text style={s(styles.detailDateBadgeTextLabel)}>Added: {selected.createdAt}</Text>
                 </View>
 
-                <ScrollView style={styles.detailInformationTextScrollFrame}>
-                  <Text style={styles.detailGroupSectionLabelText}>REASON RESTRICTED</Text>
-                  <Text style={styles.detailGroupReasonPrimaryTextText}>{selected.reason}</Text>
+                <ScrollView style={s(styles.detailInformationTextScrollFrame)}>
+                  <Text style={s(styles.detailGroupSectionLabelText)}>REASON RESTRICTED</Text>
+                  <Text style={s(styles.detailGroupReasonPrimaryTextText)}>{selected.reason}</Text>
 
-                  <Text style={[styles.detailGroupSectionLabelText, { marginTop: 14 }]}>INCIDENT CHRONOLOGY NOTES</Text>
-                  <Text style={styles.detailGroupNotesBodyTextText}>{selected.incidentNotes}</Text>
+                  <Text style={s([styles.detailGroupSectionLabelText, { marginTop: hp(1.8) }])}>INCIDENT CHRONOLOGY NOTES</Text>
+                  <Text style={s(styles.detailGroupNotesBodyTextText)}>{selected.incidentNotes}</Text>
 
-                  <Text style={[styles.detailGroupSectionLabelText, { marginTop: 14 }]}>VERIFIED CONTACT SIGNATURES</Text>
-                  <View style={styles.detailContactBadgeRowBlock}>
-                    <Feather name="phone" size={14} color="#94a3b8" />
-                    <Text style={styles.detailContactBadgeRowBlockText}>{selected.phone || "No phone documented"}</Text>
+                  <Text style={s([styles.detailGroupSectionLabelText, { marginTop: hp(1.8) }])}>VERIFIED CONTACT SIGNATURES</Text>
+                  <View style={s(styles.detailContactBadgeRowBlock)}>
+                    <Feather name="phone" size={fs(3.5)} color={colors.textMuted} />
+                    <Text style={s(styles.detailContactBadgeRowBlockText)}>{selected.phone || "No phone documented"}</Text>
                   </View>
-                  <View style={styles.detailContactBadgeRowBlock}>
-                    <Feather name="mail" size={14} color="#94a3b8" />
-                    <Text style={styles.detailContactBadgeRowBlockText}>{selected.email || "No email documented"}</Text>
+                  <View style={s(styles.detailContactBadgeRowBlock)}>
+                    <Feather name="mail" size={fs(3.5)} color={colors.textMuted} />
+                    <Text style={s(styles.detailContactBadgeRowBlockText)}>{selected.email || "No email documented"}</Text>
                   </View>
                 </ScrollView>
 
-                <TouchableOpacity style={[styles.modalCancelDismissBtn, { width: '100%', marginTop: 16 }]} onPress={() => setViewOpen(false)}>
-                  <Text style={styles.modalCancelDismissBtnText}>Dismiss Record View</Text>
+                <TouchableOpacity style={s([styles.modalCancelDismissBtn, { width: '100%', marginTop: hp(2) }])} onPress={() => setViewOpen(false)}>
+                  <Text style={s(styles.modalCancelDismissBtnText)}>Dismiss Record View</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -469,393 +868,3 @@ export default function DoNotHire({ initialViewId }: DoNotHireProps) {
     </ScrollView>
   );
 }
-
-/* ── Stylesheet Theme Configuration Matrix ──────────────── */
-const styles = StyleSheet.create({
-  appContainer: {
-    flex: 1,
-    backgroundColor: "#090a10",
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 52 : 24,
-    paddingBottom: 40,
-  },
-  headerContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 18,
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  headerTextWrapper: {
-    flex: 1,
-    minWidth: 200,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#f1f5f9",
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  addNewButtonTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#dc2626",
-    paddingHorizontal: 14,
-    height: 38,
-    borderRadius: 8,
-    gap: 6,
-  },
-  addNewButtonTriggerText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  searchBarContainerFrame: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 42,
-    marginBottom: 16,
-  },
-  searchIconLayout: {
-    marginRight: 8,
-  },
-  searchTextInputElement: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 13,
-  },
-  mainFeedCardContainer: {
-    marginBottom: 16,
-  },
-  statusFeedbackContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 30,
-    gap: 8,
-  },
-  statusFeedbackText: {
-    color: "#64748b",
-    fontSize: 13,
-  },
-  errorTextColored: {
-    color: "#ef4444",
-  },
-  emptyStateContainerFrame: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
-    backgroundColor: "rgba(255,255,255,0.01)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-    borderStyle: "dashed",
-    borderRadius: 12,
-    paddingHorizontal: 20,
-  },
-  emptyIconCircleWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  emptyStateTitleText: {
-    color: "#f1f5f9",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  emptyStateBodyText: {
-    color: "#64748b",
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 16,
-    marginBottom: 16,
-  },
-  emptyStateActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 6,
-    gap: 4,
-  },
-  emptyStateActionBtnText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  cardsNativeListWrapper: {
-    gap: 12,
-  },
-  entryDataRowCardNode: {
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    borderRadius: 10,
-    padding: 14,
-  },
-  cardHeaderRowInline: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  candidateNameHeadlineText: {
-    color: "#f8fafc",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  candidateReasonExcerptText: {
-    color: "#f87171",
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-  cardTimestampText: {
-    color: "#475569",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  cardNotesExcerptBlock: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 8,
-    lineHeight: 16,
-    backgroundColor: "rgba(0,0,0,0.15)",
-    padding: 8,
-    borderRadius: 6,
-  },
-  cardMetaContactsFooterTrack: {
-    flexDirection: "row",
-    marginTop: 10,
-    gap: 14,
-  },
-  metaBadgeContactItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    flex: 1,
-  },
-  metaBadgeContactItemText: {
-    color: "#475569",
-    fontSize: 11,
-  },
-  statsPanelFooterRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  statsCountDisplayLabel: {
-    color: "#475569",
-    fontSize: 12,
-  },
-  statsIndicatorStatusBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  redPulseDotMarkerIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#ef4444",
-  },
-  modalOverlayScrimContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalScrollableWindowBodyContainer: {
-    position: "relative", // Required for absolute placement of X close button
-    width: "100%",
-    maxWidth: 500,
-    backgroundColor: "#11121a",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 14,
-    maxHeight: "85%",
-  },
-  modalTopRightCloseButton: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    zIndex: 10,
-    padding: 6,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  modalFormContentLayoutView: {
-    padding: 18,
-  },
-  modalHeaderTitleBlockRow: {
-    marginBottom: 16,
-    paddingRight: 24, // Prevents text crashing into the X button
-  },
-  modalHeaderFlexHeadlineRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  modalTitleHeadlineLabelText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  modalSubtitleDescriptionText: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  formInputFieldsVerticalStack: {
-    gap: 12,
-  },
-  formFieldBlockControlItem: {
-    gap: 5,
-  },
-  formFieldLabelText: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  formBaseTextInputField: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    borderRadius: 8,
-    height: 38,
-    paddingHorizontal: 10,
-    color: "#fff",
-    fontSize: 13,
-  },
-  formTextAreaInputElement: {
-    height: 80,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  formFieldErrorBorderHighlight: {
-    borderColor: "#ef4444",
-  },
-  fieldValidationErrorMessageText: {
-    color: "#f87171",
-    fontSize: 10,
-    fontWeight: "500",
-  },
-  modalActionButtonsFooterLayoutRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 20,
-  },
-  modalCancelDismissBtn: {
-    flex: 1,
-    height: 38,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalCancelDismissBtnText: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  modalSubmitConfirmBtn: {
-    flex: 1,
-    height: 38,
-    backgroundColor: "#dc2626",
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  modalSubmitConfirmBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  detailModalModifierPaddingSize: {
-    padding: 20,
-  },
-  detailViewHeaderLabelRow: {
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    paddingBottom: 14,
-    paddingTop: 8,
-    marginBottom: 14,
-  },
-  detailTitleNameTextLabel: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 6,
-    textAlign: "center",
-  },
-  detailDateBadgeTextLabel: {
-    color: "#475569",
-    fontSize: 11,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  detailInformationTextScrollFrame: {
-    maxHeight: 220,
-  },
-  detailGroupSectionLabelText: {
-    color: "#64748b",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  detailGroupReasonPrimaryTextText: {
-    color: "#f87171",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  detailGroupNotesBodyTextText: {
-    color: "#cbd5e1",
-    fontSize: 12,
-    lineHeight: 18,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    padding: 10,
-    borderRadius: 8,
-  },
-  detailContactBadgeRowBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
-  },
-  detailContactBadgeRowBlockText: {
-    color: "#94a3b8",
-    fontSize: 12,
-  },
-});

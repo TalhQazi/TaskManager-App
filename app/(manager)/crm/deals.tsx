@@ -13,30 +13,30 @@ import {
   Platform,
 } from 'react-native';
 import { apiFetch } from '@/lib/admin/apiClient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, wp, hp, fs } from '@/util/styles';
 
-const { height: WINDOW_HEIGHT } = Dimensions.get('window');
-
-/* ── Constants ───────────────────────────────────────────────────── */
 const STAGES = ['Qualification', 'Needs Analysis', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'];
 
-const STAGE_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  'Qualification':  { bg: 'rgba(148, 163, 184, 0.1)', text: '#94a3b8', border: 'rgba(148, 163, 184, 0.25)', dot: '#94a3b8' },
-  'Needs Analysis': { bg: 'rgba(56, 189, 248, 0.1)',  text: '#38bdf8', border: 'rgba(56, 189, 248, 0.25)',  dot: '#38bdf8' },
-  'Proposal':       { bg: 'rgba(129, 140, 248, 0.1)',  text: '#818cf8', border: 'rgba(129, 140, 248, 0.25)',  dot: '#818cf8' },
-  'Negotiation':    { bg: 'rgba(251, 191, 36, 0.1)',  text: '#fbbf24', border: 'rgba(251, 191, 36, 0.25)',  dot: '#fbbf24' },
-  'Closed Won':     { bg: 'rgba(52, 211, 153, 0.1)',  text: '#34d399', border: 'rgba(52, 211, 153, 0.25)',  dot: '#34d399' },
-  'Closed Lost':    { bg: 'rgba(248, 113, 113, 0.1)',  text: '#f87171', border: 'rgba(248, 113, 113, 0.25)',  dot: '#f87171' },
-  'Unknown':        { bg: 'rgba(115, 115, 115, 0.1)',  text: '#a3a3a3', border: 'rgba(115, 115, 115, 0.25)',  dot: '#a3a3a3' },
-};
+interface Deal {
+  id?: string;
+  _id: string;
+  name: string;
+  company?: string;
+  stage: string;
+  value: number;
+  probability?: number;
+  closeDate: string;
+  owner?: string;
+}
 
 const getProbColor = (p: number) => {
-  if (p >= 75) return '#10b981'; // emerald
-  if (p >= 50) return '#3b82f6'; // blue
-  if (p >= 25) return '#f59e0b'; // amber
-  return '#ef4444'; // red
+  if (p >= 75) return '#10b981';
+  if (p >= 50) return '#3b82f6';
+  if (p >= 25) return '#f59e0b';
+  return '#ef4444';
 };
 
-/* ── Helpers ─────────────────────────────────────────────────────── */
 const formatCurrency = (val: number) => {
   if (!val) return '$0';
   if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
@@ -53,35 +53,619 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-/* ── Shared UI Subcomponents ─────────────────────────────────────── */
-function StageBadge({ stage }: { stage: string }) {
-  const cfg = STAGE_CONFIG[stage] ?? STAGE_CONFIG['Unknown'];
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isDark ? '#090a0f' : '#f8fafc'),
+    cardBg:        uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#0f1117' : '#ffffff'),
+    cardBgSub:     isDark ? '#0f1117' : '#ffffff',
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isDark ? '#ffffff' : '#0f172a'),
+    textSecondary: isDark ? '#a3a3a3' : '#475569',
+    textMuted:     isDark ? '#525252' : '#94a3b8',
+    textDark:      isDark ? '#404040' : '#64748b',
+    border:        isDark ? '#171717' : '#e2e8f0',
+    borderLight:   isDark ? '#262626' : '#f1f5f9',
+    inputBg:       isDark ? 'rgba(0, 0, 0, 0.2)' : '#f1f5f9',
+    primary:       uiTheme.customColors?.primary || '#38bdf8',
+    accentBg:      isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(56, 189, 248, 0.15)',
+    accentBorder:  isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.3)',
+    overlayBg:     'rgba(0, 0, 0, 0.75)',
+    stageColors: {
+      'Qualification':  { bg: isDark ? 'rgba(148, 163, 184, 0.1)' : '#f1f5f9', text: isDark ? '#94a3b8' : '#475569', border: isDark ? 'rgba(148, 163, 184, 0.25)' : '#cbd5e1', dot: '#94a3b8' },
+      'Needs Analysis': { bg: isDark ? 'rgba(56, 189, 248, 0.1)' : '#e0f2fe', text: isDark ? '#38bdf8' : '#0369a1', border: isDark ? 'rgba(56, 189, 248, 0.25)' : '#7dd3fc', dot: '#38bdf8' },
+      'Proposal':       { bg: isDark ? 'rgba(129, 140, 248, 0.1)' : '#e0e7ff', text: isDark ? '#818cf8' : '#4338ca', border: isDark ? 'rgba(129, 140, 248, 0.25)' : '#a5b4fc', dot: '#818cf8' },
+      'Negotiation':    { bg: isDark ? 'rgba(251, 191, 36, 0.1)' : '#fef3c7', text: isDark ? '#fbbf24' : '#b45309', border: isDark ? 'rgba(251, 191, 36, 0.25)' : '#fde68a', dot: '#fbbf24' },
+      'Closed Won':     { bg: isDark ? 'rgba(52, 211, 153, 0.1)' : '#d1fae5', text: isDark ? '#34d399' : '#065f46', border: isDark ? 'rgba(52, 211, 153, 0.25)' : '#6ee7b7', dot: '#34d399' },
+      'Closed Lost':    { bg: isDark ? 'rgba(248, 113, 113, 0.1)' : '#fee2e2', text: isDark ? '#f87171' : '#991b1b', border: isDark ? 'rgba(248, 113, 113, 0.25)' : '#fca5a5', dot: '#f87171' },
+      'Unknown':        { bg: isDark ? 'rgba(115, 115, 115, 0.1)' : '#f4f4f5', text: isDark ? '#a3a3a3' : '#71717a', border: isDark ? 'rgba(115, 115, 115, 0.25)' : '#e4e4e7', dot: '#a3a3a3' },
+    }
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    appSafeAreaViewBackground: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    topAccentBarDecoration: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: hp(0.4),
+      backgroundColor: colors.primary,
+      zIndex: 999,
+    },
+    headerLayoutViewContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: wp(4),
+      paddingTop: Platform.OS === 'android' ? hp(5.5) : hp(2.5),
+      paddingBottom: hp(2),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    headerLeftAlignmentGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(3),
+    },
+    headerIconProfilePlaceholderSquare: {
+      width: wp(10.5),
+      height: wp(10.5),
+      borderRadius: wp(3),
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerEmojiSymbolIcon: {
+      fontSize: fs(5),
+    },
+    headerScreenHeadlineText: {
+      fontSize: fs(5.5),
+      fontWeight: '900',
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    headerScreenSubheadlineText: {
+      fontSize: fs(2.8),
+      color: colors.textSecondary,
+      marginTop: hp(0.1),
+    },
+    readOnlyFloatingStatusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(251, 191, 36, 0.05)',
+      borderWidth: 1,
+      borderColor: 'rgba(251, 191, 36, 0.25)',
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.6),
+      borderRadius: wp(10),
+      gap: wp(1.5),
+    },
+    readOnlyIndicatorAmberDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+      backgroundColor: '#fbbf24',
+    },
+    readOnlyTextStringLabel: {
+      color: '#fbbf24',
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    filterWorkspaceBoxWrapper: {
+      backgroundColor: colors.cardBgSub,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      padding: wp(4),
+      gap: hp(1.8),
+    },
+    searchBarBoxFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      borderRadius: wp(3),
+      paddingHorizontal: wp(3),
+      height: hp(5.5),
+    },
+    searchGlassGlyphSymbol: {
+      fontSize: fs(3.5),
+      marginRight: wp(2),
+    },
+    searchBarInputTextNode: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fs(3.5),
+    },
+    searchFieldClearTriggerHitbox: {
+      padding: wp(1.5),
+    },
+    searchFieldClearTriggerSymbolText: {
+      color: colors.textSecondary,
+      fontSize: fs(5),
+      fontWeight: 'bold',
+      lineHeight: fs(5),
+    },
+    horizontalScrollOuterAxisWrapperRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    scrollSectionTrackContextInlineLabel: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      fontWeight: '600',
+      marginRight: wp(2.5),
+    },
+    filterTrackInnerScrollerContainer: {
+      gap: wp(2),
+      alignItems: 'center',
+    },
+    filterChipButtonActionFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(2),
+      gap: wp(1.5),
+    },
+    chipIndicatorDotNode: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    filterChipButtonLabelText: {
+      fontSize: fs(3),
+    },
+    counterPillWrapperDecoration: {
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1.5),
+    },
+    counterPillWrapperDecorationValueText: {
+      fontSize: fs(2.5),
+      fontWeight: '800',
+      color: colors.text,
+    },
+    alertFeedbackCardContainerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(248, 113, 113, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(248, 113, 113, 0.25)',
+      margin: wp(4),
+      marginBottom: 0,
+      paddingHorizontal: wp(3.5),
+      paddingVertical: hp(1.2),
+      borderRadius: wp(3),
+      gap: wp(2.5),
+    },
+    alertFeedbackWarningIconGlyph: {
+      color: '#f87171',
+      fontSize: fs(4),
+      fontWeight: 'bold',
+    },
+    alertFeedbackPayloadDescriptionText: {
+      flex: 1,
+      color: '#fca5a5',
+      fontSize: fs(3.2),
+      fontWeight: '500',
+    },
+    alertFeedbackDismissActionHitbox: {
+      padding: wp(1),
+    },
+    alertFeedbackDismissActionSymbol: {
+      color: '#f87171',
+      fontSize: fs(5),
+      lineHeight: fs(5),
+    },
+    stateBlockCentralizedFeedbackContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: hp(10),
+      paddingHorizontal: wp(8),
+      gap: hp(1.5),
+    },
+    stateBlockContextDescriptionStringText: {
+      color: colors.textSecondary,
+      fontSize: fs(3.5),
+      fontWeight: '500',
+    },
+    emptyResultsGraphicBoxIconCard: {
+      width: wp(14),
+      height: wp(14),
+      borderRadius: wp(4),
+      backgroundColor: colors.border,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    emptyResultsGraphicBoxIconCardGlyphSymbol: {
+      fontSize: fs(6),
+    },
+    emptyResultsHeadlinePromptMessageText: {
+      fontSize: fs(4),
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    emptyResultsSubheadingExplanationPromptText: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: fs(4),
+    },
+    verticalCardsLayoutListScrollTrack: {
+      padding: wp(4),
+      gap: hp(1.8),
+    },
+    dealListItemCardContainerBox: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(4),
+      padding: wp(4),
+      gap: hp(2),
+    },
+    cardLayoutIdentitySplitHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: wp(3),
+    },
+    cardIdentityLeftInfoStack: {
+      flex: 1,
+      gap: hp(0.5),
+    },
+    cardDealProfileTitleHeadingText: {
+      fontSize: fs(4),
+      fontWeight: '800',
+      color: colors.text,
+    },
+    cardCompanyAffiliationMetadataRowInlineLayout: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1.5),
+    },
+    companyCharacterSymbolAvatarSquareIcon: {
+      width: wp(4.5),
+      height: wp(4.5),
+      borderRadius: wp(1),
+      backgroundColor: colors.border,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    companyCharacterSymbolAvatarSquareIconLetterChar: {
+      fontSize: fs(2.2),
+      fontWeight: '800',
+      color: colors.textSecondary,
+    },
+    cardAssociatedCompanyNameLabelString: {
+      fontSize: fs(3.2),
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    cardPropertiesSystemQuadGridDisplayGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: hp(1.5),
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(3),
+      padding: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardPropertyQuadGridCellFieldBox: {
+      width: '50%',
+      paddingRight: wp(1.5),
+      gap: hp(0.5),
+    },
+    quadGridCellFieldBoxLabelUppercaseText: {
+      fontSize: fs(2.2),
+      fontWeight: '800',
+      color: colors.textDark,
+      letterSpacing: 0.8,
+    },
+    quadGridCellFieldBoxDataValueTextEmeraldCurrencyString: {
+      fontSize: fs(3.5),
+      fontWeight: '900',
+      color: '#34d399',
+    },
+    quadGridCellFieldBoxDataNormalWhiteString: {
+      fontSize: fs(3.2),
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    quadGridCellFieldBoxDataFallbackMutedString: {
+      fontSize: fs(3.2),
+      color: colors.textDark,
+      fontWeight: '600',
+    },
+    cardAccountOwnerAffiliationRowInlineGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1.5),
+    },
+    accountOwnerAvatarCircleProfileIcon: {
+      width: wp(4.5),
+      height: wp(4.5),
+      borderRadius: wp(2.25),
+      backgroundColor: '#1e3a8a',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    accountOwnerAvatarCircleProfileIconLetterChar: {
+      fontSize: fs(2.2),
+      fontWeight: '800',
+      color: '#ffffff',
+    },
+    cardActionFooterSimulatedRowFrame: {
+      alignItems: 'flex-end',
+      paddingTop: hp(0.5),
+    },
+    cardActionFooterSimulatedRowFrameInteractiveActionTextString: {
+      fontSize: fs(3),
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    aggregatedListSummaryCalculationMetaCardContainerBoxRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: hp(1),
+      paddingHorizontal: wp(1),
+      marginBottom: hp(3),
+    },
+    aggregatedListSummaryCalculationMetaCardLabelStringText: {
+      fontSize: fs(3),
+      color: colors.textMuted,
+      fontWeight: '600',
+    },
+    whiteHighlightTextAccent: {
+      color: colors.textSecondary,
+      fontWeight: '700',
+    },
+    badgeFrame: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+      gap: wp(1),
+    },
+    badgeDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    badgeText: {
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    probBarRowWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1.5),
+      marginTop: hp(0.25),
+    },
+    probTrackBackground: {
+      width: wp(16),
+      height: hp(0.75),
+      borderRadius: wp(10),
+      backgroundColor: colors.border,
+      overflow: 'hidden',
+    },
+    probFillTrack: {
+      height: '100%',
+      borderRadius: wp(10),
+    },
+    probPercentageLabelText: {
+      fontSize: fs(2.8),
+      fontWeight: '800',
+      color: colors.textSecondary,
+    },
+    modalOverlayDimBackdropContainerMask: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: 'flex-end',
+    },
+    modalProfileBottomSheetCardBodyStructure: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: wp(6),
+      borderTopRightRadius: wp(6),
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      height: hp(75),
+    },
+    bottomSheetTopStructuralDragHandleBarStrip: {
+      width: wp(9),
+      height: hp(0.5),
+      backgroundColor: colors.borderLight,
+      borderRadius: wp(0.5),
+      alignSelf: 'center',
+      marginTop: hp(1.5),
+    },
+    sheetLayoutIdentityHeaderContainerSectionBlock: {
+      padding: wp(5),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    sheetLayoutIdentityHeaderFlexAlignmentRowWrapper: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      position: 'relative',
+    },
+    sheetLayoutIdentityHeaderPropertiesStackGroup: {
+      flex: 1,
+      marginLeft: wp(3.5),
+      marginRight: wp(9),
+      gap: hp(0.5),
+    },
+    sheetLayoutIdentityHeaderDealNameHeadingText: {
+      fontSize: fs(4.5),
+      fontWeight: '900',
+      color: colors.text,
+      lineHeight: fs(5.5),
+    },
+    sheetLayoutIdentityHeaderContextLabelSubtextString: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    sheetLayoutIdentityHeaderBadgePositionerAlignWrapper: {
+      alignSelf: 'flex-start',
+      marginTop: hp(0.75),
+    },
+    sheetLayoutIdentityHeaderCloseActionCircularButtonFrame: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      width: wp(7),
+      height: wp(7),
+      borderRadius: wp(2),
+      backgroundColor: colors.border,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText: {
+      fontSize: fs(4.5),
+      color: colors.textSecondary,
+      fontWeight: 'bold',
+      lineHeight: fs(4.5),
+    },
+    sheetFieldsScrollTrackContainer: {
+      flex: 1,
+      padding: wp(5),
+    },
+    sheetFieldsVerticalStackSpacingLayout: {
+      gap: hp(2),
+      paddingBottom: hp(3),
+    },
+    sheetFinancialValueStatementHighlightBannerBox: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3.5),
+      padding: wp(4),
+    },
+    sheetFinancialValueStatementHighlightBannerBoxActive: {
+      backgroundColor: 'rgba(52, 211, 153, 0.03)',
+      borderColor: 'rgba(52, 211, 153, 0.15)',
+    },
+    sheetFinancialValueStatementLeftIndicatorInlineLabelGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(2),
+    },
+    sheetFinancialValueStatementBannerEmojiSymbolIcon: {
+      fontSize: fs(4.5),
+    },
+    sheetFinancialValueStatementBannerLabelUppercaseText: {
+      fontSize: fs(2.5),
+      fontWeight: '800',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+    },
+    sheetFinancialValueStatementBannerLargeEmeraldCurrencyStringText: {
+      fontSize: fs(5),
+      fontWeight: '900',
+      color: '#34d399',
+    },
+    sheetFieldsStructuralTwoColumnFlexWrapGridSystem: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: hp(1.8),
+    },
+    sheetFieldsTwoColumnFlexCellBlock: {
+      width: '50%',
+      paddingRight: wp(2),
+      gap: hp(0.75),
+    },
+    sheetFieldsCellIconAndContextLabelRowGroupInlineHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(1.5),
+    },
+    sheetFieldsCellIconGlyphInlineSymbol: {
+      fontSize: fs(3.2),
+    },
+    sheetFieldsCellContentPrimaryWhiteDataStringText: {
+      fontSize: fs(3.5),
+      fontWeight: '700',
+      color: colors.text,
+    },
+    sheetLayoutFooterActionControlPanelRowFrameBox: {
+      padding: wp(5),
+      backgroundColor: colors.background,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      paddingBottom: Platform.OS === 'ios' ? hp(4.5) : hp(2.5),
+    },
+    sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      paddingVertical: hp(1.8),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel: {
+      color: colors.textSecondary,
+      fontSize: fs(3.5),
+      fontWeight: '700',
+    },
+  });
+}
+
+function StageBadge({ stage, colors, styles }: { stage: string; colors: any; styles: any }) {
+  const cfg = colors.stageColors[stage as keyof typeof colors.stageColors] ?? colors.stageColors['Unknown'];
   return (
-    <View style={[styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-      <View style={[styles.badgeDot, { backgroundColor: cfg.dot }]} />
-      <Text style={[styles.badgeText, { color: cfg.text }]}>{stage || 'Unknown'}</Text>
+    <View style={s([styles.badgeFrame, { backgroundColor: cfg.bg, borderColor: cfg.border }])}>
+      <View style={s([styles.badgeDot, { backgroundColor: cfg.dot }])} />
+      <Text style={s([styles.badgeText, { color: cfg.text }])}>{stage || 'Unknown'}</Text>
     </View>
   );
 }
 
-function ProbBar({ value }: { value: number }) {
+function ProbBar({ value, styles }: { value: number; styles: any }) {
   const color = getProbColor(value);
   return (
-    <View style={styles.probBarRowWrapper}>
-      <View style={styles.probTrackBackground}>
-        <View style={[styles.probFillTrack, { width: `${value}%`, backgroundColor: color }]} />
+    <View style={s(styles.probBarRowWrapper)}>
+      <View style={s(styles.probTrackBackground)}>
+        <View style={s([styles.probFillTrack, { width: `${value}%`, backgroundColor: color }])} />
       </View>
-      <Text style={styles.probPercentageLabelText}>{value}%</Text>
+      <Text style={s(styles.probPercentageLabelText)}>{value}%</Text>
     </View>
   );
 }
 
-/* ── Main Component Export ───────────────────────────────────────── */
 export default function CRMDealsReadOnly() {
-  const [deals, setDeals] = useState<any[]>([]);
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
-  const [selectedDeal, setSelectedDeal] = useState<any>(null);
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,8 +695,8 @@ export default function CRMDealsReadOnly() {
 
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { All: deals.length };
-    STAGES.forEach((s) => {
-      counts[s] = deals.filter((d) => d.stage === s).length;
+    STAGES.forEach((sItem) => {
+      counts[sItem] = deals.filter((d) => d.stage === sItem).length;
     });
     return counts;
   }, [deals]);
@@ -122,58 +706,53 @@ export default function CRMDealsReadOnly() {
   }, [filteredDeals]);
 
   return (
-    <SafeAreaView style={styles.appSafeAreaViewBackground}>
-      {/* Absolute Top Subtle Decorative Gradient Accent Bar Replacement */}
-      <View style={styles.topAccentBarDecoration} />
+    <SafeAreaView style={s(styles.appSafeAreaViewBackground)}>
+      <View style={s(styles.topAccentBarDecoration)} />
 
-      {/* Screen Header Panel */}
-      <View style={styles.headerLayoutViewContainer}>
-        <View style={styles.headerLeftAlignmentGroup}>
-          <View style={styles.headerIconProfilePlaceholderSquare}>
-            <Text style={styles.headerEmojiSymbolIcon}>💼</Text>
+      <View style={s(styles.headerLayoutViewContainer)}>
+        <View style={s(styles.headerLeftAlignmentGroup)}>
+          <View style={s(styles.headerIconProfilePlaceholderSquare)}>
+            <Text style={s(styles.headerEmojiSymbolIcon)}>💼</Text>
           </View>
           <View>
-            <Text style={styles.headerScreenHeadlineText}>Deals</Text>
-            <Text style={styles.headerScreenSubheadlineText}>Review pipeline deals · Manager view</Text>
+            <Text style={s(styles.headerScreenHeadlineText)}>Deals</Text>
+            <Text style={s(styles.headerScreenSubheadlineText)}>Review pipeline deals · Manager view</Text>
           </View>
         </View>
-        <View style={styles.readOnlyFloatingStatusBadge}>
-          <View style={styles.readOnlyIndicatorAmberDot} />
-          <Text style={styles.readOnlyTextStringLabel}>Read-only</Text>
+        <View style={s(styles.readOnlyFloatingStatusBadge)}>
+          <View style={s(styles.readOnlyIndicatorAmberDot)} />
+          <Text style={s(styles.readOnlyTextStringLabel)}>Read-only</Text>
         </View>
       </View>
 
-      {/* Control Widgets Workspace (Search Input Field + Scrolling Filter Track) */}
-      <View style={styles.filterWorkspaceBoxWrapper}>
-        {/* Search Layout Group */}
-        <View style={styles.searchBarBoxFrame}>
-          <Text style={styles.searchGlassGlyphSymbol}>🔍</Text>
+      <View style={s(styles.filterWorkspaceBoxWrapper)}>
+        <View style={s(styles.searchBarBoxFrame)}>
+          <Text style={s(styles.searchGlassGlyphSymbol)}>🔍</Text>
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search deals, companies, owners…"
-            placeholderTextColor="#525252"
-            style={styles.searchBarInputTextNode}
+            placeholderTextColor={colors.textSecondary}
+            style={s(styles.searchBarInputTextNode)}
             autoCapitalize="none"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchFieldClearTriggerHitbox}>
-              <Text style={styles.searchFieldClearTriggerSymbolText}>×</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={s(styles.searchFieldClearTriggerHitbox)}>
+              <Text style={s(styles.searchFieldClearTriggerSymbolText)}>×</Text>
             </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* Stage Navigation Category Track */}
-        <View style={styles.horizontalScrollOuterAxisWrapperRow}>
-          <Text style={styles.scrollSectionTrackContextInlineLabel}>Stage:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTrackInnerScrollerContainer}>
-            {['All', ...STAGES].map((s) => {
-              const cfg = s !== 'All' ? STAGE_CONFIG[s] : null;
-              const isActive = stageFilter === s;
+        <View style={s(styles.horizontalScrollOuterAxisWrapperRow)}>
+          <Text style={s(styles.scrollSectionTrackContextInlineLabel)}>Stage:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s(styles.filterTrackInnerScrollerContainer)}>
+            {['All', ...STAGES].map((sItem) => {
+              const cfg = sItem !== 'All' ? colors.stageColors[sItem as keyof typeof colors.stageColors] : null;
+              const isActive = stageFilter === sItem;
 
               let customChipBg = 'transparent';
-              let customChipBorderColor = '#262626';
-              let customChipTextColor = '#737373';
+              let customChipBorderColor = colors.border;
+              let customChipTextColor = colors.textSecondary;
 
               if (isActive) {
                 if (cfg) {
@@ -181,28 +760,28 @@ export default function CRMDealsReadOnly() {
                   customChipBorderColor = cfg.border;
                   customChipTextColor = cfg.text;
                 } else {
-                  customChipBg = 'rgba(255, 255, 255, 0.1)';
-                  customChipBorderColor = 'rgba(255, 255, 255, 0.2)';
-                  customChipTextColor = '#ffffff';
+                  customChipBg = colors.borderLight;
+                  customChipBorderColor = colors.border;
+                  customChipTextColor = colors.text;
                 }
               }
 
               return (
                 <TouchableOpacity
-                  key={s}
+                  key={sItem}
                   activeOpacity={0.7}
-                  onPress={() => setStageFilter(s)}
-                  style={[
+                  onPress={() => setStageFilter(sItem)}
+                  style={s([
                     styles.filterChipButtonActionFrame,
                     { backgroundColor: customChipBg, borderColor: customChipBorderColor },
-                  ]}
+                  ])}
                 >
-                  {cfg && <View style={[styles.chipIndicatorDotNode, { backgroundColor: cfg.dot }]} />}
-                  <Text style={[styles.filterChipButtonLabelText, { color: customChipTextColor, fontWeight: isActive ? '700' : '600' }]}>
-                    {s}
+                  {cfg && <View style={s([styles.chipIndicatorDotNode, { backgroundColor: cfg.dot }])} />}
+                  <Text style={s([styles.filterChipButtonLabelText, { color: customChipTextColor, fontWeight: isActive ? '700' : '600' }])}>
+                    {sItem}
                   </Text>
-                  <View style={[styles.counterPillWrapperDecoration, { backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : '#262626' }]}>
-                    <Text style={styles.counterPillWrapperDecorationValueText}>{stageCounts[s] ?? 0}</Text>
+                  <View style={s([styles.counterPillWrapperDecoration, { backgroundColor: isActive ? colors.borderLight : colors.border }])}>
+                    <Text style={s([styles.counterPillWrapperDecorationValueText, { color: isActive ? colors.text : colors.textSecondary }])}>{stageCounts[sItem] ?? 0}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -211,103 +790,99 @@ export default function CRMDealsReadOnly() {
         </View>
       </View>
 
-      {/* Status Feedback Layers */}
       {error && (
-        <View style={styles.alertFeedbackCardContainerRow}>
-          <Text style={styles.alertFeedbackWarningIconGlyph}>⚠</Text>
-          <Text style={styles.alertFeedbackPayloadDescriptionText} numberOfLines={2}>{error}</Text>
-          <TouchableOpacity onPress={() => setError(null)} style={styles.alertFeedbackDismissActionHitbox}>
-            <Text style={styles.alertFeedbackDismissActionSymbol}>×</Text>
+        <View style={s(styles.alertFeedbackCardContainerRow)}>
+          <Text style={s(styles.alertFeedbackWarningIconGlyph)}>⚠</Text>
+          <Text style={s(styles.alertFeedbackPayloadDescriptionText)} numberOfLines={2}>{error}</Text>
+          <TouchableOpacity onPress={() => setError(null)} style={s(styles.alertFeedbackDismissActionHitbox)}>
+            <Text style={s(styles.alertFeedbackDismissActionSymbol)}>×</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {loading && (
-        <View style={styles.stateBlockCentralizedFeedbackContainer}>
-          <ActivityIndicator size="large" color="#38bdf8" />
-          <Text style={styles.stateBlockContextDescriptionStringText}>Loading pipeline deals…</Text>
+        <View style={s(styles.stateBlockCentralizedFeedbackContainer)}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={s(styles.stateBlockContextDescriptionStringText)}>Loading pipeline deals…</Text>
         </View>
       )}
 
       {!loading && filteredDeals.length === 0 && (
-        <View style={styles.stateBlockCentralizedFeedbackContainer}>
-          <View style={styles.emptyResultsGraphicBoxIconCard}>
-            <Text style={styles.emptyResultsGraphicBoxIconCardGlyphSymbol}>🔍</Text>
+        <View style={s(styles.stateBlockCentralizedFeedbackContainer)}>
+          <View style={s(styles.emptyResultsGraphicBoxIconCard)}>
+            <Text style={s(styles.emptyResultsGraphicBoxIconCardGlyphSymbol)}>🔍</Text>
           </View>
-          <Text style={styles.emptyResultsHeadlinePromptMessageText}>No deals found</Text>
-          <Text style={styles.emptyResultsSubheadingExplanationPromptText}>Try adjusting your search query parameters or stage selections.</Text>
+          <Text style={s(styles.emptyResultsHeadlinePromptMessageText)}>No deals found</Text>
+          <Text style={s(styles.emptyResultsSubheadingExplanationPromptText)}>Try adjusting your search query parameters or stage selections.</Text>
         </View>
       )}
 
-      {/* Primary Deal Cards Vertical Scroll List Workspace */}
       {!loading && filteredDeals.length > 0 && (
-        <ScrollView contentContainerStyle={styles.verticalCardsLayoutListScrollTrack} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={s(styles.verticalCardsLayoutListScrollTrack)} showsVerticalScrollIndicator={false}>
           {filteredDeals.map((deal) => (
             <TouchableOpacity
               key={deal.id || deal._id}
               activeOpacity={0.85}
               onPress={() => setSelectedDeal(deal)}
-              style={styles.dealListItemCardContainerBox}
+              style={s(styles.dealListItemCardContainerBox)}
             >
-              {/* Profile Main Header Identity Grid Row */}
-              <View style={styles.cardLayoutIdentitySplitHeaderRow}>
-                <View style={styles.cardIdentityLeftInfoStack}>
-                  <Text style={styles.cardDealProfileTitleHeadingText} numberOfLines={1}>
+              <View style={s(styles.cardLayoutIdentitySplitHeaderRow)}>
+                <View style={s(styles.cardIdentityLeftInfoStack)}>
+                  <Text style={s(styles.cardDealProfileTitleHeadingText)} numberOfLines={1}>
                     {deal.name}
                   </Text>
-                  <View style={styles.cardCompanyAffiliationMetadataRowInlineLayout}>
+                  <View style={s(styles.cardCompanyAffiliationMetadataRowInlineLayout)}>
                     {deal.company ? (
-                      <View style={styles.companyCharacterSymbolAvatarSquareIcon}>
-                        <Text style={styles.companyCharacterSymbolAvatarSquareIconLetterChar}>
+                      <View style={s(styles.companyCharacterSymbolAvatarSquareIcon)}>
+                        <Text style={s(styles.companyCharacterSymbolAvatarSquareIconLetterChar)}>
                           {deal.company.charAt(0).toUpperCase()}
                         </Text>
                       </View>
                     ) : null}
-                    <Text style={styles.cardAssociatedCompanyNameLabelString} numberOfLines={1}>
+                    <Text style={s(styles.cardAssociatedCompanyNameLabelString)} numberOfLines={1}>
                       {deal.company || '—'}
                     </Text>
                   </View>
                 </View>
-                <StageBadge stage={deal.stage} />
+                <StageBadge stage={deal.stage} colors={colors} styles={styles} />
               </View>
 
-              {/* Data Properties Meta Dashboard Split Block */}
-              <View style={styles.cardPropertiesSystemQuadGridDisplayGrid}>
+              <View style={s(styles.cardPropertiesSystemQuadGridDisplayGrid)}>
                 
-                <View style={styles.cardPropertyQuadGridCellFieldBox}>
-                  <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>VALUE</Text>
-                  <Text style={styles.quadGridCellFieldBoxDataValueTextEmeraldCurrencyString}>
+                <View style={s(styles.cardPropertyQuadGridCellFieldBox)}>
+                  <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>VALUE</Text>
+                  <Text style={s(styles.quadGridCellFieldBoxDataValueTextEmeraldCurrencyString)}>
                     {formatCurrency(deal.value)}
                   </Text>
                 </View>
 
-                <View style={styles.cardPropertyQuadGridCellFieldBox}>
-                  <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>PROBABILITY</Text>
+                <View style={s(styles.cardPropertyQuadGridCellFieldBox)}>
+                  <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>PROBABILITY</Text>
                   {deal.probability != null ? (
-                    <ProbBar value={deal.probability} />
+                    <ProbBar value={deal.probability} styles={styles} />
                   ) : (
-                    <Text style={styles.quadGridCellFieldBoxDataFallbackMutedString}>—</Text>
+                    <Text style={s(styles.quadGridCellFieldBoxDataFallbackMutedString)}>—</Text>
                   )}
                 </View>
 
-                <View style={styles.cardPropertyQuadGridCellFieldBox}>
-                  <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>CLOSE DATE</Text>
-                  <Text style={styles.quadGridCellFieldBoxDataNormalWhiteString}>
+                <View style={s(styles.cardPropertyQuadGridCellFieldBox)}>
+                  <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>CLOSE DATE</Text>
+                  <Text style={s(styles.quadGridCellFieldBoxDataNormalWhiteString)}>
                     {formatDate(deal.closeDate)}
                   </Text>
                 </View>
 
-                <View style={styles.cardPropertyQuadGridCellFieldBox}>
-                  <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>OWNER</Text>
-                  <View style={styles.cardAccountOwnerAffiliationRowInlineGroup}>
+                <View style={s(styles.cardPropertyQuadGridCellFieldBox)}>
+                  <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>OWNER</Text>
+                  <View style={s(styles.cardAccountOwnerAffiliationRowInlineGroup)}>
                     {deal.owner ? (
-                      <View style={styles.accountOwnerAvatarCircleProfileIcon}>
-                        <Text style={styles.accountOwnerAvatarCircleProfileIconLetterChar}>
+                      <View style={s(styles.accountOwnerAvatarCircleProfileIcon)}>
+                        <Text style={s(styles.accountOwnerAvatarCircleProfileIconLetterChar)}>
                           {deal.owner.charAt(0).toUpperCase()}
                         </Text>
                       </View>
                     ) : null}
-                    <Text style={styles.quadGridCellFieldBoxDataNormalWhiteString} numberOfLines={1}>
+                    <Text style={s(styles.quadGridCellFieldBoxDataNormalWhiteString)} numberOfLines={1}>
                       {deal.owner || '—'}
                     </Text>
                   </View>
@@ -315,22 +890,20 @@ export default function CRMDealsReadOnly() {
 
               </View>
 
-              {/* Bottom Card Disclosure Actions Panel Trigger */}
-              <View style={styles.cardActionFooterSimulatedRowFrame}>
-                <Text style={styles.cardActionFooterSimulatedRowFrameInteractiveActionTextString}>View Details →</Text>
+              <View style={s(styles.cardActionFooterSimulatedRowFrame)}>
+                <Text style={s(styles.cardActionFooterSimulatedRowFrameInteractiveActionTextString)}>View Details →</Text>
               </View>
             </TouchableOpacity>
           ))}
 
-          {/* Aggregated Calculation Total Metric Footer Box Component */}
-          <View style={styles.aggregatedListSummaryCalculationMetaCardContainerBoxRow}>
-            <Text style={styles.aggregatedListSummaryCalculationMetaCardLabelStringText}>
-              Showing <Text style={styles.whiteHighlightTextAccent}>{filteredDeals.length}</Text> of{' '}
-              <Text style={styles.whiteHighlightTextAccent}>{deals.length}</Text> deals
+          <View style={s(styles.aggregatedListSummaryCalculationMetaCardContainerBoxRow)}>
+            <Text style={s(styles.aggregatedListSummaryCalculationMetaCardLabelStringText)}>
+              Showing <Text style={s(styles.whiteHighlightTextAccent)}>{filteredDeals.length}</Text> of{' '}
+              <Text style={s(styles.whiteHighlightTextAccent)}>{deals.length}</Text> deals
             </Text>
-            <Text style={styles.aggregatedListSummaryCalculationMetaCardLabelStringText}>
+            <Text style={s(styles.aggregatedListSummaryCalculationMetaCardLabelStringText)}>
               Total Volume:{' '}
-              <Text style={styles.quadGridCellFieldBoxDataValueTextEmeraldCurrencyString}>
+              <Text style={s(styles.quadGridCellFieldBoxDataValueTextEmeraldCurrencyString)}>
                 {formatCurrency(totalFilteredValue)}
               </Text>
             </Text>
@@ -338,93 +911,87 @@ export default function CRMDealsReadOnly() {
         </ScrollView>
       )}
 
-      {/* ── Native Slide Overlay Profile Bottom Sheet Modal ── */}
       <Modal visible={selectedDeal !== null} transparent={true} animationType="slide" onRequestClose={() => setSelectedDeal(null)}>
-        <TouchableOpacity style={styles.modalOverlayDimBackdropContainerMask} activeOpacity={1} onPress={() => setSelectedDeal(null)}>
+        <TouchableOpacity style={s(styles.modalOverlayDimBackdropContainerMask)} activeOpacity={1} onPress={() => setSelectedDeal(null)}>
           {selectedDeal && (
-            <View style={styles.modalProfileBottomSheetCardBodyStructure} onStartShouldSetResponder={() => true}>
+            <View style={s(styles.modalProfileBottomSheetCardBodyStructure)} onStartShouldSetResponder={() => true}>
               
-              {/* Bottom Sheet Structural Header Drag Handle Strip */}
-              <View style={styles.bottomSheetTopStructuralDragHandleBarStrip} />
+              <View style={s(styles.bottomSheetTopStructuralDragHandleBarStrip)} />
 
-              {/* Summary Primary Heading Identity Display Container Row */}
-              <View style={styles.sheetLayoutIdentityHeaderContainerSectionBlock}>
-                <View style={styles.sheetLayoutIdentityHeaderFlexAlignmentRowWrapper}>
-                  <View style={styles.headerIconProfilePlaceholderSquare}>
-                    <Text style={styles.headerEmojiSymbolIcon}>💼</Text>
+              <View style={s(styles.sheetLayoutIdentityHeaderContainerSectionBlock)}>
+                <View style={s(styles.sheetLayoutIdentityHeaderFlexAlignmentRowWrapper)}>
+                  <View style={s(styles.headerIconProfilePlaceholderSquare)}>
+                    <Text style={s(styles.headerEmojiSymbolIcon)}>💼</Text>
                   </View>
-                  <View style={styles.sheetLayoutIdentityHeaderPropertiesStackGroup}>
-                    <Text style={styles.sheetLayoutIdentityHeaderDealNameHeadingText} numberOfLines={2}>
+                  <View style={s(styles.sheetLayoutIdentityHeaderPropertiesStackGroup)}>
+                    <Text style={s(styles.sheetLayoutIdentityHeaderDealNameHeadingText)} numberOfLines={2}>
                       {selectedDeal.name}
                     </Text>
-                    <Text style={styles.sheetLayoutIdentityHeaderContextLabelSubtextString}>Deal summary & pipeline timeline info</Text>
-                    <View style={styles.sheetLayoutIdentityHeaderBadgePositionerAlignWrapper}>
-                      <StageBadge stage={selectedDeal.stage} />
+                    <Text style={s(styles.sheetLayoutIdentityHeaderContextLabelSubtextString)}>Deal summary & pipeline timeline info</Text>
+                    <View style={s(styles.sheetLayoutIdentityHeaderBadgePositionerAlignWrapper)}>
+                      <StageBadge stage={selectedDeal.stage} colors={colors} styles={styles} />
                     </View>
                   </View>
-                  <TouchableOpacity onPress={() => setSelectedDeal(null)} style={styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrame}>
-                    <Text style={styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText}>×</Text>
+                  <TouchableOpacity onPress={() => setSelectedDeal(null)} style={s(styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrame)}>
+                    <Text style={s(styles.sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText)}>×</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Structured Attribute Specification Rows Container Box Section */}
-              <ScrollView style={styles.sheetFieldsScrollTrackContainer} showsVerticalScrollIndicator={false}>
-                <View style={styles.sheetFieldsVerticalStackSpacingLayout}>
+              <ScrollView style={s(styles.sheetFieldsScrollTrackContainer)} showsVerticalScrollIndicator={false}>
+                <View style={s(styles.sheetFieldsVerticalStackSpacingLayout)}>
                   
-                  {/* Financial Value Statement Banner Frame */}
-                  <View style={styles.sheetFinancialValueStatementHighlightBannerBox}>
-                    <View style={styles.sheetFinancialValueStatementLeftIndicatorInlineLabelGroup}>
-                      <Text style={styles.sheetFinancialValueStatementBannerEmojiSymbolIcon}>💰</Text>
-                      <Text style={styles.sheetFinancialValueStatementBannerLabelUppercaseText}>DEAL VALUE</Text>
+                  <View style={s([styles.sheetFinancialValueStatementHighlightBannerBox, isDark && styles.sheetFinancialValueStatementHighlightBannerBoxActive])}>
+                    <View style={s(styles.sheetFinancialValueStatementLeftIndicatorInlineLabelGroup)}>
+                      <Text style={s(styles.sheetFinancialValueStatementBannerEmojiSymbolIcon)}>💰</Text>
+                      <Text style={s(styles.sheetFinancialValueStatementBannerLabelUppercaseText)}>DEAL VALUE</Text>
                     </View>
-                    <Text style={styles.sheetFinancialValueStatementBannerLargeEmeraldCurrencyStringText}>
+                    <Text style={s(styles.sheetFinancialValueStatementBannerLargeEmeraldCurrencyStringText)}>
                       {formatCurrency(selectedDeal.value)}
                     </Text>
                   </View>
 
-                  {/* Sub-Property Feature Information Cell Breakdown Field Grid */}
-                  <View style={styles.sheetFieldsStructuralTwoColumnFlexWrapGridSystem}>
+                  <View style={s(styles.sheetFieldsStructuralTwoColumnFlexWrapGridSystem)}>
                     
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <View style={styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader}>
-                        <Text style={styles.sheetFieldsCellIconGlyphInlineSymbol}>🏢</Text>
-                        <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>COMPANY</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <View style={s(styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader)}>
+                        <Text style={s(styles.sheetFieldsCellIconGlyphInlineSymbol)}>🏢</Text>
+                        <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>COMPANY</Text>
                       </View>
-                      <Text style={styles.sheetFieldsCellContentPrimaryWhiteDataStringText} numberOfLines={1}>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryWhiteDataStringText)} numberOfLines={1}>
                         {selectedDeal.company || '—'}
                       </Text>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <View style={styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader}>
-                        <Text style={styles.sheetFieldsCellIconGlyphInlineSymbol}>👤</Text>
-                        <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>OWNER</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <View style={s(styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader)}>
+                        <Text style={s(styles.sheetFieldsCellIconGlyphInlineSymbol)}>👤</Text>
+                        <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>OWNER</Text>
                       </View>
-                      <Text style={styles.sheetFieldsCellContentPrimaryWhiteDataStringText} numberOfLines={1}>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryWhiteDataStringText)} numberOfLines={1}>
                         {selectedDeal.owner || '—'}
                       </Text>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <View style={styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader}>
-                        <Text style={styles.sheetFieldsCellIconGlyphInlineSymbol}>📅</Text>
-                        <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>CLOSE DATE</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <View style={s(styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader)}>
+                        <Text style={s(styles.sheetFieldsCellIconGlyphInlineSymbol)}>📅</Text>
+                        <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>CLOSE DATE</Text>
                       </View>
-                      <Text style={styles.sheetFieldsCellContentPrimaryWhiteDataStringText} numberOfLines={1}>
+                      <Text style={s(styles.sheetFieldsCellContentPrimaryWhiteDataStringText)} numberOfLines={1}>
                         {formatDate(selectedDeal.closeDate)}
                       </Text>
                     </View>
 
-                    <View style={styles.sheetFieldsTwoColumnFlexCellBlock}>
-                      <View style={styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader}>
-                        <Text style={styles.sheetFieldsCellIconGlyphInlineSymbol}>🎯</Text>
-                        <Text style={styles.quadGridCellFieldBoxLabelUppercaseText}>PROBABILITY</Text>
+                    <View style={s(styles.sheetFieldsTwoColumnFlexCellBlock)}>
+                      <View style={s(styles.sheetFieldsCellIconAndContextLabelRowGroupInlineHeader)}>
+                        <Text style={s(styles.sheetFieldsCellIconGlyphInlineSymbol)}>🎯</Text>
+                        <Text style={s(styles.quadGridCellFieldBoxLabelUppercaseText)}>PROBABILITY</Text>
                       </View>
                       {selectedDeal.probability != null ? (
-                        <ProbBar value={selectedDeal.probability} />
+                        <ProbBar value={selectedDeal.probability} styles={styles} />
                       ) : (
-                        <Text style={styles.quadGridCellFieldBoxDataFallbackMutedString}>—</Text>
+                        <Text style={s(styles.quadGridCellFieldBoxDataFallbackMutedString)}>—</Text>
                       )}
                     </View>
 
@@ -432,10 +999,9 @@ export default function CRMDealsReadOnly() {
                 </View>
               </ScrollView>
 
-              {/* Profile Sheet Dismiss Action Bottom Control Panel Box */}
-              <View style={styles.sheetLayoutFooterActionControlPanelRowFrameBox}>
-                <TouchableOpacity onPress={() => setSelectedDeal(null)} style={styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame}>
-                  <Text style={styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel}>Close</Text>
+              <View style={s(styles.sheetLayoutFooterActionControlPanelRowFrameBox)}>
+                <TouchableOpacity onPress={() => setSelectedDeal(null)} style={s(styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame)}>
+                  <Text style={s(styles.sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel)}>Close</Text>
                 </TouchableOpacity>
               </View>
 
@@ -447,556 +1013,3 @@ export default function CRMDealsReadOnly() {
     </SafeAreaView>
   );
 }
-
-/* ── Native Component Stylesheet Definitions ────────────────────── */
-const styles = StyleSheet.create({
-  appSafeAreaViewBackground: {
-    flex: 1,
-    backgroundColor: '#090a0f',
-  },
-  topAccentBarDecoration: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: '#38bdf8',
-    zIndex: 999,
-  },
-  headerLayoutViewContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 44 : 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderColor: '#171717',
-  },
-  headerLeftAlignmentGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerIconProfilePlaceholderSquare: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerEmojiSymbolIcon: {
-    fontSize: 20,
-  },
-  headerScreenHeadlineText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#ffffff',
-    letterSpacing: -0.5,
-  },
-  headerScreenSubheadlineText: {
-    fontSize: 11,
-    color: '#a3a3a3',
-    marginTop: 1,
-  },
-  readOnlyFloatingStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(251, 191, 36, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.25)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-    gap: 6,
-  },
-  readOnlyIndicatorAmberDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#fbbf24',
-  },
-  readOnlyTextStringLabel: {
-    color: '#fbbf24',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  filterWorkspaceBoxWrapper: {
-    backgroundColor: '#0f1117',
-    borderBottomWidth: 1,
-    borderColor: '#171717',
-    padding: 16,
-    gap: 14,
-  },
-  searchBarBoxFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-  },
-  searchGlassGlyphSymbol: {
-    fontSize: 14,
-    marginRight: 8,
-  },
-  searchBarInputTextNode: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 14,
-  },
-  searchFieldClearTriggerHitbox: {
-    padding: 6,
-  },
-  searchFieldClearTriggerSymbolText: {
-    color: '#737373',
-    fontSize: 20,
-    fontWeight: 'bold',
-    lineHeight: 20,
-  },
-  horizontalScrollOuterAxisWrapperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scrollSectionTrackContextInlineLabel: {
-    fontSize: 12,
-    color: '#737373',
-    fontWeight: '600',
-    marginRight: 10,
-  },
-  filterTrackInnerScrollerContainer: {
-    gap: 8,
-    alignItems: 'center',
-  },
-  filterChipButtonActionFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 6,
-  },
-  chipIndicatorDotNode: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  filterChipButtonLabelText: {
-    fontSize: 12,
-  },
-  counterPillWrapperDecoration: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  counterPillWrapperDecorationValueText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  alertFeedbackCardContainerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(248, 113, 113, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.25)',
-    margin: 16,
-    marginBottom: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 10,
-  },
-  alertFeedbackWarningIconGlyph: {
-    color: '#f87171',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  alertFeedbackPayloadDescriptionText: {
-    flex: 1,
-    color: '#fca5a5',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  alertFeedbackDismissActionHitbox: {
-    padding: 4,
-  },
-  alertFeedbackDismissActionSymbol: {
-    color: '#f87171',
-    fontSize: 20,
-    lineHeight: 20,
-  },
-  stateBlockCentralizedFeedbackContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 32,
-    gap: 12,
-  },
-  stateBlockContextDescriptionStringText: {
-    color: '#a3a3a3',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptyResultsGraphicBoxIconCard: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyResultsGraphicBoxIconCardGlyphSymbol: {
-    fontSize: 24,
-  },
-  emptyResultsHeadlinePromptMessageText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#e5e5e5',
-    textAlign: 'center',
-  },
-  emptyResultsSubheadingExplanationPromptText: {
-    fontSize: 12,
-    color: '#737373',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  verticalCardsLayoutListScrollTrack: {
-    padding: 16,
-    gap: 14,
-  },
-  dealListItemCardContainerBox: {
-    backgroundColor: '#0f1117',
-    borderWidth: 1,
-    borderColor: '#171717',
-    borderRadius: 16,
-    padding: 16,
-    gap: 16,
-  },
-  cardLayoutIdentitySplitHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  cardIdentityLeftInfoStack: {
-    flex: 1,
-    gap: 4,
-  },
-  cardDealProfileTitleHeadingText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  cardCompanyAffiliationMetadataRowInlineLayout: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  companyCharacterSymbolAvatarSquareIcon: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  companyCharacterSymbolAvatarSquareIconLetterChar: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#a3a3a3',
-  },
-  cardAssociatedCompanyNameLabelString: {
-    fontSize: 13,
-    color: '#a3a3a3',
-    fontWeight: '500',
-  },
-  cardPropertiesSystemQuadGridDisplayGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#171717',
-  },
-  cardPropertyQuadGridCellFieldBox: {
-    width: '50%',
-    paddingRight: 6,
-    gap: 4,
-  },
-  quadGridCellFieldBoxLabelUppercaseText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#525252',
-    letterSpacing: 0.8,
-  },
-  quadGridCellFieldBoxDataValueTextEmeraldCurrencyString: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#34d399',
-  },
-  quadGridCellFieldBoxDataNormalWhiteString: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#e5e5e5',
-  },
-  quadGridCellFieldBoxDataFallbackMutedString: {
-    fontSize: 13,
-    color: '#404040',
-    fontWeight: '600',
-  },
-  cardAccountOwnerAffiliationRowInlineGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  accountOwnerAvatarCircleProfileIcon: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#1e3a8a',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  accountOwnerAvatarCircleProfileIconLetterChar: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  cardActionFooterSimulatedRowFrame: {
-    alignItems: 'flex-end',
-    paddingTop: 4,
-  },
-  cardActionFooterSimulatedRowFrameInteractiveActionTextString: {
-    fontSize: 12,
-    color: '#38bdf8',
-    fontWeight: '700',
-  },
-  aggregatedListSummaryCalculationMetaCardContainerBoxRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingHorizontal: 4,
-    marginBottom: 24,
-  },
-  aggregatedListSummaryCalculationMetaCardLabelStringText: {
-    fontSize: 12,
-    color: '#525252',
-    fontWeight: '600',
-  },
-  whiteHighlightTextAccent: {
-    color: '#a3a3a3',
-    fontWeight: '700',
-  },
-  badgeFrame: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-  },
-  badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  probBarRowWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  probTrackBackground: {
-    width: 64,
-    height: 6,
-    borderRadius: 99,
-    backgroundColor: '#171717',
-    overflow: 'hidden',
-  },
-  probFillTrack: {
-    height: '100%',
-    borderRadius: 99,
-  },
-  probPercentageLabelText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#a3a3a3',
-  },
-  modalOverlayDimBackdropContainerMask: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
-  },
-  modalProfileBottomSheetCardBodyStructure: {
-    backgroundColor: '#0f1117',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: '#262626',
-    height: WINDOW_HEIGHT * 0.75,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 24,
-  },
-  bottomSheetTopStructuralDragHandleBarStrip: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#262626',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-  },
-  sheetLayoutIdentityHeaderContainerSectionBlock: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderColor: '#171717',
-  },
-  sheetLayoutIdentityHeaderFlexAlignmentRowWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    position: 'relative',
-  },
-  sheetLayoutIdentityHeaderPropertiesStackGroup: {
-    flex: 1,
-    marginLeft: 14,
-    marginRight: 36,
-    gap: 4,
-  },
-  sheetLayoutIdentityHeaderDealNameHeadingText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#ffffff',
-    lineHeight: 22,
-  },
-  sheetLayoutIdentityHeaderContextLabelSubtextString: {
-    fontSize: 12,
-    color: '#737373',
-    fontWeight: '500',
-  },
-  sheetLayoutIdentityHeaderBadgePositionerAlignWrapper: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-  },
-  sheetLayoutIdentityHeaderCloseActionCircularButtonFrame: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sheetLayoutIdentityHeaderCloseActionCircularButtonFrameSymbolText: {
-    fontSize: 18,
-    color: '#a3a3a3',
-    fontWeight: 'bold',
-    lineHeight: 18,
-  },
-  sheetFieldsScrollTrackContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  sheetFieldsVerticalStackSpacingLayout: {
-    gap: 16,
-    paddingBottom: 24,
-  },
-  sheetFinancialValueStatementHighlightBannerBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'rgba(52, 211, 153, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.15)',
-    borderRadius: 14,
-    padding: 16,
-  },
-  sheetFinancialValueStatementLeftIndicatorInlineLabelGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sheetFinancialValueStatementBannerEmojiSymbolIcon: {
-    fontSize: 18,
-  },
-  sheetFinancialValueStatementBannerLabelUppercaseText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#737373',
-    letterSpacing: 0.8,
-  },
-  sheetFinancialValueStatementBannerLargeEmeraldCurrencyStringText: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#34d399',
-  },
-  sheetFieldsStructuralTwoColumnFlexWrapGridSystem: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 14,
-  },
-  sheetFieldsTwoColumnFlexCellBlock: {
-    width: '50%',
-    paddingRight: 8,
-    gap: 6,
-  },
-  sheetFieldsCellIconAndContextLabelRowGroupInlineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sheetFieldsCellIconGlyphInlineSymbol: {
-    fontSize: 13,
-  },
-  sheetFieldsCellContentPrimaryWhiteDataStringText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#e5e5e5',
-  },
-  sheetLayoutFooterActionControlPanelRowFrameBox: {
-    padding: 20,
-    backgroundColor: '#0a0b0f',
-    borderTopWidth: 1,
-    borderColor: '#171717',
-    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-  },
-  sheetLayoutFooterActionControlPanelDismissButtonTriggerFrame: {
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetLayoutFooterActionControlPanelDismissButtonTriggerFrameTextLabel: {
-    color: '#a3a3a3',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-});

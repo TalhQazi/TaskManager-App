@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { ExternalLink, Loader2, RefreshCw, Search, ShieldAlert } from "lucide-react-native";
 import Colors from "@/constants/colors";
+import { s, wp, hp, fs } from "@/util/styles";
 
 const DEFAULT_PAGE_SIZE = 10;
 const BASE_PATH = "/api/external/maintenance";
@@ -318,50 +319,50 @@ const UphMaintenance: React.FC = () => {
   const hasTenantAttachment = Boolean(tenantAttachmentUrl || selectedRequest?.attachmentKey);
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
+    <SafeAreaView style={s(styles.safeContainer)}>
       {/* Top Header Panel Section */}
-      <View style={styles.headerLayoutBlock}>
-        <View style={styles.brandingRow}>
-          <Image source={{ uri: "https://via.placeholder.com/44" }} style={styles.brandingLogo} />
+      <View style={s(styles.headerLayoutBlock)}>
+        <View style={s(styles.brandingRow)}>
+          <Image source={{ uri: "https://via.placeholder.com/44" }} style={s(styles.brandingLogo)} />
           <View>
-            <Text style={styles.headerMainTitle}>Atlas Property Holding</Text>
-            <Text style={styles.headerSubtitleText}>Maintenance Requests</Text>
+            <Text style={s(styles.headerMainTitle)}>Atlas Property Holding</Text>
+            <Text style={s(styles.headerSubtitleText)}>Maintenance Requests</Text>
           </View>
         </View>
 
         <TouchableOpacity 
-          style={styles.actionRefreshButton} 
+          style={s(styles.actionRefreshButton)} 
           onPress={() => { fetchList(); if (selectedRequestId) fetchDetail(selectedRequestId); }}
         >
-          <RefreshCw size={12} color="#18181b" style={styles.inlineIconSpacing} />
-          <Text style={styles.refreshBtnLabel}>Refresh</Text>
+          <RefreshCw size={fs(3.5)} color="#18181b" style={s(styles.inlineIconSpacing)} />
+          <Text style={s(styles.refreshBtnLabel)}>Refresh</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={s(styles.scrollContent)} showsVerticalScrollIndicator={false}>
         
         {/* API Infrastructure Configuration Warning Banner */}
         {!hasApiKey && (
-          <View style={styles.warningBannerContainer}>
-            <ShieldAlert size={16} color="#9a3412" style={styles.inlineIconSpacing} />
-            <Text style={styles.warningBannerText}>Missing API Authentication Security Keys</Text>
+          <View style={s(styles.warningBannerContainer)}>
+            <ShieldAlert size={fs(4.5)} color="#9a3412" style={s(styles.inlineIconSpacing)} />
+            <Text style={s(styles.warningBannerText)}>Missing API Authentication Security Keys</Text>
           </View>
         )}
 
         {/* Filter & Searching Management Dashboard Card */}
-        <View style={styles.dashboardCardBlock}>
-          <Text style={styles.cardSectionTitle}>Maintenance Filtering Queue</Text>
+        <View style={s(styles.dashboardCardBlock)}>
+          <Text style={s(styles.cardSectionTitle)}>Maintenance Filtering Queue</Text>
           
-          <View style={styles.formInputGroupField}>
-            <Text style={styles.fieldInputLabelText}>Status Selection Filter</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalSelectChipRow}>
+          <View style={s(styles.formInputGroupField)}>
+            <Text style={s(styles.fieldInputLabelText)}>Status Selection Filter</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s(styles.horizontalSelectChipRow)}>
               {STATUS_FILTERS.map((status) => (
                 <TouchableOpacity
                   key={status}
                   onPress={() => { setStatusFilter(status); setPage(1); }}
-                  style={[styles.selectorChipBtn, statusFilter === status && styles.selectorChipBtnActive]}
+                  style={s([styles.selectorChipBtn, statusFilter === status && styles.selectorChipBtnActive])}
                 >
-                  <Text style={[styles.selectorChipText, statusFilter === status && styles.selectorChipTextActive]}>
+                  <Text style={s([styles.selectorChipText, statusFilter === status && styles.selectorChipTextActive])}>
                     {status === "all" ? "ALL STATUSES" : status.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
@@ -369,44 +370,44 @@ const UphMaintenance: React.FC = () => {
             </ScrollView>
           </View>
 
-          <View style={styles.formInputGroupField}>
-            <Text style={styles.fieldInputLabelText}>Search Tenant Name</Text>
-            <View style={styles.searchBarInlineFrame}>
+          <View style={s(styles.formInputGroupField)}>
+            <Text style={s(styles.fieldInputLabelText)}>Search Tenant Name</Text>
+            <View style={s(styles.searchBarInlineFrame)}>
               <TextInput
-                style={styles.searchNativeInputComponent}
+                style={s(styles.searchNativeInputComponent)}
                 value={searchInput}
                 onChangeText={setSearchInput}
                 placeholder="Search by tenant parameter name..."
                 placeholderTextColor="#a1a1aa"
               />
-              <TouchableOpacity style={styles.searchActionSubmitBtn} onPress={onSearchSubmit}>
-                <Search size={14} color="#ffffff" />
+              <TouchableOpacity style={s(styles.searchActionSubmitBtn)} onPress={onSearchSubmit}>
+                <Search size={fs(3.8)} color="#ffffff" />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
         {/* Master Registry List Database Output Card */}
-        <View style={styles.dashboardCardBlock}>
-          <Text style={styles.cardSectionTitle}>Active Requests Overview Matrix</Text>
-          <Text style={styles.cardSectionSubtitle}>Page {pagination.page} of {Math.max(pagination.totalPages, 1)} • {pagination.total} records</Text>
+        <View style={s(styles.dashboardCardBlock)}>
+          <Text style={s(styles.cardSectionTitle)}>Active Requests Overview Matrix</Text>
+          <Text style={s(styles.cardSectionSubtitle)}>Page {pagination.page} of {Math.max(pagination.totalPages, 1)} • {pagination.total} records</Text>
 
           {loadingList ? (
-            <View style={styles.loaderCenterBlock}>
+            <View style={s(styles.loaderCenterBlock)}>
               <ActivityIndicator size="small" color="#0284c7" />
             </View>
           ) : listError ? (
-            <Text style={styles.errorMessageLayoutText}>{listError}</Text>
+            <Text style={s(styles.errorMessageLayoutText)}>{listError}</Text>
           ) : requests.length === 0 ? (
-            <Text style={styles.emptyMessageLayoutText}>No active maintenance requests discovered in registry.</Text>
+            <Text style={s(styles.emptyMessageLayoutText)}>No active maintenance requests discovered in registry.</Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableHorizontalWrapper}>
-              <View style={styles.tableMatrixGrid}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.thText, { width: 110 }]}>Tenant Name</Text>
-                  <Text style={[styles.thText, { width: 110 }]}>Issue Type</Text>
-                  <Text style={[styles.thText, { width: 95 }]}>Status</Text>
-                  <Text style={[styles.thText, { width: 110 }]}>Created Date</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={true} style={s(styles.tableHorizontalWrapper)}>
+              <View style={s(styles.tableMatrixGrid)}>
+                <View style={s(styles.tableHeaderRow)}>
+                  <Text style={s([styles.thText, { width: wp(26) }])}>Tenant Name</Text>
+                  <Text style={s([styles.thText, { width: wp(26) }])}>Issue Type</Text>
+                  <Text style={s([styles.thText, { width: wp(22) }])}>Status</Text>
+                  <Text style={s([styles.thText, { width: wp(26) }])}>Created Date</Text>
                 </View>
 
                 {requests.map((item) => {
@@ -418,16 +419,16 @@ const UphMaintenance: React.FC = () => {
                     <TouchableOpacity
                       key={requestId || `${item.name}-${item.createdAt}`}
                       onPress={() => setSelectedRequestId(requestId)}
-                      style={[styles.trRow, isActive && styles.trRowSelectedActive]}
+                      style={s([styles.trRow, isActive && styles.trRowSelectedActive])}
                     >
-                      <Text numberOfLines={1} style={[styles.bodyCellBoldText, { width: 110 }, isActive && styles.activeRowText]}>{textOrDash(item.name)}</Text>
-                      <Text numberOfLines={1} style={[styles.bodyCellNormalText, { width: 110 }]}>{textOrDash(item.issueType)}</Text>
-                      <View style={{ width: 95 }}>
-                        <View style={[styles.statusBadgeFrame, badgeStyle.container]}>
-                          <Text style={[styles.badgeLabelText, badgeStyle.text]}>{item.status || "new"}</Text>
+                      <Text numberOfLines={1} style={s([styles.bodyCellBoldText, { width: wp(26) }, isActive && styles.activeRowText])}>{textOrDash(item.name)}</Text>
+                      <Text numberOfLines={1} style={s([styles.bodyCellNormalText, { width: wp(26) }])}>{textOrDash(item.issueType)}</Text>
+                      <View style={s({ width: wp(22) })}>
+                        <View style={s([styles.statusBadgeFrame, badgeStyle.container])}>
+                          <Text style={s([styles.badgeLabelText, badgeStyle.text])}>{item.status || "new"}</Text>
                         </View>
                       </View>
-                      <Text style={[styles.bodyCellMutedText, { width: 110 }]}>{formatDate(item.createdAt)}</Text>
+                      <Text style={s([styles.bodyCellMutedText, { width: wp(26) }])}>{formatDate(item.createdAt)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -436,100 +437,100 @@ const UphMaintenance: React.FC = () => {
           )}
 
           {/* Table Directory Native Pagination Controllers */}
-          <View style={styles.tableNavPaginationRow}>
+          <View style={s(styles.tableNavPaginationRow)}>
             <TouchableOpacity 
-              style={[styles.pageNavBtn, page <= 1 && styles.pageNavBtnDisabled]}
+              style={s([styles.pageNavBtn, page <= 1 && styles.pageNavBtnDisabled])}
               disabled={loadingList || page <= 1}
               onPress={() => setPage((v) => Math.max(1, v - 1))}
             >
-              <Text style={styles.pageNavBtnText}>Previous</Text>
+              <Text style={s(styles.pageNavBtnText)}>Previous</Text>
             </TouchableOpacity>
-            <Text style={styles.pageTrackerDisplayIndicator}>Page {pagination.page}</Text>
+            <Text style={s(styles.pageTrackerDisplayIndicator)}>Page {pagination.page}</Text>
             <TouchableOpacity 
-              style={[styles.pageNavBtn, page >= Math.max(pagination.totalPages, 1) && styles.pageNavBtnDisabled]}
+              style={s([styles.pageNavBtn, page >= Math.max(pagination.totalPages, 1) && styles.pageNavBtnDisabled])}
               disabled={loadingList || page >= Math.max(pagination.totalPages, 1)}
               onPress={() => setPage((v) => Math.min(Math.max(pagination.totalPages, 1), v + 1))}
             >
-              <Text style={styles.pageNavBtnText}>Next</Text>
+              <Text style={s(styles.pageNavBtnText)}>Next</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Detail Inspection and Form Submission Action Hub Panel */}
-        <View style={styles.dashboardCardBlock}>
-          <Text style={styles.cardSectionTitle}>Ticket Diagnostics & Modification Hub</Text>
+        <View style={s(styles.dashboardCardBlock)}>
+          <Text style={s(styles.cardSectionTitle)}>Ticket Diagnostics & Modification Hub</Text>
           
           {loadingDetail ? (
-            <View style={styles.loaderCenterBlock}>
+            <View style={s(styles.loaderCenterBlock)}>
               <ActivityIndicator size="small" color="#0284c7" />
             </View>
           ) : !selectedRequest ? (
-            <Text style={styles.emptyMessageLayoutText}>Select an inventory request profile row above to perform processing actions.</Text>
+            <Text style={s(styles.emptyMessageLayoutText)}>Select an inventory request profile row above to perform processing actions.</Text>
           ) : (
-            <View style={styles.detailsContentContainerBlock}>
+            <View style={s(styles.detailsContentContainerBlock)}>
               
               {/* Structured Metadata Diagnostics Readout Block */}
-              <View style={styles.metaDiagnosticsGridPlate}>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Ticket ID</Text><Text selectable style={styles.metaValueText}>{textOrDash(getRequestId(selectedRequest))}</Text></View>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Tenant Contact</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.name)}</Text></View>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Phone Base</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.phone)}</Text></View>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Email Address</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.email)}</Text></View>
-                <View style={[styles.metaLabelValueTupleRow, { borderBottomWidth: 0 }]}><Text style={styles.metaLabelText}>Address Destination</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.address)}</Text></View>
+              <View style={s(styles.metaDiagnosticsGridPlate)}>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Ticket ID</Text><Text selectable style={s(styles.metaValueText)}>{textOrDash(getRequestId(selectedRequest))}</Text></View>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Tenant Contact</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.name)}</Text></View>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Phone Base</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.phone)}</Text></View>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Email Address</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.email)}</Text></View>
+                <View style={s([styles.metaLabelValueTupleRow, { borderBottomWidth: 0 }])}><Text style={s(styles.metaLabelText)}>Address Destination</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.address)}</Text></View>
               </View>
 
-              <View style={styles.metaDiagnosticsGridPlate}>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Issue Allocation</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.issueType)}</Text></View>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Entry Permission</Text><Text style={styles.metaValueText}>{textOrDash(selectedRequest.entryPermission)}</Text></View>
-                <View style={styles.metaLabelValueTupleRow}><Text style={styles.metaLabelText}>Logs Created</Text><Text style={styles.metaValueText}>{formatDate(selectedRequest.createdAt)}</Text></View>
-                <View style={[styles.metaLabelValueTupleRow, { borderBottomWidth: 0 }]}><Text style={styles.metaLabelText}>Logs Mutated</Text><Text style={styles.metaValueText}>{formatDate(selectedRequest.updatedAt)}</Text></View>
+              <View style={s(styles.metaDiagnosticsGridPlate)}>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Issue Allocation</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.issueType)}</Text></View>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Entry Permission</Text><Text style={s(styles.metaValueText)}>{textOrDash(selectedRequest.entryPermission)}</Text></View>
+                <View style={s(styles.metaLabelValueTupleRow)}><Text style={s(styles.metaLabelText)}>Logs Created</Text><Text style={s(styles.metaValueText)}>{formatDate(selectedRequest.createdAt)}</Text></View>
+                <View style={s([styles.metaLabelValueTupleRow, { borderBottomWidth: 0 }])}><Text style={s(styles.metaLabelText)}>Logs Mutated</Text><Text style={s(styles.metaValueText)}>{formatDate(selectedRequest.updatedAt)}</Text></View>
               </View>
 
               {/* Descriptions Core Textareas Display Panels */}
-              <View style={styles.textOutputDisplayBoxFrame}>
-                <Text style={styles.textOutputDisplayBoxTitle}>Incident Manifest Description</Text>
-                <Text style={styles.textOutputDisplayBoxBodyText}>{textOrDash(selectedRequest.description)}</Text>
+              <View style={s(styles.textOutputDisplayBoxFrame)}>
+                <Text style={s(styles.textOutputDisplayBoxTitle)}>Incident Manifest Description</Text>
+                <Text style={s(styles.textOutputDisplayBoxBodyText)}>{textOrDash(selectedRequest.description)}</Text>
               </View>
 
-              <View style={styles.textOutputDisplayBoxFrame}>
-                <Text style={styles.textOutputDisplayBoxTitle}>Existing Internal Admin Commentary</Text>
-                <Text style={styles.textOutputDisplayBoxBodyText}>{textOrDash(selectedRequest.adminComment)}</Text>
+              <View style={s(styles.textOutputDisplayBoxFrame)}>
+                <Text style={s(styles.textOutputDisplayBoxTitle)}>Existing Internal Admin Commentary</Text>
+                <Text style={s(styles.textOutputDisplayBoxBodyText)}>{textOrDash(selectedRequest.adminComment)}</Text>
               </View>
 
               {/* Secure Media Attachment External Linking System */}
               {hasTenantAttachment && (
-                <View style={styles.attachmentAccessFrameBox}>
-                  <Text style={styles.textOutputDisplayBoxTitle}>Tenant Diagnostic Media Documentation Attachment</Text>
-                  {selectedRequest?.attachmentKey && <Text style={styles.attachmentKeyDetailsLabel}>Key Hash Identification: {String(selectedRequest.attachmentKey)}</Text>}
+                <View style={s(styles.attachmentAccessFrameBox)}>
+                  <Text style={s(styles.textOutputDisplayBoxTitle)}>Tenant Diagnostic Media Documentation Attachment</Text>
+                  {selectedRequest?.attachmentKey && <Text style={s(styles.attachmentKeyDetailsLabel)}>Key Hash Identification: {String(selectedRequest.attachmentKey)}</Text>}
                   {tenantAttachmentUrl && (
-                    <TouchableOpacity style={styles.attachmentActivationBtnLink} onPress={() => handleOpenLink(tenantAttachmentUrl)}>
-                      <ExternalLink size={12} color="#0284c7" style={styles.inlineIconSpacing} />
-                      <Text style={styles.attachmentActivationBtnLinkLabelText}>Launch Document Stream</Text>
+                    <TouchableOpacity style={s(styles.attachmentActivationBtnLink)} onPress={() => handleOpenLink(tenantAttachmentUrl)}>
+                      <ExternalLink size={fs(3.5)} color="#0284c7" style={s(styles.inlineIconSpacing)} />
+                      <Text style={s(styles.attachmentActivationBtnLinkLabelText)}>Launch Document Stream</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               )}
 
               {/* State Processing Form Input Controls Layout */}
-              <View style={styles.actionFormMutationWrapperContainer}>
-                <View style={styles.formInputGroupField}>
-                  <Text style={styles.fieldInputLabelText}>State Transition Pipeline Pipeline *</Text>
-                  <View style={styles.inlineChoiceSelectorGridRow}>
+              <View style={s(styles.actionFormMutationWrapperContainer)}>
+                <View style={s(styles.formInputGroupField)}>
+                  <Text style={s(styles.fieldInputLabelText)}>State Transition Pipeline Pipeline *</Text>
+                  <View style={s(styles.inlineChoiceSelectorGridRow)}>
                     {UPDATE_STATUSES.map((status) => (
                       <TouchableOpacity
                         key={status}
                         onPress={() => setNextStatus(status)}
-                        style={[styles.choiceGridSelectorBtn, nextStatus === status && styles.choiceGridSelectorBtnActive]}
+                        style={s([styles.choiceGridSelectorBtn, nextStatus === status && styles.choiceGridSelectorBtnActive])}
                       >
-                        <Text style={[styles.choiceGridSelectorText, nextStatus === status && styles.choiceGridSelectorTextActive]}>{status.toUpperCase()}</Text>
+                        <Text style={s([styles.choiceGridSelectorText, nextStatus === status && styles.choiceGridSelectorTextActive])}>{status.toUpperCase()}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                <View style={styles.formInputGroupField}>
-                  <Text style={styles.fieldInputLabelText}>Append Internal Execution Notes</Text>
+                <View style={s(styles.formInputGroupField)}>
+                  <Text style={s(styles.fieldInputLabelText)}>Append Internal Execution Notes</Text>
                   <TextInput
-                    style={styles.formNativeTextAreaComponent}
+                    style={s(styles.formNativeTextAreaComponent)}
                     value={adminComment}
                     onChangeText={setAdminComment}
                     placeholder="Provide execution details regarding state modifications..."
@@ -539,20 +540,20 @@ const UphMaintenance: React.FC = () => {
                   />
                 </View>
 
-                <View style={styles.formInputGroupField}>
-                  <Text style={styles.fieldInputLabelText}>Upload Incident Media Documentation</Text>
-                  <TouchableOpacity style={styles.nativeMockFileButtonPicker} onPress={() => setLocalAttachmentName("IMG_CAMERA_MANIFEST_CAP.JPG")}>
-                    <Text style={styles.nativeMockFileButtonPickerLabelText}>
+                <View style={s(styles.formInputGroupField)}>
+                  <Text style={s(styles.fieldInputLabelText)}>Upload Incident Media Documentation</Text>
+                  <TouchableOpacity style={s(styles.nativeMockFileButtonPicker)} onPress={() => setLocalAttachmentName("IMG_CAMERA_MANIFEST_CAP.JPG")}>
+                    <Text style={s(styles.nativeMockFileButtonPickerLabelText)}>
                       {localAttachmentName ? `Attached Document: ${localAttachmentName}` : "Select Device Diagnostic Asset File"}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.mainActionFormSubmitTriggerBtn} disabled={updating} onPress={onUpdateRequest}>
-                  {updating ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.mainActionFormSubmitTriggerBtnText}>Commit Ticket State Modificaton</Text>}
+                <TouchableOpacity style={s(styles.mainActionFormSubmitTriggerBtn)} disabled={updating} onPress={onUpdateRequest}>
+                  {updating ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={s(styles.mainActionFormSubmitTriggerBtnText)}>Commit Ticket State Modificaton</Text>}
                 </TouchableOpacity>
 
-                {detailError && <Text style={styles.errorMessageLayoutText}>{detailError}</Text>}
+                {detailError && <Text style={s(styles.errorMessageLayoutText)}>{detailError}</Text>}
               </View>
 
             </View>
@@ -566,81 +567,81 @@ const UphMaintenance: React.FC = () => {
 
 const styles = StyleSheet.create({
   safeContainer: { flex: 1, backgroundColor: Colors.background },
-  headerLayoutBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.background, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderColor: "#e4e4e7" },
-  brandingRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  brandingLogo: { h: 36, w: 36, borderRadius: 10, backgroundColor: "#e4e4e7" },
-  headerMainTitle: { fontSize: 15, fontWeight: "900", color: Colors.surface , letterSpacing: -0.3 },
-  headerSubtitleText: { fontSize: 9, color: "#71717a", fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
-  actionRefreshButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#f4f4f5", borderStyle: "solid", borderWidth: 1, borderColor: "#e4e4e7", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  inlineIconSpacing: { marginRight: 6 },
-  refreshBtnLabel: { fontSize: 10, fontWeight: "700", color: "#18181b", textTransform: "uppercase" },
-  scrollContent: { padding: 14, paddingBottom: 40 },
-  warningBannerContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff7ed", borderWidth: 1, borderColor: "#ffedd5", padding: 12, borderRadius: 10, marginBottom: 14 },
-  warningBannerText: { fontSize: 11, fontWeight: "700", color: "#9a3412" },
-  dashboardCardBlock: { backgroundColor: Colors.cardColor, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 12, padding: 14, marginBottom: 16 },
-  cardSectionTitle: { fontSize: 12, fontWeight: "800", color: Colors.surface , textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 },
-  cardSectionSubtitle: { fontSize: 10, color: "#71717a", fontWeight: "500", marginBottom: 12 },
-  formInputGroupField: { marginBottom: 14 },
-  fieldInputLabelText: { fontSize: 9, fontWeight: "700", color: "#71717a", textTransform: "uppercase", marginBottom: 6, letterSpacing: 0.3 },
-  horizontalSelectChipRow: { flexDirection: "row", paddingVertical: 2 },
-  selectorChipBtn: { backgroundColor: "#f4f4f5", borderWidth: 1, borderColor: "#e4e4e7", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 8 },
+  headerLayoutBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.background, paddingHorizontal: wp(4), paddingVertical: hp(1.5), borderBottomWidth: 1, borderColor: "#e4e4e7" },
+  brandingRow: { flexDirection: "row", alignItems: "center", gap: wp(2.5) },
+  brandingLogo: { height: wp(9), width: wp(9), borderRadius: wp(2.2), backgroundColor: "#e4e4e7" },
+  headerMainTitle: { fontSize: fs(4), fontWeight: "900", color: Colors.surface, letterSpacing: -0.3 },
+  headerSubtitleText: { fontSize: fs(2.5), color: "#71717a", fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
+  actionRefreshButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#f4f4f5", borderStyle: "solid", borderWidth: 1, borderColor: "#e4e4e7", paddingHorizontal: wp(3), paddingVertical: hp(0.75), borderRadius: wp(2) },
+  inlineIconSpacing: { marginRight: wp(1.5) },
+  refreshBtnLabel: { fontSize: fs(2.8), fontWeight: "700", color: "#18181b", textTransform: "uppercase" },
+  scrollContent: { padding: wp(3.5), paddingBottom: hp(5) },
+  warningBannerContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff7ed", borderWidth: 1, borderColor: "#ffedd5", padding: wp(3), borderRadius: wp(2.5), marginBottom: hp(1.8) },
+  warningBannerText: { fontSize: fs(3), fontWeight: "700", color: "#9a3412" },
+  dashboardCardBlock: { backgroundColor: Colors.cardColor, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: wp(3), padding: wp(3.5), marginBottom: hp(2) },
+  cardSectionTitle: { fontSize: fs(3.2), fontWeight: "800", color: Colors.surface, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: hp(0.25) },
+  cardSectionSubtitle: { fontSize: fs(2.8), color: "#71717a", fontWeight: "500", marginBottom: hp(1.5) },
+  formInputGroupField: { marginBottom: hp(1.8) },
+  fieldInputLabelText: { fontSize: fs(2.5), fontWeight: "700", color: "#71717a", textTransform: "uppercase", marginBottom: hp(0.75), letterSpacing: 0.3 },
+  horizontalSelectChipRow: { flexDirection: "row", paddingVertical: hp(0.25) },
+  selectorChipBtn: { backgroundColor: "#f4f4f5", borderWidth: 1, borderColor: "#e4e4e7", paddingHorizontal: wp(3), paddingVertical: hp(1), borderRadius: wp(2), marginRight: wp(2) },
   selectorChipBtnActive: { borderColor: "#0284c7", backgroundColor: "rgba(2,132,199,0.04)" },
-  selectorChipText: { fontSize: 9, fontWeight: "700", color: "#71717a" },
+  selectorChipText: { fontSize: fs(2.5), fontWeight: "700", color: "#71717a" },
   selectorChipTextActive: { color: "#0284c7", fontWeight: "800" },
   searchBarInlineFrame: { flexDirection: "row" },
-  searchNativeInputComponent: { flex: 1, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderTopLeftRadius: 8, borderBottomLeftRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: Colors.surface , fontSize: 12 },
-  searchActionSubmitBtn: { backgroundColor: Colors.surface , width: 44, justifyContent: "center", alignItems: "center", borderTopRightRadius: 8, borderBottomRightRadius: 8 },
-  loaderCenterBlock: { paddingVertical: 32, alignItems: "center", justifyContent: "center" },
-  errorMessageLayoutText: { color: "#b91c1c", fontSize: 11, fontWeight: "600", padding: 8, backgroundColor: "#fef2f2", borderRadius: 6, marginTop: 8 },
-  emptyMessageLayoutText: { color: "#71717a", fontSize: 11, textAlign: "center", paddingVertical: 24, paddingHorizontal: 16 },
+  searchNativeInputComponent: { flex: 1, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderTopLeftRadius: wp(2), borderBottomLeftRadius: wp(2), paddingHorizontal: wp(3), paddingVertical: hp(1), color: Colors.surface, fontSize: fs(3.2) },
+  searchActionSubmitBtn: { backgroundColor: Colors.surface, width: wp(11), justifyContent: "center", alignItems: "center", borderTopRightRadius: wp(2), borderBottomRightRadius: wp(2) },
+  loaderCenterBlock: { paddingVertical: hp(4), alignItems: "center", justifyContent: "center" },
+  errorMessageLayoutText: { color: "#b91c1c", fontSize: fs(3), fontWeight: "600", padding: wp(2), backgroundColor: "#fef2f2", borderRadius: wp(1.5), marginTop: hp(1) },
+  emptyMessageLayoutText: { color: "#71717a", fontSize: fs(3), textAlign: "center", paddingVertical: hp(3), paddingHorizontal: wp(4) },
   tableHorizontalWrapper: { flexDirection: "row" },
   tableMatrixGrid: { flexDirection: "column" },
-  tableHeaderRow: { flexDirection: "row", backgroundColor: "#f4f4f5", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 },
-  thText: { fontSize: 9, fontWeight: "700", color: "#71717a", textTransform: "uppercase" },
-  trRow: { flexDirection: "row", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderColor: "#f4f4f5", alignItems: "center" },
+  tableHeaderRow: { flexDirection: "row", backgroundColor: "#f4f4f5", paddingHorizontal: wp(3), paddingVertical: hp(1), borderBottomWidth: 1, borderColor: "#e4e4e7", borderRadius: wp(1.5) },
+  thText: { fontSize: fs(2.5), fontWeight: "700", color: "#71717a", textTransform: "uppercase" },
+  trRow: { flexDirection: "row", paddingHorizontal: wp(3), paddingVertical: hp(1.2), borderBottomWidth: 1, borderColor: "#f4f4f5", alignItems: "center" },
   trRowSelectedActive: { backgroundColor: "#f0f9ff", borderBottomColor: "#e0f2fe" },
   activeRowText: { color: "#0369a1" },
-  bodyCellBoldText: { fontSize: 12, fontWeight: "700", color: "#18181b" },
-  bodyCellNormalText: { fontSize: 12, color: "#3f3f46" },
-  bodyCellMutedText: { fontSize: 11, color: "#71717a" },
-  statusBadgeFrame: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, alignSelf: "flex-start" },
+  bodyCellBoldText: { fontSize: fs(3.2), fontWeight: "700", color: "#18181b" },
+  bodyCellNormalText: { fontSize: fs(3.2), color: "#3f3f46" },
+  bodyCellMutedText: { fontSize: fs(3), color: "#71717a" },
+  statusBadgeFrame: { paddingHorizontal: wp(2), paddingVertical: hp(0.25), borderRadius: wp(2.5), alignSelf: "flex-start" },
   bgEmeraldMuted: { backgroundColor: "#ecfdf5" },
   bgSlateMuted: { backgroundColor: "#f1f5f9" },
   bgAmberMuted: { backgroundColor: "#fffbec" },
   bgSkyMuted: { backgroundColor: "#f0f9ff" },
-  emeraldText: { color: "#047857", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  slateText: { color: "#475569", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  amberText: { color: "#b45309", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  skyText: { color: "#0369a1", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  badgeLabelText: { fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  tableNavPaginationRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, pt: 8, borderTopWidth: 1, borderColor: "#f4f4f5" },
-  pageNavBtn: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6, backgroundColor: "#ffffff" },
+  emeraldText: { color: "#047857", fontSize: fs(2.5), fontWeight: "800", textTransform: "uppercase" },
+  slateText: { color: "#475569", fontSize: fs(2.5), fontWeight: "800", textTransform: "uppercase" },
+  amberText: { color: "#b45309", fontSize: fs(2.5), fontWeight: "800", textTransform: "uppercase" },
+  skyText: { color: "#0369a1", fontSize: fs(2.5), fontWeight: "800", textTransform: "uppercase" },
+  badgeLabelText: { fontSize: fs(2.5), fontWeight: "800", textTransform: "uppercase" },
+  tableNavPaginationRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: hp(1.5), paddingTop: hp(1), borderTopWidth: 1, borderColor: "#f4f4f5" },
+  pageNavBtn: { paddingHorizontal: wp(3), paddingVertical: hp(0.75), borderWidth: 1, borderColor: "#e4e4e7", borderRadius: wp(1.5), backgroundColor: "#ffffff" },
   pageNavBtnDisabled: { opacity: 0.4 },
-  pageNavBtnText: { fontSize: 11, color: Colors.surface, fontWeight: "600" },
-  pageTrackerDisplayIndicator: { fontSize: 11, color: "#71717a", fontWeight: "500" },
+  pageNavBtnText: { fontSize: fs(3), color: Colors.surface, fontWeight: "600" },
+  pageTrackerDisplayIndicator: { fontSize: fs(3), color: "#71717a", fontWeight: "500" },
   detailsContentContainerBlock: { flexDirection: "column" },
-  metaDiagnosticsGridPlate: { backgroundColor: "#fbfbfb", borderWidth: 1, borderColor: "#f4f4f5", borderRadius: 10, padding: 10, marginBottom: 10 },
-  metaLabelValueTupleRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#f4f4f5" },
-  metaLabelText: { fontSize: 11, color: "#71717a", fontWeight: "500" },
-  metaValueText: { fontSize: 11, color: "#18181b", fontWeight: "700" },
-  textOutputDisplayBoxFrame: { backgroundColor: "#f4f4f5", padding: 10, borderRadius: 8, marginBottom: 12 },
-  textOutputDisplayBoxTitle: { fontSize: 9, fontWeight: "700", color: "#71717a", textTransform: "uppercase", marginBottom: 4 },
-  textOutputDisplayBoxBodyText: { fontSize: 12, color: "#27272a", lineHeight: 16 },
-  attachmentAccessFrameBox: { padding: 10, borderWidth: 1, borderColor: "#e0f2fe", backgroundColor: "#f0f9ff", borderRadius: 8, marginBottom: 14 },
-  attachmentKeyDetailsLabel: { fontSize: 10, color: "#0369a1", marginBottom: 6 },
+  metaDiagnosticsGridPlate: { backgroundColor: "#fbfbfb", borderWidth: 1, borderColor: "#f4f4f5", borderRadius: wp(2.5), padding: wp(2.5), marginBottom: hp(1.2) },
+  metaLabelValueTupleRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: hp(0.75), borderBottomWidth: 1, borderBottomColor: "#f4f4f5" },
+  metaLabelText: { fontSize: fs(3), color: "#71717a", fontWeight: "500" },
+  metaValueText: { fontSize: fs(3), color: "#18181b", fontWeight: "700" },
+  textOutputDisplayBoxFrame: { backgroundColor: "#f4f4f5", padding: wp(2.5), borderRadius: wp(2), marginBottom: hp(1.5) },
+  textOutputDisplayBoxTitle: { fontSize: fs(2.5), fontWeight: "700", color: "#71717a", textTransform: "uppercase", marginBottom: hp(0.5) },
+  textOutputDisplayBoxBodyText: { fontSize: fs(3.2), color: "#27272a", lineHeight: fs(4.2) },
+  attachmentAccessFrameBox: { padding: wp(2.5), borderWidth: 1, borderColor: "#e0f2fe", backgroundColor: "#f0f9ff", borderRadius: wp(2), marginBottom: hp(1.8) },
+  attachmentKeyDetailsLabel: { fontSize: fs(2.8), color: "#0369a1", marginBottom: hp(0.75) },
   attachmentActivationBtnLink: { flexDirection: "row", alignItems: "center" },
-  attachmentActivationBtnLinkLabelText: { fontSize: 11, color: "#0284c7", fontWeight: "750" },
-  actionFormMutationWrapperContainer: { marginTop: 6, pt: 12, borderTopWidth: 1, borderColor: "#f4f4f5" },
-  inlineChoiceSelectorGridRow: { flexDirection: "row", gap: 6 },
-  choiceGridSelectorBtn: { flex: 1, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", paddingVertical: 8, borderRadius: 8, alignItems: "center" },
-  choiceGridSelectorBtnActive: { borderColor: Colors.surface , backgroundColor: Colors.surface  },
-  choiceGridSelectorText: { fontSize: 10, fontWeight: "700", color: "#52525b" },
+  attachmentActivationBtnLinkLabelText: { fontSize: fs(3), color: "#0284c7", fontWeight: "700" },
+  actionFormMutationWrapperContainer: { marginTop: hp(0.75), paddingTop: hp(1.5), borderTopWidth: 1, borderColor: "#f4f4f5" },
+  inlineChoiceSelectorGridRow: { flexDirection: "row", gap: wp(1.5) },
+  choiceGridSelectorBtn: { flex: 1, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", paddingVertical: hp(1), borderRadius: wp(2), alignItems: "center" },
+  choiceGridSelectorBtnActive: { borderColor: Colors.surface, backgroundColor: Colors.surface },
+  choiceGridSelectorText: { fontSize: fs(2.8), fontWeight: "700", color: "#52525b" },
   choiceGridSelectorTextActive: { color: "#ffffff" },
-  formNativeTextAreaComponent: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.surface , fontSize: 12, textAlignVertical: "top", minHeight: 70 },
-  nativeMockFileButtonPicker: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderStyle: "dashed", paddingVertical: 12, borderRadius: 8, alignItems: "center" },
-  nativeMockFileButtonPickerLabelText: { fontSize: 11, color: "#71717a", fontWeight: "600" },
-  mainActionFormSubmitTriggerBtn: { backgroundColor: Colors.surface , paddingVertical: 12, borderRadius: 8, alignItems: "center", marginTop: 10 },
-  mainActionFormSubmitTriggerBtnText: { color: "#ffffff", fontSize: 12, fontWeight: "800" }
+  formNativeTextAreaComponent: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderRadius: wp(2), paddingHorizontal: wp(3), paddingVertical: hp(1.2), color: Colors.surface, fontSize: fs(3.2), textAlignVertical: "top", minHeight: hp(9) },
+  nativeMockFileButtonPicker: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7", borderStyle: "dashed", paddingVertical: hp(1.5), borderRadius: wp(2), alignItems: "center" },
+  nativeMockFileButtonPickerLabelText: { fontSize: fs(3), color: "#71717a", fontWeight: "600" },
+  mainActionFormSubmitTriggerBtn: { backgroundColor: Colors.surface, paddingVertical: hp(1.5), borderRadius: wp(2), alignItems: "center", marginTop: hp(1.2) },
+  mainActionFormSubmitTriggerBtnText: { color: "#ffffff", fontSize: fs(3.2), fontWeight: "800" }
 });
 
 export default UphMaintenance;

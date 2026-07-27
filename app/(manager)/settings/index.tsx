@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -7,39 +7,272 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
   Alert,
+  Switch,
+  Image,
   KeyboardAvoidingView,
-  Platform,
+  Platform
 } from "react-native";
-import { User, Shield, Save, Camera, CheckCircle } from "lucide-react-native";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { User, Shield, Save, Camera, Bell } from "lucide-react-native";
+import { apiFetch } from "@/lib/admin/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 
-type SettingsItem = {
+interface SettingsItem {
   fullName: string;
   email: string;
   phone: string;
   role: string;
   avatarUrl?: string;
   avatarDataUrl?: string;
-};
+  notifications?: {
+    emailNotifications?: boolean;
+    taskAlerts?: boolean;
+    employeeUpdates?: boolean;
+    weeklyReports?: boolean;
+  };
+  language?: string;
+  timezone?: string;
+}
+
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
+    textSecondary:   isDark ? "#a1a1aa" : "#475569",
+    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
+    primary:         uiTheme.customColors?.primary                || "#ffd27a",
+    inputBg:         isDark ? "#09090b" : "#ffffff",
+    disabledBg:      isDark ? "#18181b" : "#f1f5f9",
+    disabledText:    isDark ? "#52525b" : "#94a3b8",
+    avatarFallback:  isDark ? "#27272a" : "#e2e8f0"
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    viewport: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: 10,
+      color: colors.textSecondary,
+      fontSize: 14,
+    },
+    scrollContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 40,
+    },
+    headerBlock: {
+      marginBottom: 24,
+    },
+    pageTitle: {
+      fontSize: 26,
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: 0.3,
+    },
+    pageSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 20,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 20,
+    },
+    iconWrapper: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: "rgba(255, 210, 122, 0.1)",
+    },
+    cardTitleText: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    avatarUploadContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 20,
+    },
+    avatarWrapper: {
+      position: "relative",
+      width: 80,
+      height: 80,
+    },
+    avatarFrame: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      borderWidth: 2,
+      borderColor: colors.border,
+    },
+    avatarFallback: {
+      backgroundColor: colors.avatarFallback,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarFallbackText: {
+      fontSize: 24,
+      fontWeight: "700",
+      color: colors.primary,
+    },
+    cameraBadge: {
+      position: "absolute",
+      bottom: -2,
+      right: -2,
+      backgroundColor: colors.primary,
+      padding: 6,
+      borderRadius: 99,
+    },
+    avatarMetaBlock: {
+      flex: 1,
+      gap: 2,
+    },
+    avatarMetaPrimary: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    avatarMetaSecondary: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    avatarMetaSizeInfo: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      opacity: 0.8,
+    },
+    formRow: {
+      gap: 14,
+    },
+    formGroup: {
+      width: "100%",
+    },
+    formLabel: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.text,
+      marginBottom: 6,
+    },
+    formInput: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      paddingHorizontal: 12,
+      height: 40,
+      color: colors.text,
+      fontSize: 14,
+    },
+    formInputDisabled: {
+      backgroundColor: colors.disabledBg,
+      color: colors.disabledText,
+    },
+    toggleStrip: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 8,
+    },
+    toggleMetaArea: {
+      flex: 1,
+      paddingRight: 16,
+    },
+    toggleLabelText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    toggleSubtitleText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 1,
+    },
+    securityActionBtn: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 8,
+      alignSelf: "flex-start",
+    },
+    securityActionBtnText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    submitGlobalBtn: {
+      flexDirection: "row",
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 4,
+    },
+    submitGlobalBtnText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.inputBg,
+    },
+  });
+}
 
 export default function Settings() {
+  const { uiTheme } = useTheme();
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const queryClient = useQueryClient();
 
-  // Queries & Mutations
+  const [draft, setDraft] = useState<SettingsItem | null>(null);
+  const [passwordDraft, setPasswordDraft] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmNewPassword: "",
+  });
+
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
-      return apiFetch<{ item: SettingsItem }>("/api/settings");
+      const res = await apiFetch<{ item: SettingsItem }>("/api/settings");
+      return res.item;
     },
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      return apiFetch<{ item: any }>("/api/settings", {
+    mutationFn: async (payload: SettingsItem) => {
+      return apiFetch<{ item: SettingsItem }>("/api/settings", {
         method: "PUT",
         body: JSON.stringify(payload),
       });
@@ -47,8 +280,8 @@ export default function Settings() {
   });
 
   const changePasswordMutation = useMutation({
-    mutationFn: async (payload: { currentPassword: string; newPassword: string }) => {
-      return apiFetch<{ ok: true }>("/api/auth/change-password", {
+    mutationFn: async (payload: any) => {
+      return apiFetch<{ ok: boolean }>("/api/auth/change-password", {
         method: "PUT",
         body: JSON.stringify(payload),
       });
@@ -56,14 +289,9 @@ export default function Settings() {
   });
 
   const avatarUploadMutation = useMutation({
-    mutationFn: async (imageUri: string) => {
+    mutationFn: async (fileData: { uri: string; name: string; type: string }) => {
       const formData = new FormData();
-      // Format file wrapper matching native standards
-      formData.append("avatar", {
-        uri: Platform.OS === "ios" ? imageUri.replace("file://", "") : imageUri,
-        name: "avatar.jpg",
-        type: "image/jpeg",
-      } as any);
+      formData.append("avatar", fileData as any);
 
       return apiFetch<{ avatarDataUrl?: string; avatarUrl?: string }>("/api/settings/avatar", {
         method: "POST",
@@ -75,30 +303,16 @@ export default function Settings() {
     },
   });
 
-  // Local State Managed Drafts
-  const [draft, setDraft] = useState<any>(null);
-  const [avatarUploading, setAvatarUploading] = useState(false);
-  const [passwordDraft, setPasswordDraft] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmNewPassword: "",
-  });
-
   useEffect(() => {
-    if (!draft && settingsQuery.data?.item) {
-      const item = settingsQuery.data.item;
-      setDraft({
-        ...item,
-        avatarUrl: item.avatarDataUrl || (item.avatarUrl ? toProxiedUrl(item.avatarUrl) : "") || "",
-      });
+    if (settingsQuery.data) {
+      setDraft(settingsQuery.data);
     }
-  }, [settingsQuery.data, draft]);
+  }, [settingsQuery.data]);
 
-  // Actions
-  const onSaveProfile = () => {
+  const onSave = () => {
     if (!draft) return;
 
-    const payload = {
+    const payload: SettingsItem = {
       ...draft,
       avatarDataUrl: draft.avatarUrl || "",
       avatarUrl: "",
@@ -106,75 +320,46 @@ export default function Settings() {
 
     saveMutation.mutate(payload, {
       onSuccess: (res) => {
-        const item = (res as any)?.item as SettingsItem | undefined;
-        if (item) {
-          setDraft({
-            ...item,
-            avatarUrl: item.avatarDataUrl || item.avatarUrl || "",
-          });
+        if (res?.item) {
+          setDraft(res.item);
         }
-        void queryClient.invalidateQueries({ queryKey: ["settings"] });
-        Alert.alert("Success", "Account settings updated successfully.");
+        queryClient.invalidateQueries({ queryKey: ["settings"] });
+        Alert.alert("Saved", "Settings updated.");
       },
-      borderColor: "rgba(239, 68, 68, 0.3)",
-      onError: (err) => {
-        Alert.alert("Failed to Save", err instanceof Error ? err.message : "Something went wrong");
+      borderColor: () => {
+        Alert.alert("Error", "Failed to finalize structural settings update.");
       },
     });
   };
 
-  const handleAvatarPicker = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const setNotification = (key: string, value: boolean) => {
+    if (!draft) return;
+    const next: SettingsItem = {
+      ...draft,
+      notifications: {
+        ...(draft.notifications || {}),
+        [key]: value,
+      },
+    };
+    setDraft(next);
 
-    if (!permissionResult.granted) {
-      Alert.alert("Permission Required", "Application access to camera roll is required to update avatars.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true, // Native UI interface crop tools handles aspect ratios
-      aspect: [1, 1],
-      quality: 0.8,
+    saveMutation.mutate(next, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["settings"] });
+      },
     });
-
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-
-    const selectedUri = result.assets[0].uri;
-
-    try {
-      setAvatarUploading(true);
-      avatarUploadMutation.mutate(selectedUri, {
-        onSuccess: (data) => {
-          const newAvatarUrl = data.avatarDataUrl || data.avatarUrl;
-          void queryClient.invalidateQueries({ queryKey: ["settings"] });
-          if (newAvatarUrl) {
-            setDraft((p: any) => ({ ...p, avatarUrl: toProxiedUrl(newAvatarUrl) || newAvatarUrl }));
-          }
-          Alert.alert("Success", "Profile picture updated successfully.");
-        },
-        onError: (err) => {
-          Alert.alert("Upload Failed", err instanceof Error ? err.message : "Failed to upload image");
-        },
-        onSettled: () => {
-          setAvatarUploading(false);
-        },
-      });
-    } catch (e) {
-      setAvatarUploading(false);
-      Alert.alert("Error", "Failed to process photo adjustment updates.");
-    }
   };
 
   const onChangePassword = () => {
     const { currentPassword, newPassword, confirmNewPassword } = passwordDraft;
 
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      Alert.alert("Missing Fields", "Please complete all active authentication fields.");
+      Alert.alert("Missing fields", "Please fill all password fields.");
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      Alert.alert("Mismatch", "New password options do not resolve symmetrically.");
+
+      Alert.alert("Password mismatch", "New password and confirm password do not match.");
       return;
     }
 
@@ -183,384 +368,309 @@ export default function Settings() {
       {
         onSuccess: () => {
           setPasswordDraft({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
-          Alert.alert("Password Updated", "Your new authorization settings have been saved.");
+          Alert.alert("Password updated", "Please use the new password next time you log in.");
         },
         onError: (err) => {
-          Alert.alert("Update Failed", err instanceof Error ? err.message : "Failed to change password.");
+          const errMsg = err instanceof Error ? err.message : "Something went wrong";
+          Alert.alert("Failed to change password", errMsg);
         },
       }
     );
   };
 
-  // Profile Fallback Computation
-  const initials = draft?.fullName
-    ?.split(" ")
-    .filter(Boolean)
-    .map((n: string) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "A";
+  const handleAvatarPicker = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission Denied", "Media library access permissions are required.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    const targetUri = asset.uri;
+    const filename = targetUri.split("/").pop() || "avatar.jpg";
+    const type = asset.mimeType || "image/jpeg";
+
+    avatarUploadMutation.mutate(
+      { uri: targetUri, name: filename, type },
+      {
+        onSuccess: (data) => {
+          const newAvatarUrl = data.avatarDataUrl || data.avatarUrl;
+          queryClient.invalidateQueries({ queryKey: ["settings"] });
+          Alert.alert("Uploaded", "Profile picture updated successfully.");
+          if (newAvatarUrl) {
+            setDraft((prev: any) => ({ ...prev, avatarUrl: newAvatarUrl }));
+          }
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : "Failed to upload image";
+          Alert.alert("Upload failed", msg);
+        },
+      }
+    );
+  };
+
+  const initials = useMemo(() => {
+    return draft?.fullName
+      ?.split(" ")
+      .filter(Boolean)
+      .map((n: string) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "M";
+  }, [draft?.fullName]);
 
   if (settingsQuery.isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: "#09090b" }]}>
-        <ActivityIndicator size="large" color="#ffd27a" />
-        <Text style={styles.loadingText}>Loading Admin Profile...</Text>
+      <View style={s(styles.centered)}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={s(styles.loadingText)}>Loading Configuration...</Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#09090b" }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView style={styles.screenContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Header Block */}
-        <View style={styles.headerContainer}>
-          <Text style={styles.pageTitle}>Settings</Text>
-          <Text style={styles.pageSubtitle}>Manage your admin account and system profile</Text>
-        </View>
+    <SafeAreaView style={s(styles.viewport)} edges={["top", "left", "right"]}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          
+          <View style={s(styles.headerBlock)}>
+            <Text style={s(styles.pageTitle)}>Settings</Text>
+            <Text style={s(styles.pageSubtitle)}>Manage your account and preferences</Text>
+          </View>
 
-        {/* PROFILE CARD */}
-        <View style={styles.configCard}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.iconWrapper}>
-              <User size={18} color="#ffd27a" />
+          <View style={s(styles.card)}>
+            <View style={{ display: "none" }}>
+              <Text>Profile Settings Update your personal information</Text>
             </View>
-            <View>
-              <Text style={styles.cardTitle}>Profile Settings</Text>
-              <Text style={styles.cardSubtitle}>Update your personal identification</Text>
+            <View style={s(styles.cardHeader)}>
+              <View style={s(styles.iconWrapper)}>
+                <User size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={s(styles.cardTitleText)}>Profile Settings</Text>
+                <Text style={s(styles.avatarMetaSecondary)}>Update your personal information</Text>
+              </View>
+            </View>
+
+            <View style={s(styles.avatarUploadContainer)}>
+              <View style={s(styles.avatarWrapper)}>
+                {draft?.avatarUrl ? (
+                  <Image source={{ uri: draft.avatarUrl }} style={s(styles.avatarFrame)} />
+                ) : (
+                  <View style={s([styles.avatarFrame, styles.avatarFallback])}>
+                    <Text style={s(styles.avatarFallbackText)}>{initials}</Text>
+                  </View>
+                )}
+                <TouchableOpacity style={s(styles.cameraBadge)} onPress={handleAvatarPicker} disabled={avatarUploadMutation.isPending}>
+                  {avatarUploadMutation.isPending ? (
+                    <ActivityIndicator size="small" color={colors.inputBg} />
+                  ) : (
+                    <Camera size={12} color={colors.inputBg} />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={s(styles.avatarMetaBlock)}>
+                <Text style={s(styles.avatarMetaPrimary)}>Profile Picture</Text>
+                <Text style={s(styles.avatarMetaSecondary)}>Click the camera icon to upload a new photo</Text>
+                <Text style={s(styles.avatarMetaSizeInfo)}>Max size: 10MB (JPEG, PNG, GIF)</Text>
+              </View>
+            </View>
+
+            <View style={s(styles.formRow)}>
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Full Name</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={draft?.fullName ?? ""}
+                  onChangeText={(t) => setDraft((prev: any) => ({ ...prev, fullName: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Email Address</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={draft?.email ?? ""}
+                  onChangeText={(t) => setDraft((prev: any) => ({ ...prev, email: t }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Phone Number</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  value={draft?.phone ?? ""}
+                  onChangeText={(t) => setDraft((prev: any) => ({ ...prev, phone: t }))}
+                  keyboardType="phone-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Role</Text>
+                <TextInput
+                  style={s([styles.formInput, styles.formInputDisabled])}
+                  value={draft?.role ?? ""}
+                  editable={false}
+                />
+              </View>
             </View>
           </View>
 
-          {/* Avatar Interaction Block */}
-          <View style={{ display: 'none' }} />{/* Safe separation context helper */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatarContainer}>
-              {draft?.avatarUrl ? (
-                <Image source={{ uri: draft.avatarUrl }} style={styles.avatarImage} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.fallbackText}>{initials}</Text>
+          <View style={s(styles.card)}>
+            <View style={{ display: "none" }}>
+              <Text>Notification Settings Configure your email and alert preferences</Text>
+            </View>
+            <View style={s(styles.cardHeader)}>
+              <View style={s(styles.iconWrapper)}>
+                <Bell size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={s(styles.cardTitleText)}>Notification Settings</Text>
+                <Text style={s(styles.avatarMetaSecondary)}>Configure your email and alert preferences</Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 12 }}>
+              <View style={s(styles.toggleStrip)}>
+                <View style={s(styles.toggleMetaArea)}>
+                  <Text style={s(styles.toggleLabelText)}>Email Notifications</Text>
+                  <Text style={s(styles.toggleSubtitleText)}>Receive daily system update emails</Text>
                 </View>
-              )}
-              <TouchableOpacity 
-                style={styles.cameraButton} 
-                onPress={handleAvatarPicker}
-                disabled={avatarUploading}
-              >
-                {avatarUploading ? (
-                  <ActivityIndicator size="small" color="#09090b" />
-                ) : (
-                  <Camera size={14} color="#09090b" />
-                )}
+                <Switch
+                  value={Boolean(draft?.notifications?.emailNotifications)}
+                  onValueChange={(val) => setNotification("emailNotifications", val)}
+                  trackColor={{ true: colors.primary }}
+                />
+              </View>
+
+              <View style={s(styles.toggleStrip)}>
+                <View style={s(styles.toggleMetaArea)}>
+                  <Text style={s(styles.toggleLabelText)}>Task Alerts</Text>
+                  <Text style={s(styles.toggleSubtitleText)}>Receive real-time alerts when tasks are updated</Text>
+                </View>
+                <Switch
+                  value={Boolean(draft?.notifications?.taskAlerts)}
+                  onValueChange={(val) => setNotification("taskAlerts", val)}
+                  trackColor={{ true: colors.primary }}
+                />
+              </View>
+
+              <View style={s(styles.toggleStrip)}>
+                <View style={s(styles.toggleMetaArea)}>
+                  <Text style={s(styles.toggleLabelText)}>Employee Updates</Text>
+                  <Text style={s(styles.toggleSubtitleText)}>Get notified when employees check in/out</Text>
+                </View>
+                <Switch
+                  value={Boolean(draft?.notifications?.employeeUpdates)}
+                  onValueChange={(val) => setNotification("employeeUpdates", val)}
+                  trackColor={{ true: colors.primary }}
+                />
+              </View>
+
+              <View style={s(styles.toggleStrip)}>
+                <View style={s(styles.toggleMetaArea)}>
+                  <Text style={s(styles.toggleLabelText)}>Weekly Reports</Text>
+                  <Text style={s(styles.toggleSubtitleText)}>Receive a summary report at the end of the week</Text>
+                </View>
+                <Switch
+                  value={Boolean(draft?.notifications?.weeklyReports)}
+                  onValueChange={(val) => setNotification("weeklyReports", val)}
+                  trackColor={{ true: colors.primary }}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={s(styles.card)}>
+            <View style={{ display: "none" }}>
+              <Text>Security Manage your security preferences</Text>
+            </View>
+            <View style={s(styles.cardHeader)}>
+              <View style={s(styles.iconWrapper)}>
+                <Shield size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={s(styles.cardTitleText)}>Security</Text>
+                <Text style={s(styles.avatarMetaSecondary)}>Manage your security preferences</Text>
+              </View>
+            </View>
+
+            <View style={s(styles.formRow)}>
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Current Password</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  secureTextEntry
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textSecondary}
+                  value={passwordDraft.currentPassword}
+                  onChangeText={(t) => setPasswordDraft(p => ({ ...p, currentPassword: t }))}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>New Password</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  secureTextEntry
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textSecondary}
+                  value={passwordDraft.newPassword}
+                  onChangeText={(t) => setPasswordDraft(p => ({ ...p, newPassword: t }))}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={s(styles.formGroup)}>
+                <Text style={s(styles.formLabel)}>Confirm New Password</Text>
+                <TextInput
+                  style={s(styles.formInput)}
+                  secureTextEntry
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textSecondary}
+                  value={passwordDraft.confirmNewPassword}
+                  onChangeText={(t) => setPasswordDraft(p => ({ ...p, confirmNewPassword: t }))}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <TouchableOpacity style={s(styles.securityActionBtn)} onPress={onChangePassword} disabled={changePasswordMutation.isPending}>
+                <Text style={s(styles.securityActionBtnText)}>Change Password</Text>
               </TouchableOpacity>
             </View>
-            
-            <View style={styles.avatarMeta}>
-              <Text style={styles.metaTitle}>Profile Picture</Text>
-              <Text style={styles.metaSubtitle}>Tap the camera indicator matrix to load new images.</Text>
-            </View>
           </View>
 
-          {/* Core Profile Matrix Form Fields */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Full Name</Text>
-            <TextInput
-              style={styles.textInput}
-              value={draft?.fullName ?? ""}
-              onChangeText={(text) => setDraft((p: any) => ({ ...p, fullName: text }))}
-              placeholderTextColor="#52525b"
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Email Address</Text>
-            <TextInput
-              style={styles.textInput}
-              value={draft?.email ?? ""}
-              onChangeText={(text) => setDraft((p: any) => ({ ...p, email: text }))}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor="#52525b"
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Phone Number</Text>
-            <TextInput
-              style={styles.textInput}
-              value={draft?.phone ?? ""}
-              onChangeText={(text) => setDraft((p: any) => ({ ...p, phone: text }))}
-              keyboardType="phone-pad"
-              placeholderTextColor="#52525b"
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>System Role</Text>
-            <TextInput
-              style={[styles.textInput, styles.disabledInput]}
-              value={draft?.role ?? "Administrator"}
-              editable={false}
-            />
-          </View>
-        </View>
-
-        {/* SECURITY & AUTHENTICATION CARD */}
-        <View style={styles.configCard}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.iconWrapper}>
-              <Shield size={18} color="#ffd27a" />
-            </View>
-            <View>
-              <Text style={styles.cardTitle}>Security Context</Text>
-              <Text style={styles.cardSubtitle}>Manage access parameters and security variables</Text>
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Current Password</Text>
-            <TextInput
-              style={styles.textInput}
-              secureTextEntry
-              placeholder="••••••••"
-              placeholderTextColor="#52525b"
-              value={passwordDraft.currentPassword}
-              onChangeText={(text) => setPasswordDraft((p) => ({ ...p, currentPassword: text }))}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>New Password</Text>
-            <TextInput
-              style={styles.textInput}
-              secureTextEntry
-              placeholder="••••••••"
-              placeholderTextColor="#52525b"
-              value={passwordDraft.newPassword}
-              onChangeText={(text) => setPasswordDraft((p) => ({ ...p, newPassword: text }))}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Confirm New Password</Text>
-            <TextInput
-              style={styles.textInput}
-              secureTextEntry
-              placeholder="••••••••"
-              placeholderTextColor="#52525b"
-              value={passwordDraft.confirmNewPassword}
-              onChangeText={(text) => setPasswordDraft((p) => ({ ...p, confirmNewPassword: text }))}
-            />
-          </View>
-
-          <TouchableOpacity 
-            style={styles.outlineActionBtn} 
-            onPress={onChangePassword}
-            disabled={changePasswordMutation.isPending}
-          >
-            {changePasswordMutation.isPending ? (
-              <ActivityIndicator size="small" color="#ffd27a" />
+          <TouchableOpacity style={s(styles.submitGlobalBtn)} onPress={onSave} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.inputBg} />
             ) : (
-              <Text style={styles.outlineActionText}>Change Password</Text>
+              <>
+                <Save size={16} color={colors.inputBg} />
+                <Text style={s(styles.submitGlobalBtnText)}>Save Changes</Text>
+              </>
             )}
           </TouchableOpacity>
-        </View>
 
-        {/* SAVE CORE ALTERATIONS CALL TO ACTION */}
-        <TouchableOpacity 
-          style={styles.primarySaveBtn} 
-          onPress={onSaveProfile}
-          disabled={saveMutation.isPending}
-        >
-          {saveMutation.isPending ? (
-            <ActivityIndicator size="small" color="#09090b" />
-          ) : (
-            <>
-              <Save size={16} color="#09090b" style={{ marginRight: 6 }} />
-              <Text style={styles.primarySaveText}>Save Changes</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    color: "#a1a1aa",
-    fontSize: 13,
-  },
-  screenContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  headerContainer: {
-    marginTop: 24,
-    marginBottom: 20,
-  },
-  pageTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#f4f4f5",
-    letterSpacing: 0.4,
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: "#a1a1aa",
-    marginTop: 3,
-  },
-  configCard: {
-    backgroundColor: "#121214",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    gap: 12,
-  },
-  iconWrapper: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "rgba(255, 210, 122, 0.1)",
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#f4f4f5",
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: "#a1a1aa",
-    marginTop: 1,
-  },
-  avatarSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    gap: 16,
-  },
-  avatarContainer: {
-    position: "relative",
-  },
-  avatarImage: {
-    height: 72,
-    width: 72,
-    borderRadius: 36,
-    borderWidth: 1.5,
-    borderColor: "#27272a",
-  },
-  avatarFallback: {
-    height: 72,
-    width: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(255, 210, 122, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#ffd27a",
-  },
-  fallbackText: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#ffd27a",
-  },
-  cameraButton: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    backgroundColor: "#ffd27a",
-    padding: 6,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 4,
-  },
-  avatarMeta: {
-    flex: 1,
-  },
-  metaTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#f4f4f5",
-  },
-  metaSubtitle: {
-    fontSize: 11,
-    color: "#71717a",
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  formGroup: {
-    marginBottom: 14,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#a1a1aa",
-    marginBottom: 6,
-  },
-  textInput: {
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 8,
-    height: 42,
-    color: "#f4f4f5",
-    paddingHorizontal: 12,
-    fontSize: 13,
-  },
-  disabledInput: {
-    backgroundColor: "#0d0d0e",
-    color: "#71717a",
-    borderColor: "#1c1c1f",
-  },
-  outlineActionBtn: {
-    marginTop: 8,
-    height: 40,
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  outlineActionText: {
-    color: "#ffd27a",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  primarySaveBtn: {
-    flexDirection: "row",
-    backgroundColor: "#ffd27a",
-    borderRadius: 8,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  primarySaveText: {
-    color: "#09090b",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-});
