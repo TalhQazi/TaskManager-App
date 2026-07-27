@@ -1,418 +1,460 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
   ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
-import { MapPin, Clock, Briefcase } from 'lucide-react-native';
-import Colors from '@/constants/colors';
-import { apiRequest } from '@/services/api';
-import { useAuth } from '@/contexts/AuthContext';
-import { ScheduleShift } from '@/types';
+  SafeAreaView,
+  StatusBar,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { format, parseISO, addDays } from "date-fns";
+import { useTheme } from "@/contexts/ThemeContext";
+import { getEmployeeSchedule } from "@/lib/admin/apiClient";
 
-const DAY_TO_INDEX: Record<string, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-};
-
-function nextDateForDay(day: string) {
-  const target = DAY_TO_INDEX[day];
-  if (typeof target !== 'number') return null;
-
-  const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-
-  const todayIndex = startOfToday.getDay();
-  const delta = (target - todayIndex + 7) % 7;
-
-  const next = new Date(startOfToday);
-  next.setDate(startOfToday.getDate() + delta);
-  return next.toISOString().split('T')[0];
+interface ScheduleEvent {
+  id: string;
+  title: string;
+  day: string;
+  location: string;
+  startTime: string;
+  endTime: string;
+  type: string;
 }
 
-function formatShiftDate(dateStr: string) {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
+export default function EmployeeSchedule() {
+  const { uiTheme } = useTheme();
 
-  if (date.getTime() === today.getTime()) return 'Today';
-  if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
-  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-}
+  const isLightTheme = useMemo(() => {
+    return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
+  }, [uiTheme]);
 
-function isToday(dateStr: string) {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date.getTime() === today.getTime();
-}
+  const bg = useMemo(() => uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b"), [uiTheme, isLightTheme]);
+  const cardBg = useMemo(() => uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#18181b" : "#18181b"), [uiTheme, isLightTheme]);
+  const tintColor = useMemo(() => uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#ffffff"), [uiTheme, isLightTheme]);
+  const mutedText = useMemo(() => (isLightTheme ? "#64748b" : "#a1a1aa"), [isLightTheme]);
+  const primaryColor = useMemo(() => uiTheme.customColors?.primary || "#6366f1", [uiTheme]);
+  const border = useMemo(() => (isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)"), [isLightTheme]);
 
-export default function ScheduleScreen() {
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
 
-  const { data: shifts, isLoading } = useQuery<ScheduleShift[]>({
-    queryKey: ['schedule', user?.fullName],
-    queryFn: async () => {
+  useEffect(() => {
+    async function loadSchedule() {
       try {
-        const res = await apiRequest<{ items: any[] }>('/schedules');
-        const items = res.data?.items ?? [];
-
-        // Filter schedules for current user only
-        const currentUserName = (user?.fullName || '').toLowerCase().trim();
-        const currentUserUsername = (user?.username || '').toLowerCase().trim();
-        
-        const userSchedules = items.filter((e) => {
-          const assignee = String(e.assignee || e.employee || '').toLowerCase().trim();
-          if (!assignee) return false;
-          
-          // Match if assignee contains user's name or username, or vice versa
-          return assignee === currentUserName || 
-                 assignee === currentUserUsername ||
-                 assignee.includes(currentUserName) || 
-                 currentUserName.includes(assignee) ||
-                 assignee.includes(currentUserUsername) ||
-                 currentUserUsername.includes(assignee);
-        });
-
-        const mapped = userSchedules
-          .map((e) => {
-            if (!e || !e.startTime || !e.endTime || !e.location) return null;
-            
-            const date = typeof e.day === 'string' ? nextDateForDay(e.day) : null;
-            if (!date) return null;
-
-            return {
-              id: String(e.id ?? e._id ?? ''),
-              date,
-              startTime: String(e.startTime),
-              endTime: String(e.endTime),
-              location: String(e.location),
-              role: String(e.assignee || ''),
-              tasks: e.title ? [String(e.title)] : [],
-            } as ScheduleShift;
-          })
-          .filter(Boolean) as ScheduleShift[];
-
-        return mapped;
-      } catch {
-        return [];
+        const res = await getEmployeeSchedule();
+        setEvents(res.items || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-    },
-    enabled: !!user?.fullName,
-  });
+    }
+    loadSchedule();
+  }, []);
 
-  const renderShift = ({ item }: { item: ScheduleShift }) => {
-    const today = isToday(item.date);
-    return (
-      <View style={[styles.shiftCard, today && styles.shiftCardToday]}>
-        {today && (
-          <View style={styles.todayBanner}>
-            <View style={styles.todayDot} />
-            <Text style={styles.todayText}>TODAY</Text>
-          </View>
-        )}
-        <View style={styles.shiftHeader}>
-          <View style={styles.dateBlock}>
-            <Text style={[styles.dateLabelDay, today && styles.dateLabelDayToday]}>
-              {formatShiftDate(item.date)}
-            </Text>
-            <Text style={[styles.dateFullStr, today && styles.dateFullStrToday]}>
-              {new Date(item.date + 'T00:00:00').toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </Text>
-          </View>
-          <View style={[styles.shiftTimeBadge, today && styles.shiftTimeBadgeToday]}>
-            <Clock color={today ? '#FFFFFF' : Colors.primary} size={13} />
-            <Text style={[styles.shiftTimeBadgeText, today && styles.shiftTimeBadgeTextToday]}>
-              {item.startTime} – {item.endTime}
-            </Text>
-          </View>
-        </View>
+  const filteredEvents = useMemo(() => {
+    return events.filter((event) => {
+      const titleMatch = (event.title || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const locationMatch = (event.location || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = titleMatch || locationMatch;
+      const matchesType = filterType === "all" || event.type === filterType;
+      return matchesSearch && matchesType;
+    });
+  }, [events, searchTerm, filterType]);
 
-        <View style={styles.shiftDetails}>
-          <View style={styles.detailRow}>
-            <MapPin color={Colors.textTertiary} size={14} />
-            <Text style={styles.detailText} numberOfLines={1}>{item.location}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Briefcase color={Colors.textTertiary} size={14} />
-            <Text style={styles.detailText}>{item.role}</Text>
-          </View>
-        </View>
+  const uniqueTypes = useMemo(() => {
+    return Array.from(new Set(events.map((e) => e.type).filter(Boolean)));
+  }, [events]);
 
-        {item.tasks.length > 0 && (
-          <View style={styles.tasksRow}>
-            {item.tasks.map((task, idx) => (
-              <View key={idx} style={[styles.taskPill, today && styles.taskPillToday]}>
-                <Text style={[styles.taskPillText, today && styles.taskPillTextToday]}>{task}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
+  const upcomingEvents = filteredEvents;
+  const pastEvents: ScheduleEvent[] = [];
+
+  const formatEventDate = (day: string) => {
+    if (day && !day.includes("-")) return day;
+    try {
+      return format(parseISO(day), "MMM d, yyyy");
+    } catch {
+      return day || "No date";
+    }
   };
 
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyTitle}>No upcoming shifts</Text>
-      <Text style={styles.emptySubtitle}>Your schedule will appear here</Text>
-    </View>
-  );
+  const formatEventDay = (day: string) => {
+    if (day && !day.includes("-")) return day;
+    try {
+      const date = parseISO(day);
+      const today = new Date();
+      const tomorrow = addDays(today, 1);
+      
+      if (format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd")) return "Today";
+      if (format(date, "yyyy-MM-dd") === format(tomorrow, "yyyy-MM-dd")) return "Tomorrow";
+      return format(date, "EEEE");
+    } catch {
+      return "";
+    }
+  };
 
-  const renderLoading = () => (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={Colors.primary} />
-      <Text style={styles.loadingText}>Loading your schedule...</Text>
-    </View>
-  );
+  const badgeColorMap: Record<string, { bg: string; text: string }> = {
+    meeting: { bg: "rgba(168, 85, 247, 0.12)", text: "#a855f7" },
+    shift: { bg: "rgba(59, 130, 246, 0.12)", text: "#3b82f6" },
+    training: { bg: "rgba(34, 197, 94, 0.12)", text: "#22c55e" },
+    overtime: { bg: "rgba(249, 115, 22, 0.12)", text: "#f97316" },
+    holiday: { bg: "rgba(239, 68, 68, 0.12)", text: "#ef4444" },
+  };
 
-  const totalHoursPerWeek = (shifts ?? []).reduce((sum, shift) => {
-    const [startH, startM] = shift.startTime.split(':').map(Number);
-    const [endH, endM] = shift.endTime.split(':').map(Number);
-    return sum + (endH + endM / 60) - (startH + startM / 60);
-  }, 0);
+  const getTypeStyle = (type: string) => {
+    return badgeColorMap[type?.toLowerCase()] || { bg: "rgba(113, 113, 122, 0.12)", text: "#a1a1aa" };
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.mainContainer, { backgroundColor: bg, justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color={primaryColor} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Summary Bar */}
-      <View style={styles.summaryBar}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{shifts?.length ?? 0}</Text>
-          <Text style={styles.summaryLabel}>Upcoming</Text>
+    <SafeAreaView style={[styles.mainContainer, { backgroundColor: bg }]}>
+      <StatusBar barStyle={isLightTheme ? "dark-content" : "light-content"} backgroundColor={bg} />
+      
+      <ScrollView contentContainerStyle={styles.scrollArea} showsVerticalScrollIndicator={false}>
+        <View style={styles.viewHeaderRow}>
+          <Text style={[styles.viewTitle, { color: tintColor }]}>My Schedule</Text>
+          <View style={[styles.countTag, { borderColor: border }]}>
+            <Text style={[styles.countTagText, { color: tintColor }]}>{upcomingEvents.length} upcoming</Text>
+          </View>
         </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{totalHoursPerWeek.toFixed(0)}h</Text>
-          <Text style={styles.summaryLabel}>Total Hours</Text>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>
-            {shifts ? new Set(shifts.map(s => s.date)).size : 0}
-          </Text>
-          <Text style={styles.summaryLabel}>Days</Text>
-        </View>
-      </View>
 
-      <View style={styles.content}>
-        {isLoading ? (
-          renderLoading()
-        ) : (
-          <FlatList
-            data={shifts}
-            renderItem={renderShift}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderEmpty}
-          />
+        <View style={[styles.searchFilterCard, { backgroundColor: cardBg, borderColor: border }]}>
+          <View style={styles.searchBarContainer}>
+            <Ionicons name="search" size={16} color={mutedText} style={styles.searchIcon} />
+            <TextInput
+              placeholder="Search events..."
+              placeholderTextColor={mutedText}
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              style={[styles.inputField, { color: tintColor }]}
+            />
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.dropdownTriggerRow, { borderTopColor: border }]} 
+            onPress={() => setShowTypeDropdown(!showTypeDropdown)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="funnel-outline" size={14} color={mutedText} style={{ marginRight: 6 }} />
+            <Text style={[styles.dropdownSelectedLabel, { color: tintColor }]}>
+              {filterType === "all" ? "All Types" : filterType.charAt(0).toUpperCase() + filterType.slice(1)}
+            </Text>
+            <Ionicons name={showTypeDropdown ? "chevron-up" : "chevron-down"} size={14} color={mutedText} />
+          </TouchableOpacity>
+
+          {showTypeDropdown && (
+            <View style={[styles.dropdownContentMenu, { borderTopColor: border }]}>
+              <TouchableOpacity 
+                style={styles.dropdownOptionRow} 
+                onPress={() => { setFilterType("all"); setShowTypeDropdown(false); }}
+              >
+                <Text style={[styles.dropdownOptionText, { color: filterType === "all" ? primaryColor : tintColor }]}>All Types</Text>
+              </TouchableOpacity>
+              {uniqueTypes.map((type) => (
+                <TouchableOpacity 
+                  key={type} 
+                  style={styles.dropdownOptionRow} 
+                  onPress={() => { setFilterType(type); setShowTypeDropdown(false); }}
+                >
+                  <Text style={[styles.dropdownOptionText, { color: filterType === type ? primaryColor : tintColor }]}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.eventsGroupWrapper, { backgroundColor: cardBg, borderColor: border }]}>
+          <View style={[styles.sectionHeadingRow, { borderBottomColor: border }]}>
+            <Ionicons name="calendar" size={16} color={tintColor} style={{ marginRight: 6 }} />
+            <Text style={[styles.sectionTitleLabel, { color: tintColor }]}>Upcoming Events</Text>
+            {upcomingEvents.length > 0 && (
+              <View style={[styles.inlineBadgeMetric, { backgroundColor: "rgba(19,55,103,0.15)" }]}>
+                <Text style={styles.inlineBadgeMetricText}>{upcomingEvents.length}</Text>
+              </View>
+            )}
+          </View>
+
+          {upcomingEvents.length === 0 ? (
+            <View style={styles.fallbackEmptyPane}>
+              <Ionicons name="calendar-outline" size={36} color={mutedText} style={{ opacity: 0.4 }} />
+              <Text style={[styles.fallbackEmptyLabel, { color: mutedText }]}>No upcoming events</Text>
+            </View>
+          ) : (
+            <View style={styles.nodesListStack}>
+              {upcomingEvents.map((event) => {
+                const colorConfig = getTypeStyle(event.type);
+                const dayLabel = formatEventDay(event.day);
+                return (
+                  <View key={event.id} style={[styles.eventItemRowNode, { borderBottomColor: border }]}>
+                    <View style={[styles.eventSquareAvatar, { backgroundColor: "rgba(19,55,103,0.08)" }]}>
+                      <Ionicons name="briefcase" size={18} color="#133767" />
+                    </View>
+                    <View style={styles.eventMainMetaBlock}>
+                      <View style={styles.eventTopLineInfo}>
+                        <Text style={[styles.eventMainTitle, { color: tintColor }]} numberOfLines={1}>{event.title}</Text>
+                        <View style={[styles.typeBadgeContainer, { backgroundColor: colorConfig.bg }]}>
+                          <Text style={[styles.typeBadgeValue, { color: colorConfig.text }]}>{event.type}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.eventSubDetailsLayoutGrid}>
+                        <View style={styles.subDetailItemRow}>
+                          <Ionicons name="calendar-outline" size={11} color={mutedText} />
+                          <Text style={[styles.subDetailItemText, { color: mutedText }]}>
+                            {formatEventDate(event.day)}
+                            {dayLabel ? <Text style={{ color: primaryColor, fontWeight: "600" }}> ({dayLabel})</Text> : null}
+                          </Text>
+                        </View>
+
+                        <View style={styles.subDetailItemRow}>
+                          <Ionicons name="time-outline" size={11} color={mutedText} />
+                          <Text style={[styles.subDetailItemText, { color: mutedText }]}>
+                            {event.startTime || "--:--"} - {event.endTime || "--:--"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.subDetailItemRow}>
+                          <Ionicons name="map-outline" size={11} color={mutedText} />
+                          <Text style={[styles.subDetailItemText, { color: mutedText }]} numberOfLines={1}>
+                            {event.location || "No location"}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {pastEvents.length > 0 && (
+          <View style={[styles.eventsGroupWrapper, { backgroundColor: cardBg, borderColor: border, marginTop: 16 }]}>
+            <View style={[styles.sectionHeadingRow, { borderBottomColor: border }]}>
+              <Ionicons name="calendar-outline" size={16} color={mutedText} style={{ marginRight: 6 }} />
+              <Text style={[styles.sectionTitleLabel, { color: mutedText }]}>Past Events</Text>
+              <View style={[styles.inlineBadgeMetric, { backgroundColor: "rgba(113,113,122,0.15)" }]}>
+                <Text style={[styles.inlineBadgeMetricText, { color: mutedText }]}>{pastEvents.length}</Text>
+              </View>
+            </View>
+            <View style={[styles.nodesListStack, { opacity: 0.6 }]}>
+              {pastEvents.slice(0, 5).map((event) => (
+                <View key={event.id} style={[styles.eventItemRowNode, { borderBottomColor: border }]}>
+                  <View style={[styles.eventSquareAvatar, { backgroundColor: "rgba(113,113,122,0.08)" }]}>
+                    <Ionicons name="briefcase-outline" size={18} color={mutedText} />
+                  </View>
+                  <View style={styles.eventMainMetaBlock}>
+                    <View style={styles.eventTopLineInfo}>
+                      <Text style={[styles.eventMainTitle, { color: tintColor }]} numberOfLines={1}>{event.title}</Text>
+                      <View style={[styles.typeBadgeContainer, { backgroundColor: "rgba(113,113,122,0.1)" }]}>
+                        <Text style={[styles.typeBadgeValue, { color: mutedText }]}>{event.type}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.eventSubDetailsLayoutGrid}>
+                      <View style={styles.subDetailItemRow}>
+                        <Ionicons name="calendar-outline" size={11} color={mutedText} />
+                        <Text style={[styles.subDetailItemText, { color: mutedText }]}>{formatEventDate(event.day)}</Text>
+                      </View>
+                      <View style={styles.subDetailItemRow}>
+                        <Ionicons name="time-outline" size={11} color={mutedText} />
+                        <Text style={[styles.subDetailItemText, { color: mutedText }]}>{event.startTime} - {event.endTime}</Text>
+                      </View>
+                      <View style={styles.subDetailItemRow}>
+                        <Ionicons name="map-outline" size={11} color={mutedText} />
+                        <Text style={[styles.subDetailItemText, { color: mutedText }]}>{event.location || "No location"}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
         )}
-      </View>
-    </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  summaryBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: Colors.primary,
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 16,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryValue: {
-    fontSize: 22,
-    fontWeight: '800' as const,
-    color: '#FFFFFF',
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '500' as const,
-    marginTop: 2,
-  },
-  summaryDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  content: {
+  mainContainer: {
     flex: 1,
   },
-  listContent: {
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 10,
-  },
-  shiftCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
+  scrollArea: {
     padding: 16,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
   },
-  shiftCardToday: {
-    backgroundColor: Colors.primary,
+  viewHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
-  todayBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
+  viewTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.4,
   },
-  todayDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#4ADE80',
+  countTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  todayText: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-    color: '#4ADE80',
-    letterSpacing: 1,
-  },
-  shiftHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    gap: 10,
-  },
-  dateBlock: {
-    flex: 1,
-  },
-  dateLabelDay: {
-    fontSize: 17,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  dateLabelDayToday: {
-    color: '#FFFFFF',
-  },
-  dateFullStr: {
+  countTagText: {
     fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 2,
-    fontWeight: '500' as const,
+    fontWeight: "600",
   },
-  dateFullStrToday: {
-    color: 'rgba(255,255,255,0.7)',
+  searchFilterCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 16,
   },
-  shiftTimeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: Colors.infoLight,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  shiftTimeBadgeToday: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  shiftTimeBadgeText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.primary,
-  },
-  shiftTimeBadgeTextToday: {
-    color: '#FFFFFF',
-  },
-  shiftDetails: {
-    gap: 6,
-    marginBottom: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  detailText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    flex: 1,
-  },
-  tasksRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  taskPill: {
-    backgroundColor: Colors.infoLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  searchBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.03)",
     borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
   },
-  taskPillToday: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  searchIcon: {
+    marginRight: 6,
   },
-  taskPillText: {
+  inputField: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+  },
+  dropdownTriggerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  dropdownSelectedLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  dropdownContentMenu: {
+    marginTop: 6,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    gap: 2,
+  },
+  dropdownOptionRow: {
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+  },
+  dropdownOptionText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  eventsGroupWrapper: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  sectionHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderBottomWidth: 1,
+  },
+  sectionTitleLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  inlineBadgeMetric: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  inlineBadgeMetricText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#133767",
+  },
+  fallbackEmptyPane: {
+    padding: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fallbackEmptyLabel: {
+    fontSize: 13,
+    marginTop: 8,
+    fontWeight: "500",
+  },
+  nodesListStack: {
+    flexDirection: "column",
+  },
+  eventItemRowNode: {
+    flexDirection: "row",
+    padding: 14,
+    borderBottomWidth: 1,
+    alignItems: "flex-start",
+  },
+  eventSquareAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  eventMainMetaBlock: {
+    flex: 1,
+  },
+  eventTopLineInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  eventMainTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 8,
+  },
+  typeBadgeContainer: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  typeBadgeValue: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  eventSubDetailsLayoutGrid: {
+    flexDirection: "column",
+    gap: 4,
+  },
+  subDetailItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  subDetailItemText: {
     fontSize: 12,
-    color: Colors.secondary,
-    fontWeight: '500' as const,
-  },
-  taskPillTextToday: {
-    color: '#FFFFFF',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500' as const,
+    marginLeft: 5,
   },
 });

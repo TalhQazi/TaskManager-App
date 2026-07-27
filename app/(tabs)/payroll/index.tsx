@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,9 +10,8 @@ import {
   Linking,
   Alert,
   Dimensions,
+  StatusBar,
 } from "react-native";
-
-// Native Dark Vector Icons
 import {
   Clock,
   DollarSign,
@@ -22,11 +21,12 @@ import {
   Download,
   Layers,
 } from "lucide-react-native";
-
-// Importing your mobile API utilities
 import { getEmployeeProfile, apiFetch } from "@/lib/admin/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
-// --- Type Safety Blueprints ---
+const { width } = Dimensions.get("window");
+
 interface TimeEntry {
   id: string;
   employee: string;
@@ -61,28 +61,23 @@ interface PayrollRecord {
   pdfUrl: string;
 }
 
-// --- Premium Dark Mode Theme Variables ---
-const THEME = {
-  bgCanvas: "#0B0F19",
-  bgSurface: "#161D30",
-  bgCard: "#1F2A45",
-  border: "#2A3958",
-  textPrimary: "#F3F4F6",
-  textSecondary: "#9CA3AF",
-  textMuted: "#6B7280",
-  primary: "#3B82F6",
-  accent: "#10B981",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-};
+interface LocalStatCardProps {
+  title: string;
+  value: string;
+  icon: React.ComponentType<{ size: number; color: string }>;
+  color: string;
+  cardBg: string;
+  border: string;
+  mutedText: string;
+  tintColor: string;
+}
 
-// --- Mathematical Calculation & Parsing Helpers ---
 function parsePayRate(rate: string): number {
   const match = String(rate).match(/(\d+(?:\.\d+)?)/);
   return match ? parseFloat(match[1]) : 0;
 }
 
-function parseMinutes(hhmm: string) {
+function parseMinutes(hhmm: string): number | null {
   const [h, m] = String(hhmm || "").split(":").map((x) => Number(x));
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
   return h * 60 + m;
@@ -115,6 +110,8 @@ function getMonthName(date: Date): string {
 }
 
 export default function EmployeePayroll() {
+  const { uiTheme } = useTheme();
+  
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,20 +119,29 @@ export default function EmployeePayroll() {
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
 
-  // --- Initial Profile Data Fetch ---
+  const isLightTheme = useMemo(() => {
+    return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
+  }, [uiTheme]);
+
+  const bg = useMemo(() => uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b"), [uiTheme, isLightTheme]);
+  const cardBg = useMemo(() => uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#f8fafc" : "#18181b"), [uiTheme, isLightTheme]);
+  const tintColor = useMemo(() => uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#ffffff"), [uiTheme, isLightTheme]);
+  const mutedText = useMemo(() => (isLightTheme ? "#64748b" : "#a1a1aa"), [isLightTheme]);
+  const primaryColor = useMemo(() => uiTheme.customColors?.primary || "#133767", [uiTheme]);
+  const border = useMemo(() => (isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)"), [isLightTheme]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       const profileRes = await getEmployeeProfile();
       setEmployeeProfile(profileRes.item);
     } catch (err) {
-      console.error("Failed to load employee profile engine data:", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Time-Entry History Synchronizer ---
   const loadTimeEntries = async () => {
     if (!employeeProfile) return;
     try {
@@ -156,11 +162,10 @@ export default function EmployeePayroll() {
 
       setTimeEntries(monthEntries);
     } catch (err) {
-      console.error("Failed to match clock entry matrix arrays:", err);
+      console.error(err);
     }
   };
 
-  // --- Historical Payroll Stubs Data Pipeline ---
   const loadPayrollRecords = async () => {
     try {
       setPayrollLoading(true);
@@ -170,7 +175,7 @@ export default function EmployeePayroll() {
       );
       setPayrollRecords(res.items || []);
     } catch (err) {
-      console.error("Failed to download payload histories:", err);
+      console.error(err);
       setPayrollRecords([]);
     } finally {
       setPayrollLoading(false);
@@ -188,7 +193,6 @@ export default function EmployeePayroll() {
     }
   }, [employeeProfile, currentMonth]);
 
-  // --- Safe Native Immutable Month Shifters ---
   const handlePrevMonth = () => {
     setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
@@ -197,9 +201,8 @@ export default function EmployeePayroll() {
     setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  // --- Web-To-Native Action Adapters ---
   const handleExportPDF = () => {
-    Alert.alert("Export Initialized", "Generating payroll summary file report sheets...");
+    Alert.alert("Export", "Generating payroll report summary...");
   };
 
   const handleDownloadStub = async (url: string) => {
@@ -208,14 +211,13 @@ export default function EmployeePayroll() {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert("Error", "Cannot resolve URL path link inside this device terminal.");
+        Alert.alert("Error", "Unable to open document link on this device.");
       }
     } catch {
-      Alert.alert("Error", "An error occurred while tracking this PDF stub reference.");
+      Alert.alert("Error", "An unexpected error occurred opening the document.");
     }
   };
 
-  // --- Reactive Matrix Payroll Processor ---
   const calculatedPayroll = useMemo(() => {
     if (!employeeProfile) return null;
 
@@ -277,161 +279,155 @@ export default function EmployeePayroll() {
 
   if (loading) {
     return (
-      <View style={styles.centerFallback}>
-        <ActivityIndicator size="large" color={THEME.primary} />
-        <Text style={styles.fallbackTextText}>Loading structural payroll sheets...</Text>
+      <View style={s([styles.centerFallback, { backgroundColor: bg }])}>
+        <ActivityIndicator size="large" color={primaryColor} />
+        <Text style={s([styles.fallbackText, { color: mutedText }])}>Loading payroll summary...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      <ScrollView contentContainerStyle={styles.scrollWrapper}>
+    <SafeAreaView style={s([styles.safeContainer, { backgroundColor: bg }])}>
+      <StatusBar barStyle={isLightTheme ? "dark-content" : "light-content"} backgroundColor={bg} />
+      <ScrollView contentContainerStyle={s(styles.scrollWrapper)} showsVerticalScrollIndicator={false}>
         
-        {/* --- Top Layout Header Panel --- */}
-        <View style={styles.headerRow}>
+        <View style={s(styles.headerRow)}>
           <View>
-            <Text style={styles.headerTitle}>My Payroll</Text>
-            <Text style={styles.headerSubtitle}>Track your earnings and hours</Text>
+            <Text style={s([styles.headerTitle, { color: tintColor }])}>My Payroll</Text>
+            <Text style={s([styles.headerSubtitle, { color: mutedText }])}>Track your earnings and hours</Text>
           </View>
         </View>
 
-        {/* --- Time Controller / Action Pagination Strip --- */}
-        <View style={styles.controllerBarContainer}>
-          <View style={styles.navigationControlBox}>
-            <TouchableOpacity style={styles.navIconTouchElement} onPress={handlePrevMonth}>
-              <ChevronLeft size={20} color={THEME.textPrimary} />
+        <View style={s([styles.controllerBarContainer, { backgroundColor: cardBg, borderColor: border }])}>
+          <View style={s(styles.navigationControlBox)}>
+            <TouchableOpacity style={s([styles.navIconTouchElement, { backgroundColor: bg }])} onPress={handlePrevMonth}>
+              <ChevronLeft size={fs(5)} color={tintColor} />
             </TouchableOpacity>
-            <View style={styles.monthBadgeWrapper}>
-              <Text style={styles.monthBadgeText}>{getMonthName(currentMonth)}</Text>
+            <View style={s(styles.monthBadgeWrapper)}>
+              <Text style={s([styles.monthBadgeText, { color: tintColor }])}>{getMonthName(currentMonth)}</Text>
             </View>
-            <TouchableOpacity style={styles.navIconTouchElement} onPress={handleNextMonth}>
-              <ChevronRight size={20} color={THEME.textPrimary} />
+            <TouchableOpacity style={s([styles.navIconTouchElement, { backgroundColor: bg }])} onPress={handleNextMonth}>
+              <ChevronRight size={fs(5)} color={tintColor} />
             </TouchableOpacity>
           </View>
 
           {calculatedPayroll && (
-            <TouchableOpacity style={styles.exportFileTouchBtn} onPress={handleExportPDF}>
-              <Download size={15} color="#FFF" />
-              <Text style={styles.exportFileTouchBtnText}>Export PDF</Text>
+            <TouchableOpacity style={s([styles.exportFileTouchBtn, { backgroundColor: primaryColor }])} onPress={handleExportPDF}>
+              <Download size={fs(3.8)} color="#FFFFFF" />
+              <Text style={s(styles.exportFileTouchBtnText)}>Export PDF</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* --- Summary Analytic Cards Row --- */}
         {calculatedPayroll && (
-          <View style={styles.metricsGridFlexWrap}>
-            <LocalStatCard title="TOTAL HOURS" value={formatHours(calculatedPayroll.totalHours)} icon={Clock} color={THEME.primary} />
-            <LocalStatCard title="REGULAR HOURS" value={formatHours(calculatedPayroll.regularHours)} icon={TrendingUp} color={THEME.accent} />
-            <LocalStatCard title="OVERTIME HOURS" value={formatHours(calculatedPayroll.overtimeHours)} icon={Clock} color={THEME.warning} />
-            <LocalStatCard title="TOTAL PAY" value={formatCurrency(calculatedPayroll.totalPay)} icon={DollarSign} color={THEME.accent} />
+          <View style={s(styles.metricsGridFlexWrap)}>
+            <LocalStatCard title="TOTAL HOURS" value={formatHours(calculatedPayroll.totalHours)} icon={Clock} color={primaryColor} cardBg={cardBg} border={border} mutedText={mutedText} tintColor={tintColor} />
+            <LocalStatCard title="REGULAR HOURS" value={formatHours(calculatedPayroll.regularHours)} icon={TrendingUp} color="rgb(34, 197, 94)" cardBg={cardBg} border={border} mutedText={mutedText} tintColor={tintColor} />
+            <LocalStatCard title="OVERTIME HOURS" value={formatHours(calculatedPayroll.overtimeHours)} icon={Clock} color="rgb(234, 179, 8)" cardBg={cardBg} border={border} mutedText={mutedText} tintColor={tintColor} />
+            <LocalStatCard title="TOTAL PAY" value={formatCurrency(calculatedPayroll.totalPay)} icon={DollarSign} color="rgb(34, 197, 94)" cardBg={cardBg} border={border} mutedText={mutedText} tintColor={tintColor} />
           </View>
         )}
 
-        {/* --- Content Cards Breakdown --- */}
         {calculatedPayroll ? (
-          <View style={{ gap: 16 }}>
+          <View style={s({ gap: hp(2) })}>
             
-            {/* Pay Metric Rates Calculations Card */}
-            <View style={styles.uiSurfaceCardStructure}>
-              <Text style={styles.cardHeaderTitleText}>Pay Breakdown</Text>
-              <View style={styles.cardContentMetricsSplitList}>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Pay Type</Text>
-                  <View style={[styles.inlineStaticBadge, { backgroundColor: calculatedPayroll.isMonthly ? THEME.primary : THEME.border }]}>
-                    <Text style={styles.inlineStaticBadgeText}>{calculatedPayroll.isMonthly ? "Monthly" : "Hourly"}</Text>
+            <View style={s([styles.uiSurfaceCardStructure, { backgroundColor: cardBg, borderColor: border }])}>
+              <Text style={s([styles.cardHeaderTitleText, { color: tintColor }])}>Pay Breakdown</Text>
+              <View style={s(styles.cardContentMetricsSplitList)}>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Pay Type</Text>
+                  <View style={s([styles.inlineStaticBadge, { backgroundColor: primaryColor }])}>
+                    <Text style={s(styles.inlineStaticBadgeText)}>{calculatedPayroll.isMonthly ? "Monthly" : "Hourly"}</Text>
                   </View>
                 </View>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Hourly Rate</Text>
-                  <Text style={styles.valueMetricValueText}>{formatCurrency(calculatedPayroll.hourlyRate)}/hr</Text>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Hourly Rate</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: tintColor }])}>{formatCurrency(calculatedPayroll.hourlyRate)}/hr</Text>
                 </View>
                 {calculatedPayroll.isMonthly && (
-                  <View style={styles.lineMetricDataRow}>
-                    <Text style={styles.labelMetricKey}>Monthly Salary</Text>
-                    <Text style={styles.valueMetricValueText}>{formatCurrency(calculatedPayroll.monthlySalary)}</Text>
+                  <View style={s(styles.lineMetricDataRow)}>
+                    <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Monthly Salary</Text>
+                    <Text style={s([styles.valueMetricValueText, { color: tintColor }])}>{formatCurrency(calculatedPayroll.monthlySalary)}</Text>
                   </View>
                 )}
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Regular Pay</Text>
-                  <Text style={styles.valueMetricValueText}>{formatCurrency(calculatedPayroll.regularPay)}</Text>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Regular Pay</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: tintColor }])}>{formatCurrency(calculatedPayroll.regularPay)}</Text>
                 </View>
                 {calculatedPayroll.overtimePay > 0 && (
-                  <View style={styles.lineMetricDataRow}>
-                    <Text style={styles.labelMetricKey}>Overtime Pay (1.5x)</Text>
-                    <Text style={[styles.valueMetricValueText, { color: THEME.warning }]}>{formatCurrency(calculatedPayroll.overtimePay)}</Text>
+                  <View style={s(styles.lineMetricDataRow)}>
+                    <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Overtime Pay (1.5x)</Text>
+                    <Text style={s([styles.valueMetricValueText, { color: "rgb(234, 179, 8)" }])}>{formatCurrency(calculatedPayroll.overtimePay)}</Text>
                   </View>
                 )}
-                <View style={[styles.lineMetricDataRow, styles.topDividerBorderLine]}>
-                  <Text style={styles.boldLabelTotalStyle}>Total Gross Pay</Text>
-                  <Text style={[styles.boldValueTotalStyle, { color: THEME.accent }]}>{formatCurrency(calculatedPayroll.totalPay)}</Text>
+                <View style={s([styles.lineMetricDataRow, styles.topDividerBorderLine, { borderColor: border }])}>
+                  <Text style={s([styles.boldLabelTotalStyle, { color: tintColor }])}>Total Gross Pay</Text>
+                  <Text style={s([styles.boldValueTotalStyle, { color: "rgb(34, 197, 94)" }])}>{formatCurrency(calculatedPayroll.totalPay)}</Text>
                 </View>
               </View>
             </View>
 
-            {/* Comprehensive Tax Deductions Card */}
-            <View style={styles.uiSurfaceCardStructure}>
-              <Text style={styles.cardHeaderTitleText}>Tax Deductions</Text>
-              <View style={styles.cardContentMetricsSplitList}>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Federal Tax (12%)</Text>
-                  <Text style={[styles.valueMetricValueText, { color: THEME.danger }]}>-{formatCurrency(calculatedPayroll.federalTax)}</Text>
+            <View style={s([styles.uiSurfaceCardStructure, { backgroundColor: cardBg, borderColor: border }])}>
+              <Text style={s([styles.cardHeaderTitleText, { color: tintColor }])}>Tax Deductions</Text>
+              <View style={s(styles.cardContentMetricsSplitList)}>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Federal Tax (12%)</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: "rgb(239, 68, 68)" }])}>-{formatCurrency(calculatedPayroll.federalTax)}</Text>
                 </View>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>State Tax (5%)</Text>
-                  <Text style={[styles.valueMetricValueText, { color: THEME.danger }]}>-{formatCurrency(calculatedPayroll.stateTax)}</Text>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>State Tax (5%)</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: "rgb(239, 68, 68)" }])}>-{formatCurrency(calculatedPayroll.stateTax)}</Text>
                 </View>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Social Security (6.2%)</Text>
-                  <Text style={[styles.valueMetricValueText, { color: THEME.danger }]}>-{formatCurrency(calculatedPayroll.socialSecurity)}</Text>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Social Security (6.2%)</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: "rgb(239, 68, 68)" }])}>-{formatCurrency(calculatedPayroll.socialSecurity)}</Text>
                 </View>
-                <View style={styles.lineMetricDataRow}>
-                  <Text style={styles.labelMetricKey}>Medicare (1.45%)</Text>
-                  <Text style={[styles.valueMetricValueText, { color: THEME.danger }]}>-{formatCurrency(calculatedPayroll.medicare)}</Text>
+                <View style={s(styles.lineMetricDataRow)}>
+                  <Text style={s([styles.labelMetricKey, { color: mutedText }])}>Medicare (1.45%)</Text>
+                  <Text style={s([styles.valueMetricValueText, { color: "rgb(239, 68, 68)" }])}>-{formatCurrency(calculatedPayroll.medicare)}</Text>
                 </View>
-                <View style={[styles.lineMetricDataRow, styles.topDividerBorderLine]}>
-                  <Text style={styles.boldLabelTotalStyle}>Total Deductions</Text>
-                  <Text style={[styles.boldValueTotalStyle, { color: THEME.danger }]}>{formatCurrency(calculatedPayroll.totalDeductions)}</Text>
+                <View style={s([styles.lineMetricDataRow, styles.topDividerBorderLine, { borderColor: border }])}>
+                  <Text style={s([styles.boldLabelTotalStyle, { color: tintColor }])}>Total Deductions</Text>
+                  <Text style={s([styles.boldValueTotalStyle, { color: "rgb(239, 68, 68)" }])}>{formatCurrency(calculatedPayroll.totalDeductions)}</Text>
                 </View>
-                <View style={[styles.lineMetricDataRow, styles.topDividerBorderLine, { paddingTop: 10 }]}>
-                  <Text style={[styles.boldLabelTotalStyle, { fontSize: 16 }]}>Net Take-Home Pay</Text>
-                  <Text style={[styles.boldValueTotalStyle, { color: THEME.accent, fontSize: 18 }]}>{formatCurrency(calculatedPayroll.netPay)}</Text>
+                <View style={s([styles.lineMetricDataRow, styles.topDividerBorderLine, { paddingTop: hp(1.2), borderColor: border }])}>
+                  <Text style={s([styles.boldLabelTotalStyle, { fontSize: fs(4), color: tintColor }])}>Net Take-Home Pay</Text>
+                  <Text style={s([styles.boldValueTotalStyle, { color: "rgb(34, 197, 94)", fontSize: fs(4.5) }])}>{formatCurrency(calculatedPayroll.netPay)}</Text>
                 </View>
               </View>
             </View>
 
           </View>
         ) : (
-          <View style={styles.fallbackNullCardContainer}>
-            <Layers size={32} color={THEME.textMuted} />
-            <Text style={styles.fallbackNullCardText}>No logs submitted inside this monthly query index range.</Text>
+          <View style={s([styles.fallbackNullCardContainer, { backgroundColor: cardBg, borderColor: border }])}>
+            <Layers size={fs(8)} color={mutedText} />
+            <Text style={s([styles.fallbackNullCardText, { color: mutedText }])}>No activity logged within this timeframe.</Text>
           </View>
         )}
 
-        {/* --- Historical Ledger Feed System --- */}
-        <View style={[styles.uiSurfaceCardStructure, { marginTop: 16 }]}>
-          <Text style={styles.cardHeaderTitleText}>Pay History Log</Text>
+        <View style={s([styles.uiSurfaceCardStructure, { marginTop: hp(2), backgroundColor: cardBg, borderColor: border }])}>
+          <Text style={s([styles.cardHeaderTitleText, { color: tintColor }])}>Pay History Log</Text>
           
           {payrollLoading ? (
-            <ActivityIndicator size="small" color={THEME.primary} style={{ marginVertical: 20 }} />
+            <ActivityIndicator size="small" color={primaryColor} style={s({ marginVertical: hp(2.5) })} />
           ) : payrollRecords.length === 0 ? (
-            <Text style={styles.emptyHistoryLogMessage}>No documentation logs returned for the year {currentMonth.getFullYear()}</Text>
+            <Text style={s([styles.emptyHistoryLogMessage, { color: mutedText }])}>No documents found for the year {currentMonth.getFullYear()}</Text>
           ) : (
-            <View style={styles.historyLogLayoutStack}>
+            <View style={s(styles.historyLogLayoutStack)}>
               {payrollRecords.map((record) => (
-                <View key={record.id} style={styles.historyLogItemBoxRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historyItemPeriodTitleText}>{record.payPeriod}</Text>
-                    <View style={styles.historySubMetricsStack}>
-                      <Text style={styles.historyInlineMiniLabel}>Gross: {formatCurrency(record.gross)}  •  Taxes: {formatCurrency(record.taxes)}</Text>
-                      <Text style={[styles.historyInlineMiniLabel, { color: THEME.accent, fontWeight: "700" }]}>Net Income: {formatCurrency(record.net)}</Text>
+                <View key={record.id} style={s([styles.historyLogItemBoxRow, { backgroundColor: bg, borderColor: border }])}>
+                  <View style={s({ flex: 1 })}>
+                    <Text style={s([styles.historyItemPeriodTitleText, { color: tintColor }])}>{record.payPeriod}</Text>
+                    <View style={s(styles.historySubMetricsStack)}>
+                      <Text style={s([styles.historyInlineMiniLabel, { color: mutedText }])}>Gross: {formatCurrency(record.gross)}  •  Taxes: {formatCurrency(record.taxes)}</Text>
+                      <Text style={s([styles.historyInlineMiniLabel, { color: "rgb(34, 197, 94)", fontWeight: "700" }])}>Net Income: {formatCurrency(record.net)}</Text>
                     </View>
                   </View>
                   
                   {record.pdfUrl ? (
-                    <TouchableOpacity style={styles.stubDownloadTouchBtn} onPress={() => handleDownloadStub(record.pdfUrl)}>
-                      <Download size={14} color={THEME.textPrimary} />
-                      <Text style={styles.stubDownloadTouchBtnText}>Stub</Text>
+                    <TouchableOpacity style={s([styles.stubDownloadTouchBtn, { backgroundColor: cardBg, borderColor: border }])} onPress={() => handleDownloadStub(record.pdfUrl)}>
+                      <Download size={fs(3.5)} color={tintColor} />
+                      <Text style={s([styles.stubDownloadTouchBtnText, { color: tintColor }])}>Stub</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -445,15 +441,14 @@ export default function EmployeePayroll() {
   );
 }
 
-// --- Localized Isolated Stat Card Core Design ---
-function LocalStatCard({ title, value, icon: Icon, color }: { title: string; value: string; icon: any; color: string }) {
+function LocalStatCard({ title, value, icon: Icon, color, cardBg, border, mutedText, tintColor }: LocalStatCardProps) {
   return (
-    <View style={styles.statBoxContainer}>
-      <View style={styles.statHeaderRowLine}>
-        <Text style={styles.statHeaderTitleText} numberOfLines={1}>{title}</Text>
-        <Icon size={14} color={color} />
+    <View style={s([styles.statBoxContainer, { backgroundColor: cardBg, borderColor: border }])}>
+      <View style={s(styles.statHeaderRowLine)}>
+        <Text style={s([styles.statHeaderTitleText, { color: mutedText }])} numberOfLines={1}>{title}</Text>
+        <Icon size={fs(3.5)} color={color} />
       </View>
-      <Text style={styles.statPrimaryValueDisplay}>{value}</Text>
+      <Text style={s([styles.statPrimaryValueDisplay, { color: tintColor }])}>{value}</Text>
     </View>
   );
 }
@@ -461,127 +456,110 @@ function LocalStatCard({ title, value, icon: Icon, color }: { title: string; val
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: THEME.bgCanvas,
   },
   scrollWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 40,
+    paddingHorizontal: wp(4),
+    paddingTop: hp(2),
+    paddingBottom: hp(5),
   },
   centerFallback: {
     flex: 1,
-    backgroundColor: THEME.bgCanvas,
     justifyContent: "center",
     alignItems: "center",
-    gap: 12,
+    gap: hp(1.5),
   },
-  fallbackTextText: {
-    color: THEME.textSecondary,
-    fontSize: 14,
+  fallbackText: {
+    fontSize: fs(3.5),
   },
   headerRow: {
-    marginBottom: 16,
+    marginBottom: hp(2),
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: fs(5.5),
     fontWeight: "800",
-    color: THEME.textPrimary,
   },
   headerSubtitle: {
-    fontSize: 13,
-    color: THEME.textMuted,
-    marginTop: 2,
+    fontSize: fs(3.2),
+    marginTop: hp(0.3),
   },
   controllerBarContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: THEME.bgSurface,
     borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 16,
+    borderRadius: wp(2.5),
+    padding: wp(2),
+    marginBottom: hp(2),
   },
   navigationControlBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: wp(1),
   },
   navIconTouchElement: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: THEME.bgCard,
+    padding: wp(1.5),
+    borderRadius: wp(1.5),
   },
   monthBadgeWrapper: {
-    paddingHorizontal: 12,
+    paddingHorizontal: wp(3),
     justifyContent: "center",
   },
   monthBadgeText: {
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontWeight: "700",
-    color: THEME.textPrimary,
   },
   exportFileTouchBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: THEME.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 6,
-    gap: 6,
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(0.9),
+    borderRadius: wp(1.5),
+    gap: wp(1.5),
   },
   exportFileTouchBtnText: {
-    color: "#FFF",
-    fontSize: 12,
+    color: "#FFFFFF",
+    fontSize: fs(3),
     fontWeight: "700",
   },
   metricsGridFlexWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 16,
+    gap: wp(2.5),
+    marginBottom: hp(2),
   },
   statBoxContainer: {
-    width: (Dimensions.get("window").width - 42) / 2,
-    backgroundColor: THEME.bgSurface,
+    width: wp(43),
     borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: wp(3),
+    padding: wp(3),
   },
   statHeaderRowLine: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: hp(0.8),
   },
   statHeaderTitleText: {
-    fontSize: 10,
+    fontSize: fs(2.5),
     fontWeight: "700",
-    color: THEME.textMuted,
     letterSpacing: 0.5,
   },
   statPrimaryValueDisplay: {
-    fontSize: 16,
+    fontSize: fs(4),
     fontWeight: "800",
-    color: THEME.textPrimary,
   },
   uiSurfaceCardStructure: {
-    backgroundColor: THEME.bgSurface,
     borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: wp(3.5),
+    padding: wp(4),
   },
   cardHeaderTitleText: {
-    fontSize: 15,
+    fontSize: fs(3.8),
     fontWeight: "700",
-    color: THEME.textPrimary,
-    marginBottom: 14,
+    marginBottom: hp(1.8),
   },
   cardContentMetricsSplitList: {
-    gap: 10,
+    gap: hp(1.2),
   },
   lineMetricDataRow: {
     flexDirection: "row",
@@ -589,100 +567,85 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   labelMetricKey: {
-    fontSize: 13,
-    color: THEME.textSecondary,
+    fontSize: fs(3.2),
   },
   valueMetricValueText: {
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontWeight: "600",
-    color: THEME.textPrimary,
   },
   inlineStaticBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: wp(2),
+    paddingVertical: hp(0.4),
+    borderRadius: wp(1.5),
   },
   inlineStaticBadgeText: {
-    fontSize: 10,
+    fontSize: fs(2.5),
     fontWeight: "700",
-    color: "#FFF",
+    color: "#FFFFFF",
   },
   topDividerBorderLine: {
     borderTopWidth: 1,
-    borderColor: THEME.border,
-    paddingTop: 12,
-    marginTop: 4,
+    paddingTop: hp(1.5),
+    marginTop: hp(0.5),
   },
   boldLabelTotalStyle: {
-    fontSize: 14,
+    fontSize: fs(3.5),
     fontWeight: "700",
-    color: THEME.textPrimary,
   },
   boldValueTotalStyle: {
-    fontSize: 15,
+    fontSize: fs(3.8),
     fontWeight: "800",
   },
   fallbackNullCardContainer: {
-    backgroundColor: THEME.bgSurface,
     borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 14,
-    padding: 32,
+    borderRadius: wp(3.5),
+    padding: wp(8),
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: hp(1.2),
   },
   fallbackNullCardText: {
-    color: THEME.textMuted,
-    fontSize: 13,
+    fontSize: fs(3.2),
     textAlign: "center",
   },
   emptyHistoryLogMessage: {
-    color: THEME.textMuted,
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontStyle: "italic",
     textAlign: "center",
-    marginVertical: 12,
+    marginVertical: hp(1.5),
   },
   historyLogLayoutStack: {
-    gap: 10,
+    gap: hp(1.2),
   },
   historyLogItemBoxRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: THEME.bgCard,
     borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: wp(2.5),
+    padding: wp(3),
   },
   historyItemPeriodTitleText: {
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontWeight: "700",
-    color: THEME.textPrimary,
   },
   historySubMetricsStack: {
-    marginTop: 4,
-    gap: 2,
+    marginTop: hp(0.5),
+    gap: hp(0.3),
   },
   historyInlineMiniLabel: {
-    fontSize: 12,
-    color: THEME.textSecondary,
+    fontSize: fs(3),
   },
   stubDownloadTouchBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: wp(1),
     borderWidth: 1,
-    borderColor: THEME.border,
-    backgroundColor: THEME.bgSurface,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: wp(2.5),
+    paddingVertical: hp(0.8),
+    borderRadius: wp(1.5),
   },
   stubDownloadTouchBtnText: {
-    fontSize: 11,
+    fontSize: fs(2.8),
     fontWeight: "700",
-    color: THEME.textPrimary,
   },
 });

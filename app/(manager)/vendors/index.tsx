@@ -1,51 +1,44 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
-  Text,
   View,
-  ScrollView,
+  Text,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
+  SafeAreaView,
+  Alert,
   Linking,
-  RefreshControl,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
-// Use useLocalSearchParams if you are using Expo Router
-// import { useLocalSearchParams } from "expo-router"; 
 import {
-  Plus,
   Search,
-  Eye,
-  Edit,
-  Trash2,
   MapPin,
   Phone,
   Mail,
   Building,
   CheckCircle,
   XCircle,
-  Globe,
+  Users,
+  Contact,
   ChevronDown,
   X,
+  Check,
+  PhoneCall,
 } from "lucide-react-native";
 
-// Assume apiFetch client is defined somewhere or adapt your path here
 import { apiFetch } from "@/lib/admin/apiClient";
-import Colors from "@/constants/colors";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 
 interface Vendor {
   _id: string;
   name: string;
   phone: string;
   email: string;
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-  website: string;
+  address: string;
   serviceType: string;
   location: string;
   status: "approved" | "not-approved";
@@ -58,939 +51,583 @@ interface Location {
   name: string;
 }
 
-interface VendorCategory {
-  _id: string;
-  name: string;
+interface SelectorOption {
+  label: string;
+  value: string;
 }
 
-export default function VendorsScreen() {
-  // If using Expo Router, extract params like this:
-  // const { view: viewId } = useLocalSearchParams<{ view?: string }>();
-  const viewId = ""; // Mock or hook parameter placeholder
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background: isDark ? "#090d13" : "#f8fafc",
+    surface: isDark ? "#0d1117" : "#ffffff",
+    surfaceMuted: isDark ? "#161b22" : "#f1f5f9",
+    border: isDark ? "#21262d" : "#e2e8f0",
+    text: isDark ? "#c9d1d9" : "#0f172a",
+    textBold: isDark ? "#f0f6fc" : "#020617",
+    textMuted: isDark ? "#8b949e" : "#64748b",
+    primary: "#0ea5e9",
+    success: "#10b981",
+    warning: "#f59e0b",
+    danger: "#ef4444",
+    info: "#3b82f6",
+  };
+}
+
+function createStyles(
+  c: ReturnType<typeof buildColors>,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  screenWidth: number
+) {
+  const horizontalPadding = isSmallScreen ? wp(3) : isTablet ? wp(6) : wp(4.2);
+
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.background },
+    scrollContainer: { paddingHorizontal: horizontalPadding, paddingTop: hp(2), paddingBottom: hp(5) },
+    headerBlock: { marginBottom: hp(2.5) },
+    titleRow: { flexDirection: "row", alignItems: "center", gap: wp(2) },
+    titleText: { fontSize: isTablet ? 28 : 24, fontWeight: "800", color: c.textBold, letterSpacing: -0.5 },
+    subtitleText: { fontSize: isTablet ? 15 : 14, color: c.textMuted, marginTop: hp(0.5) },
+    statsContainer: { flexDirection: isSmallScreen ? "column" : "row", gap: wp(3), marginBottom: hp(2.5) },
+    statCard: { flex: 1, backgroundColor: c.surface, borderRadius: wp(3), padding: wp(3.5), borderWidth: 1, borderColor: c.border },
+    statHeader: { flexDirection: "row", alignItems: "center", gap: wp(1.5), marginBottom: hp(1) },
+    statLabel: { fontSize: isTablet ? 13 : 12, fontWeight: "600", color: c.textMuted },
+    statValue: { fontSize: isTablet ? 28 : 24, fontWeight: "700" },
+    filterCard: { backgroundColor: c.surface, borderRadius: wp(3), padding: wp(3), borderWidth: 1, borderColor: c.border, marginBottom: hp(2.5), gap: hp(1.2) },
+    searchWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: c.background, paddingHorizontal: wp(3), borderRadius: wp(2), borderWidth: 1, borderColor: c.border, height: hp(5.5) },
+    searchIcon: { marginRight: wp(2) },
+    searchInput: { flex: 1, fontSize: isTablet ? 15 : 14, color: c.text, padding: 0 },
+    selectorsRow: { flexDirection: isSmallScreen ? "column" : "row", gap: wp(2.5) },
+    pickerFilterBtn: { flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: c.background, borderWidth: 1, borderColor: c.border, borderRadius: wp(2), paddingHorizontal: wp(3), height: hp(5.5) },
+    pickerFilterText: { fontSize: isTablet ? 14 : 13, color: c.text },
+    loaderBox: { paddingVertical: hp(8), alignItems: "center", justifyContent: "center" },
+    gridContainer: { flexDirection: isTablet ? "row" : "column", flexWrap: "wrap", gap: wp(3) },
+    vendorCard: { width: isTablet ? "48.5%" : "100%", backgroundColor: c.surface, borderRadius: wp(3.5), padding: wp(4), borderWidth: 1, borderColor: c.border },
+    cardMainHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: hp(1.8) },
+    cardMetaRow: { flexDirection: "row", alignItems: "center", gap: wp(3), flex: 1, paddingRight: wp(2) },
+    avatarPhotoFrame: { width: isTablet ? 48 : 40, height: isTablet ? 48 : 40, borderRadius: isTablet ? 24 : 20, backgroundColor: c.primary + "15", alignItems: "center", justifyContent: "center" },
+    cardTitleBlock: { flex: 1 },
+    vendorNameText: { fontSize: isTablet ? 18 : 16, fontWeight: "700", color: c.textBold },
+    serviceTypeText: { fontSize: isTablet ? 14 : 13, color: c.textMuted, marginTop: 1 },
+    badgeItem: { paddingHorizontal: wp(2), paddingVertical: hp(0.5), borderRadius: wp(1.5), flexDirection: "row", alignItems: "center", gap: wp(1), borderWidth: 1 },
+    badgeItemText: { fontSize: isTablet ? 12 : 11, fontWeight: "700" },
+    detailsBlock: { gap: hp(1.2) },
+    infoRow: { flexDirection: "row", alignItems: "center", gap: wp(2.5) },
+    infoText: { fontSize: isTablet ? 15 : 14, color: c.text, flex: 1 },
+    notesDivider: { paddingTop: hp(1.2), borderTopWidth: 1, borderTopColor: c.border + "50", marginTop: hp(0.5) },
+    notesText: { fontSize: isTablet ? 14 : 13, color: c.textMuted, lineHeight: 18 },
+    
+    cardFooterRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: hp(1.5), paddingTop: hp(1.2), borderTopWidth: 1, borderTopColor: c.border + "40" },
+    quickCallBtn: { flexDirection: "row", alignItems: "center", gap: wp(1.5), backgroundColor: c.primary + "15", paddingHorizontal: wp(3), paddingVertical: hp(0.8), borderRadius: wp(2) },
+    quickCallBtnText: { color: c.primary, fontWeight: "700", fontSize: isTablet ? 13 : 12 },
+
+    emptyBox: { width: "100%", backgroundColor: c.surface, padding: wp(8), borderRadius: wp(3.5), alignItems: "center", borderWidth: 1, borderColor: c.border },
+    emptyTitle: { fontSize: isTablet ? 18 : 16, fontWeight: "700", color: c.textBold, marginTop: hp(1.5), marginBottom: hp(0.5) },
+    emptySubtitle: { fontSize: isTablet ? 14 : 13, color: c.textMuted, textAlign: "center" },
+
+    /* Modal Layout Styles */
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: wp(5) },
+    dropdownContentCard: { width: "100%", maxWidth: isTablet ? 400 : 320, backgroundColor: c.surface, borderRadius: wp(4), borderWidth: 1, borderColor: c.border, overflow: "hidden", maxHeight: "75%" },
+    dropdownHeader: { paddingHorizontal: wp(4), paddingVertical: hp(1.8), borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: c.surfaceMuted },
+    dropdownHeaderText: { fontSize: isTablet ? 16 : 15, fontWeight: "700", color: c.textBold },
+    dropdownScrollView: { paddingVertical: hp(0.8) },
+    dropdownItemRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: wp(4), paddingVertical: hp(1.5) },
+    dropdownItemText: { fontSize: isTablet ? 15 : 14, color: c.text, flex: 1 },
+    dropdownItemTextActive: { color: c.primary, fontWeight: "600" },
+
+    modalContainer: { flex: 1, backgroundColor: c.background },
+    modalHeaderBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: wp(4), borderBottomWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+    modalTitleText: { fontSize: isTablet ? 20 : 18, fontWeight: "700", color: c.textBold },
+    modalScrollBody: {
+      padding: wp(4),
+      gap: hp(2),
+      maxWidth: isTablet ? 600 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
+    },
+    inspectDetailBlock: { gap: hp(2) },
+    actionButtonsRow: { flexDirection: "row", gap: wp(3), marginTop: hp(1) },
+    callPrimaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: wp(2), backgroundColor: c.primary, paddingVertical: hp(1.6), borderRadius: wp(2.5) },
+    callPrimaryBtnText: { color: "#FFFFFF", fontWeight: "700", fontSize: isTablet ? 15 : 14 },
+    emailSecondaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: wp(2), backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, paddingHorizontal: wp(4), paddingVertical: hp(1.6), borderRadius: wp(2.5) },
+    emailSecondaryBtnText: { color: c.text, fontWeight: "600", fontSize: isTablet ? 15 : 14 },
+    
+    infoCardSection: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: wp(3), padding: wp(4), gap: hp(1.8) },
+    inspectLabel: { fontSize: isTablet ? 12 : 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 },
+    inspectValue: { fontSize: isTablet ? 15 : 14, color: c.textBold, fontWeight: "500" },
+    notesBlockModal: { paddingTop: hp(1.5), borderTopWidth: 1, borderTopColor: c.border + "50" },
+    notesTextModal: { fontSize: isTablet ? 14 : 13, color: c.text, lineHeight: 20 },
+    footerActionsRow: { flexDirection: "row", justifyContent: "flex-end", gap: wp(2.5), marginTop: hp(1), marginBottom: hp(3) },
+    formCancelBtn: { borderWidth: 1, borderColor: c.border, paddingHorizontal: wp(5), paddingVertical: hp(1.5), borderRadius: wp(2), alignItems: "center", justifyContent: "center", backgroundColor: c.surface, width: "100%" },
+    formCancelBtnText: { color: c.text, fontWeight: "600", fontSize: isTablet ? 15 : 14 },
+  });
+}
+
+export default function Vendors() {
+  const { uiTheme } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(
+    () => createStyles(colors, wp, hp, isTablet, isSmallScreen, width),
+    [colors, wp, hp, isTablet, isSmallScreen, width]
+  );
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [categories, setCategories] = useState<VendorCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Filter Selection States
-  const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // Filter Picker Modal Controls
-  const [activePicker, setActivePicker] = useState<{ type: "category" | "location" | "status" | "form-location" | "form-status"; options: { label: string; value: string }[] } | null>(null);
-
-  // Dialog Visibility states
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Form input bindings
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    street: "",
-    city: "",
-    state: "",
-    zip: "",
-    website: "",
-    serviceType: "",
-    location: "",
-    status: "approved" as "approved" | "not-approved",
-    notes: "",
-  });
-
-  const fetchData = async () => {
-    try {
-      const [vendorsRes, locationsRes, categoriesRes] = await Promise.all([
-        apiFetch<{ items: Vendor[] }>("/api/vendors"),
-        apiFetch<{ items: Location[] }>("/api/locations"),
-        apiFetch<{ items: VendorCategory[] }>("/api/vendor-categories"),
-      ]);
-      setVendors(vendorsRes?.items || []);
-      setLocations(locationsRes?.items || []);
-      setCategories(categoriesRes?.items || []);
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
-      Alert.alert("Error", "Failed to get list data from the backend server.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const [customPickerVisible, setCustomPickerVisible] = useState(false);
+  const [customPickerTitle, setCustomPickerTitle] = useState("");
+  const [customPickerOptions, setCustomPickerOptions] = useState<SelectorOption[]>([]);
+  const [customPickerValue, setCustomPickerValue] = useState("");
+  const [customPickerCallback, setCustomPickerCallback] = useState<(val: string) => void>(() => {});
 
   useEffect(() => {
+    let mounted = true;
+    const fetchData = async () => {
+      try {
+        const [vendorsRes, locationsRes] = await Promise.all([
+          apiFetch<{ items: Vendor[] }>("/api/vendors"),
+          apiFetch<{ items: Location[] }>("/api/locations"),
+        ]);
+        if (mounted) {
+          setVendors(vendorsRes.items || []);
+          setLocations(locationsRes.items || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
     fetchData();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchData();
+  const handleCallVendor = (phone: string) => {
+    if (!phone) {
+      Alert.alert("No Phone Number", "This vendor does not have a phone number registered.");
+      return;
+    }
+    const cleanedPhone = phone.replace(/[^0-9+]/g, "");
+    Linking.openURL(`tel:${cleanedPhone}`).catch(() => {
+      Alert.alert("Error", "Unable to open dialer on this device.");
+    });
   };
+
+  const handleEmailVendor = (email: string) => {
+    if (!email) return;
+    Linking.openURL(`mailto:${email}`).catch(() => {
+      Alert.alert("Error", "Unable to open email client on this device.");
+    });
+  };
+
+  const presentCustomPicker = useCallback((title: string, options: SelectorOption[], currentValue: string, onSelect: (val: string) => void) => {
+    setCustomPickerTitle(title);
+    setCustomPickerOptions(options);
+    setCustomPickerValue(currentValue);
+    setCustomPickerCallback(() => onSelect);
+    setCustomPickerVisible(true);
+  }, []);
 
   const filteredVendors = useMemo(() => {
     return vendors.filter((vendor) => {
       const matchesSearch =
-        vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.serviceType.toLowerCase().includes(searchQuery.toLowerCase());
+        (vendor.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (vendor.phone || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (vendor.serviceType || "").toLowerCase().includes(searchQuery.toLowerCase());
       const matchesLocation =
         locationFilter === "all" || vendor.location === locationFilter;
       const matchesStatus =
         statusFilter === "all" || vendor.status === statusFilter;
-      const matchesCategory =
-        categoryFilter === "all" || vendor.serviceType === categoryFilter;
-      return matchesSearch && matchesLocation && matchesStatus && matchesCategory;
+      return matchesSearch && matchesLocation && matchesStatus;
     });
-  }, [vendors, searchQuery, locationFilter, statusFilter, categoryFilter]);
+  }, [vendors, searchQuery, locationFilter, statusFilter]);
 
-  const approvedCount = vendors.filter((v) => v.status === "approved").length;
-  const notApprovedCount = vendors.filter((v) => v.status === "not-approved").length;
+  const stats = useMemo(() => {
+    return {
+      total: vendors.length,
+      approved: vendors.filter((v) => v.status === "approved").length,
+      notApproved: vendors.filter((v) => v.status === "not-approved").length,
+    };
+  }, [vendors]);
 
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      Alert.alert("Validation Error", "Name is required");
-      return false;
-    }
-    if (!formData.phone.trim()) {
-      Alert.alert("Validation Error", "Phone is required");
-      return false;
-    }
-    if (!formData.serviceType.trim()) {
-      Alert.alert("Validation Error", "Service category selection is required");
-      return false;
-    }
-    return true;
-  };
+  const locationPickerOptions = useMemo(() => {
+    return [
+      { label: "All Locations", value: "all" },
+      ...locations.map((loc) => ({ label: loc.name, value: loc.name })),
+    ];
+  }, [locations]);
 
-  const handleCreate = async () => {
-    if (!validateForm()) return;
-    try {
-      const payload = {
-        ...formData,
-        location: formData.location === "none-selected" ? "" : formData.location,
-      };
-      const res = await apiFetch<{ item: Vendor }>("/api/vendors", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      setVendors([res.item, ...vendors]);
-      setIsCreateOpen(false);
-      resetForm();
-      Alert.alert("Success", "Vendor added successfully");
-    } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Something went wrong");
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!selectedVendor) return;
-    if (!validateForm()) return;
-    try {
-      const payload = {
-        ...formData,
-        location: formData.location === "none-selected" ? "" : formData.location,
-      };
-      const res = await apiFetch<{ item: Vendor }>(`/api/vendors/${selectedVendor._id}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-      setVendors(vendors.map((v) => (v._id === res.item._id ? res.item : v)));
-      setIsEditOpen(false);
-      setSelectedVendor(null);
-      resetForm();
-      Alert.alert("Success", "Vendor updated successfully");
-    } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Something went wrong");
-    }
-  };
-
-  const openDeleteConfirmation = (vendor: Vendor) => {
-    Alert.alert(
-      "Delete Vendor",
-      `Are you sure you want to delete ${vendor.name}? This action cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => handleDelete(vendor._id) },
-      ]
-    );
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await apiFetch(`/api/vendors/${id}`, { method: "DELETE" });
-      setVendors(vendors.filter((v) => v._id !== id));
-      Alert.alert("Success", "Vendor deleted successfully");
-    } catch (error) {
-      Alert.alert("Deletion Failed", "Failed to delete item from server backend.");
-    }
-  };
-
-  const handleAddCategory = async () => {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    try {
-      const res = await apiFetch<{ item: VendorCategory }>("/api/vendor-categories", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
-      setCategories([...categories, res.item].sort((a, b) => a.name.localeCompare(b.name)));
-      setFormData({ ...formData, serviceType: res.item.name });
-      setIsNewCategoryOpen(false);
-      setNewCategoryName("");
-      Alert.alert("Success", "Category added successfully");
-    } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Something went wrong");
-    }
-  };
-
-  const openView = (vendor: Vendor) => {
-    setSelectedVendor(vendor);
-    setIsViewOpen(true);
-  };
-
-  // Handle URL link triggers via Deep Link parameters matching web pattern
-  useEffect(() => {
-    if (!viewId || !viewId.trim()) return;
-    const match = vendors.find((v) => String(v._id) === viewId.trim());
-    if (match) openView(match);
-  }, [vendors, viewId]);
-
-  const openEdit = (vendor: Vendor) => {
-    setSelectedVendor(vendor);
-    setFormData({
-      name: vendor.name,
-      phone: vendor.phone,
-      email: vendor.email,
-      street: vendor.street || "",
-      city: vendor.city || "",
-      state: vendor.state || "",
-      zip: vendor.zip || "",
-      website: vendor.website || "",
-      serviceType: vendor.serviceType,
-      location: vendor.location || "none-selected",
-      status: vendor.status,
-      notes: vendor.notes,
-    });
-    setIsEditOpen(true);
-  };
-
-  const openCreate = () => {
-    resetForm();
-    setIsCreateOpen(true);
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      phone: "",
-      email: "",
-      street: "",
-      city: "",
-      state: "",
-      zip: "",
-      website: "",
-      serviceType: categories[0]?.name || "",
-      location: "none-selected",
-      status: "approved",
-      notes: "",
-    });
-  };
-
-  const formatWebsite = (url: string) => {
-    if (!url) return "";
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      return `https://${url}`;
-    }
-    return url;
-  };
-
-  const handleOpenURL = async (url: string) => {
-    const formatted = formatWebsite(url);
-    const supported = await Linking.canOpenURL(formatted);
-    if (supported) {
-      await Linking.openURL(formatted);
-    } else {
-      Alert.alert("Error", "Can't open this website link on your device");
-    }
-  };
-
-  const openPickerModal = (type: "category" | "location" | "status" | "form-location" | "form-status") => {
-    let options: { label: string; value: string }[] = [];
-    if (type === "category") {
-      options = [{ label: "All Categories", value: "all" }, ...categories.map((c) => ({ label: c.name, value: c.name }))];
-    } else if (type === "location") {
-      options = [{ label: "All Locations", value: "all" }, ...locations.map((l) => ({ label: l.name, value: l.name }))];
-    } else if (type === "status") {
-      options = [{ label: "All Status", value: "all" }, { label: "Approved", value: "approved" }, { label: "Not Approved", value: "not-approved" }];
-    } else if (type === "form-location") {
-      options = [{ label: "None", value: "none-selected" }, ...locations.map((l) => ({ label: l.name, value: l.name }))];
-    } else if (type === "form-status") {
-      options = [{ label: "Approved", value: "approved" }, { label: "Not Approved", value: "not-approved" }];
-    }
-    setActivePicker({ type, options });
-  };
-
-  const handlePickerSelect = (value: string) => {
-    if (!activePicker) return;
-    const { type } = activePicker;
-    if (type === "category") setCategoryFilter(value);
-    else if (type === "location") setLocationFilter(value);
-    else if (type === "status") setStatusFilter(value);
-    else if (type === "form-location") setFormData({ ...formData, location: value });
-    else if (type === "form-status") setFormData({ ...formData, status: value as any });
-    setActivePicker(null);
-  };
+  const statusPickerOptions = useMemo(() => {
+    return [
+      { label: "All Status", value: "all" },
+      { label: "Approved", value: "approved" },
+      { label: "Not Approved", value: "not-approved" },
+    ];
+  }, []);
 
   return (
-    <View style={styles.container}>
-      {/* Header Toolbar */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Vendor List</Text>
-          <Text style={styles.headerSubtitle}>Manage vendors by location and category</Text>
-        </View>
-        <View style={styles.headerButtonsRow}>
-          <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => setIsNewCategoryOpen(true)}>
-            <Plus size={14} color="#0f172a" />
-            <Text style={styles.btnOutlineText}>Category</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={openCreate}>
-            <Plus size={14} color="#ffffff" />
-            <Text style={styles.btnPrimaryText}>Vendor</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {/* Stats Section Cards */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Total Vendors</Text>
-            <Text style={styles.statValue}>{vendors.length}</Text>
+    <SafeAreaView style={s(styles.root)}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        
+        <View style={styles.headerBlock}>
+          <View style={styles.titleRow}>
+            <Contact size={isTablet ? 28 : 24} color={colors.primary} />
+            <Text style={styles.titleText}>Vendor Directory</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Approved</Text>
-            <Text style={[styles.statValue, { color: "#10b981" }]}>{approvedCount}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Not Approved</Text>
-            <Text style={[styles.statValue, { color: "#ef4444" }]}>{notApprovedCount}</Text>
-          </View>
+          <Text style={styles.subtitleText}>
+            View approved and not-approved vendors by location
+          </Text>
         </View>
 
-        {/* Filter Input Card Block */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <View style={styles.statHeader}>
+              <Users size={14} color={colors.textMuted} />
+              <Text style={styles.statLabel}>Total Vendors</Text>
+            </View>
+            <Text style={[styles.statValue, { color: colors.textBold }]}>{stats.total}</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View style={styles.statHeader}>
+              <CheckCircle size={14} color={colors.success} />
+              <Text style={[styles.statLabel, { color: colors.success }]}>Approved</Text>
+            </View>
+            <Text style={[styles.statValue, { color: colors.success }]}>{stats.approved}</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View style={styles.statHeader}>
+              <XCircle size={14} color={colors.danger} />
+              <Text style={[styles.statLabel, { color: colors.danger }]}>Not Approved</Text>
+            </View>
+            <Text style={[styles.statValue, { color: colors.danger }]}>{stats.notApproved}</Text>
+          </View>
+        </View>
+
         <View style={styles.filterCard}>
-          <View style={styles.searchContainer}>
-            <Search size={18} color="#64748b" style={styles.searchIcon} />
+          <View style={styles.searchWrapper}>
+            <Search size={16} color={colors.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search vendors..."
+              placeholder="Search vendors by name, phone..."
+              placeholderTextColor={colors.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
           </View>
 
-          <View style={styles.dropdownsGrid}>
-            <TouchableOpacity style={styles.pickerTrigger} onPress={() => openPickerModal("category")}>
-              <Text numberOfLines={1} style={styles.pickerTriggerText}>
-                {categoryFilter === "all" ? "All Categories" : categoryFilter}
-              </Text>
-              <ChevronDown size={16} color="#64748b" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.pickerTrigger} onPress={() => openPickerModal("location")}>
-              <Text numberOfLines={1} style={styles.pickerTriggerText}>
+          <View style={styles.selectorsRow}>
+            <TouchableOpacity
+              style={styles.pickerFilterBtn}
+              onPress={() => presentCustomPicker("Filter by location", locationPickerOptions, locationFilter, setLocationFilter)}
+            >
+              <Text style={styles.pickerFilterText} numberOfLines={1}>
                 {locationFilter === "all" ? "All Locations" : locationFilter}
               </Text>
-              <ChevronDown size={16} color="#64748b" />
+              <ChevronDown size={14} color={colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.pickerTrigger} onPress={() => openPickerModal("status")}>
-              <Text numberOfLines={1} style={styles.pickerTriggerText}>
+            <TouchableOpacity
+              style={styles.pickerFilterBtn}
+              onPress={() => presentCustomPicker("Filter by status", statusPickerOptions, statusFilter, setStatusFilter)}
+            >
+              <Text style={styles.pickerFilterText} numberOfLines={1}>
                 {statusFilter === "all" ? "All Status" : statusFilter === "approved" ? "Approved" : "Not Approved"}
               </Text>
-              <ChevronDown size={16} color="#64748b" />
+              <ChevronDown size={14} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Vendor Content List Feed (Adaptive Native Layout Replacement for Web Table) */}
-        <Text style={styles.listHeading}>Vendor List </Text>
         {loading ? (
-          <ActivityIndicator size="large" color="#0f172a" style={{ marginTop: 24 }} />
-        ) : filteredVendors.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No vendors found</Text>
+          <View style={styles.loaderBox}>
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : (
-          filteredVendors.map((vendor) => (
-            <View key={vendor._id} style={styles.vendorCard}>
-              <View style={styles.vendorCardHeader}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={styles.vendorName}>{vendor.name}</Text>
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{vendor.serviceType}</Text>
+          <View style={styles.gridContainer}>
+            {filteredVendors.map((vendor) => {
+              const isApproved = vendor.status === "approved";
+              return (
+                <TouchableOpacity 
+                  key={vendor._id} 
+                  style={styles.vendorCard}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setSelectedVendor(vendor);
+                    setIsDetailModalOpen(true);
+                  }}
+                >
+                  <View style={styles.cardMainHeader}>
+                    <View style={styles.cardMetaRow}>
+                      <View style={styles.avatarPhotoFrame}>
+                        <Contact size={isTablet ? 24 : 20} color={colors.primary} />
+                      </View>
+                      <View style={styles.cardTitleBlock}>
+                        <Text style={styles.vendorNameText} numberOfLines={1}>{vendor.name}</Text>
+                        <Text style={styles.serviceTypeText} numberOfLines={1}>{vendor.serviceType}</Text>
+                      </View>
+                    </View>
+
+                    <View style={[
+                      styles.badgeItem, 
+                      { 
+                        backgroundColor: isApproved ? "#e6f4ea" : "#fce8e6", 
+                        borderColor: isApproved ? "#ceead6" : "#fad2cf" 
+                      }
+                    ]}>
+                      {isApproved ? (
+                        <CheckCircle size={12} color={colors.success} />
+                      ) : (
+                        <XCircle size={12} color={colors.danger} />
+                      )}
+                      <Text style={[
+                        styles.badgeItemText, 
+                        { color: isApproved ? colors.success : colors.danger }
+                      ]}>
+                        {isApproved ? "Approved" : "Not Approved"}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <View style={[styles.statusBadge, vendor.status === "approved" ? styles.bgSuccess : styles.bgDestructive]}>
-                  {vendor.status === "approved" ? <CheckCircle size={12} color="#10b981" /> : <XCircle size={12} color="#ef4444" />}
-                  <Text style={[styles.statusBadgeText, vendor.status === "approved" ? styles.textSuccess : styles.textDestructive]}>
-                    {vendor.status === "approved" ? "Approved" : "Not Approved"}
-                  </Text>
-                </View>
+
+                  <View style={styles.detailsBlock}>
+                    <View style={styles.infoRow}>
+                      <MapPin size={14} color={colors.textMuted} />
+                      <Text style={styles.infoText} numberOfLines={1}>{vendor.location}</Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                      <Phone size={14} color={colors.textMuted} />
+                      <Text style={styles.infoText} numberOfLines={1}>{vendor.phone}</Text>
+                    </View>
+
+                    {!!vendor.email && (
+                      <View style={styles.infoRow}>
+                        <Mail size={14} color={colors.textMuted} />
+                        <Text style={styles.infoText} numberOfLines={1}>{vendor.email}</Text>
+                      </View>
+                    )}
+
+                    {!!vendor.address && (
+                      <View style={styles.infoRow}>
+                        <Building size={14} color={colors.textMuted} />
+                        <Text style={styles.infoText} numberOfLines={1}>{vendor.address}</Text>
+                      </View>
+                    )}
+
+                    {!!vendor.notes && (
+                      <View style={styles.notesDivider}>
+                        <Text style={styles.notesText} numberOfLines={2}>{vendor.notes}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.cardFooterRow}>
+                    <TouchableOpacity 
+                      style={styles.quickCallBtn}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleCallVendor(vendor.phone);
+                      }}
+                    >
+                      <PhoneCall size={13} color={colors.primary} />
+                      <Text style={styles.quickCallBtnText}>Call Vendor</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+            {filteredVendors.length === 0 && (
+              <View style={styles.emptyBox}>
+                <Contact size={40} color={colors.textMuted} style={{ opacity: 0.5 }} />
+                <Text style={styles.emptyTitle}>No vendors found</Text>
+                <Text style={styles.emptySubtitle}>Try adjusting your filters</Text>
               </View>
-
-              <View style={styles.cardDetailsGrid}>
-                {vendor.email ? (
-                  <TouchableOpacity style={styles.detailRow} onPress={() => Linking.openURL(`mailto:${vendor.email}`)}>
-                    <Mail size={14} color="#64748b" />
-                    <Text style={[styles.detailText, styles.linkText]}>{vendor.email}</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {vendor.website ? (
-                  <TouchableOpacity style={styles.detailRow} onPress={() => handleOpenURL(vendor.website)}>
-                    <Globe size={14} color="#64748b" />
-                    <Text style={[styles.detailText, styles.linkText]}>{vendor.website}</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                <View style={styles.detailRow}>
-                  <MapPin size={14} color="#64748b" />
-                  <Text style={styles.detailText}>{vendor.location || "No Location Specified"}</Text>
-                </View>
-
-                <TouchableOpacity style={styles.detailRow} onPress={() => Linking.openURL(`tel:${vendor.phone}`)}>
-                  <Phone size={14} color="#64748b" />
-                  <Text style={styles.detailText}>{vendor.phone}</Text>
-                </TouchableOpacity>
-              </View>
-
-             <View style={styles.cardActionsRow}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => openView(vendor)}>
-                  <Eye size={16} color="#64748b" />
-                  <Text style={styles.actionBtnText}>View</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => openEdit(vendor)}>
-                  <Edit size={16} color="#64748b" />
-                  <Text style={styles.actionBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => openDeleteConfirmation(vendor)}>
-                  <Trash2 size={16} color="#ef4444" />
-                  <Text style={[styles.actionBtnText, { color: "#ef4444" }]}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            </View> // <--- CHANGE THIS FROM </CopyView> TO </View>
-          ))
+            )}
+          </View>
         )}
       </ScrollView>
 
-      {/* Selector Custom Dropdown Sheet Wrapper */}
-      <Modal visible={activePicker !== null} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setActivePicker(null)}>
-          <View style={styles.pickerContentContainer}>
-            <Text style={styles.pickerModalTitle}>Select Option</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {activePicker?.options.map((opt,index) => (
-                <TouchableOpacity key={index} style={styles.pickerOptionItem} onPress={() => handlePickerSelect(opt.value)}>
-                  <Text style={styles.pickerOptionText}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+      {/* Vendor Detail Modal */}
+      <Modal visible={isDetailModalOpen} animationType="slide">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeaderBlock}>
+            <Text style={styles.modalTitleText}>Vendor Information</Text>
+            <TouchableOpacity onPress={() => setIsDetailModalOpen(false)}>
+              <X size={20} color={colors.textBold} />
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
 
-      {/* Add New Category Custom Modal Setup */}
-      <Modal visible={isNewCategoryOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalFormContainer}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Add New Category</Text>
-              <TouchableOpacity onPress={() => setIsNewCategoryOpen(false)}>
-                <X size={20} color="#0f172a" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.fieldLabel}>Category Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-              placeholder="e.g., Electrical"
-            />
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => setIsNewCategoryOpen(false)}>
-                <Text style={styles.btnOutlineText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleAddCategory}>
-                <Text style={styles.btnPrimaryText}>Add Category</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* View Vendor Modal Details View */}
-      <Modal visible={isViewOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollFormContainer}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Vendor Details</Text>
-              <TouchableOpacity onPress={() => setIsViewOpen(false)}>
-                <X size={20} color="#0f172a" />
-              </TouchableOpacity>
-            </View>
-
-            {selectedVendor && (
-              <View style={{ gap: 16, marginVertical: 12 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={styles.viewVendorName}>{selectedVendor.name}</Text>
-                  <View style={[styles.statusBadge, selectedVendor.status === "approved" ? styles.bgSuccess : styles.bgDestructive]}>
-                    <Text style={selectedVendor.status === "approved" ? styles.textSuccess : styles.textDestructive}>
+          {selectedVendor && (
+            <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.inspectDetailBlock}>
+                <View style={{ alignItems: "center", marginVertical: hp(1) }}>
+                  <View style={[styles.avatarPhotoFrame, { width: isTablet ? 64 : 52, height: isTablet ? 64 : 52, borderRadius: isTablet ? 32 : 26 }]}>
+                    <Contact size={isTablet ? 32 : 26} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.vendorNameText, { fontSize: isTablet ? 20 : 18, marginTop: hp(1.5) }]}>{selectedVendor.name}</Text>
+                  <Text style={{ fontSize: isTablet ? 14 : 13, color: colors.textMuted, marginTop: hp(0.3) }}>{selectedVendor.serviceType}</Text>
+                  
+                  <View style={[
+                    styles.badgeItem, 
+                    { 
+                      backgroundColor: selectedVendor.status === "approved" ? "#e6f4ea" : "#fce8e6", 
+                      borderColor: selectedVendor.status === "approved" ? "#ceead6" : "#fad2cf",
+                      marginTop: hp(1)
+                    }
+                  ]}>
+                    {selectedVendor.status === "approved" ? (
+                      <CheckCircle size={12} color={colors.success} />
+                    ) : (
+                      <XCircle size={12} color={colors.danger} />
+                    )}
+                    <Text style={[
+                      styles.badgeItemText, 
+                      { color: selectedVendor.status === "approved" ? colors.success : colors.danger }
+                    ]}>
                       {selectedVendor.status === "approved" ? "Approved" : "Not Approved"}
                     </Text>
                   </View>
                 </View>
 
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Service Category</Text>
-                  <Text style={styles.viewBlockValue}>{selectedVendor.serviceType}</Text>
+                {/* Primary Action Buttons */}
+                <View style={styles.actionButtonsRow}>
+                  {!!selectedVendor.phone && (
+                    <TouchableOpacity
+                      style={styles.callPrimaryBtn}
+                      onPress={() => handleCallVendor(selectedVendor.phone)}
+                      activeOpacity={0.8}
+                    >
+                      <PhoneCall size={16} color="#FFFFFF" />
+                      <Text style={styles.callPrimaryBtnText}>Call {selectedVendor.phone}</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!!selectedVendor.email && (
+                    <TouchableOpacity
+                      style={styles.emailSecondaryBtn}
+                      onPress={() => handleEmailVendor(selectedVendor.email)}
+                      activeOpacity={0.7}
+                    >
+                      <Mail size={16} color={colors.text} />
+                      <Text style={styles.emailSecondaryBtnText}>Email</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Location</Text>
-                  <Text style={styles.viewBlockValue}>{selectedVendor.location || "—"}</Text>
-                </View>
-
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Phone</Text>
-                  <Text style={styles.viewBlockValue}>{selectedVendor.phone}</Text>
-                </View>
-
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Email</Text>
-                  <Text style={styles.viewBlockValue}>{selectedVendor.email || "—"}</Text>
-                </View>
-
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Website</Text>
-                  <Text style={[styles.viewBlockValue, selectedVendor.website ? styles.linkText : null]}>
-                    {selectedVendor.website || "—"}
-                  </Text>
-                </View>
-
-                <View style={styles.viewDetailGridBlock}>
-                  <Text style={styles.viewBlockLabel}>Address</Text>
-                  <Text style={styles.viewBlockValue}>
-                    {selectedVendor.street ? `${selectedVendor.street}\n` : ""}
-                    {[selectedVendor.city, selectedVendor.state, selectedVendor.zip].filter(Boolean).join(", ") || "—"}
-                  </Text>
-                </View>
-
-                {selectedVendor.notes ? (
-                  <View style={styles.viewDetailGridBlock}>
-                    <Text style={styles.viewBlockLabel}>Notes</Text>
-                    <Text style={styles.viewNotesBox}>{selectedVendor.notes}</Text>
+                {/* Detail Information Card */}
+                <View style={styles.infoCardSection}>
+                  <View style={styles.infoRow}>
+                    <MapPin size={16} color={colors.textMuted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inspectLabel}>Location</Text>
+                      <Text style={styles.inspectValue}>{selectedVendor.location || "—"}</Text>
+                    </View>
                   </View>
-                ) : null}
-              </View>
-            )}
 
-            <TouchableOpacity style={[styles.btn, styles.btnPrimary, { marginTop: 12 }]} onPress={() => setIsViewOpen(false)}>
-              <Text style={styles.btnPrimaryText}>Close</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
+                  <View style={styles.infoRow}>
+                    <Phone size={16} color={colors.textMuted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inspectLabel}>Phone Number</Text>
+                      <Text style={styles.inspectValue}>{selectedVendor.phone || "—"}</Text>
+                    </View>
+                  </View>
 
-      {/* Shared Create and Edit Form Unified Screen Overlay Modal */}
-      <Modal visible={isCreateOpen || isEditOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollFormContainer}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>{isCreateOpen ? "Add Vendor" : "Edit Vendor"}</Text>
-              <TouchableOpacity onPress={() => { setIsCreateOpen(false); setIsEditOpen(false); }}>
-                <X size={20} color="#0f172a" />
-              </TouchableOpacity>
-            </View>
+                  {!!selectedVendor.email && (
+                    <View style={styles.infoRow}>
+                      <Mail size={16} color={colors.textMuted} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.inspectLabel}>Email Address</Text>
+                        <Text style={styles.inspectValue}>{selectedVendor.email}</Text>
+                      </View>
+                    </View>
+                  )}
 
-            <View style={{ gap: 12, marginVertical: 8 }}>
-              <View>
-                <Text style={styles.fieldLabel}>Name *</Text>
-                <TextInput style={styles.modalInput} value={formData.name} onChangeText={(text) => setFormData({ ...formData, name: text })} placeholder="Vendor name" />
-              </View>
+                  {!!selectedVendor.address && (
+                    <View style={styles.infoRow}>
+                      <Building size={16} color={colors.textMuted} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.inspectLabel}>Street Address</Text>
+                        <Text style={styles.inspectValue}>{selectedVendor.address}</Text>
+                      </View>
+                    </View>
+                  )}
 
-              <View>
-                <Text style={styles.fieldLabel}>Phone *</Text>
-                <TextInput style={styles.modalInput} keyboardType="phone-pad" value={formData.phone} onChangeText={(text) => setFormData({ ...formData, phone: text })} placeholder="Phone number" />
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Email</Text>
-                <TextInput style={styles.modalInput} keyboardType="email-address" autoCapitalize="none" value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} placeholder="Email address" />
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Website</Text>
-                <TextInput style={styles.modalInput} autoCapitalize="none" value={formData.website} onChangeText={(text) => setFormData({ ...formData, website: text })} placeholder="e.g., www.domain.com" />
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Service Category *</Text>
-                <TextInput style={styles.modalInput} value={formData.serviceType} onChangeText={(text) => setFormData({ ...formData, serviceType: text })} placeholder="e.g., Electrical, Plumbing" />
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Location</Text>
-                <TouchableOpacity style={styles.formPickerTrigger} onPress={() => openPickerModal("form-location")}>
-                  <Text>{formData.location === "none-selected" ? "None" : formData.location}</Text>
-                  <ChevronDown size={16} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Status *</Text>
-                <TouchableOpacity style={styles.formPickerTrigger} onPress={() => openPickerModal("form-status")}>
-                  <Text style={{ textTransform: "capitalize" }}>{formData.status === "not-approved" ? "Not Approved" : "Approved"}</Text>
-                  <ChevronDown size={16} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-
-              {/* Collapsible/Grouped Native Address Section */}
-              <View style={styles.formAddressGroup}>
-                <Text style={styles.addressGroupTitle}>Address Data</Text>
-                <View style={{ gap: 8 }}>
-                  <TextInput style={styles.modalInput} value={formData.street} onChangeText={(text) => setFormData({ ...formData, street: text })} placeholder="Street Address" />
-                  <TextInput style={styles.modalInput} value={formData.city} onChangeText={(text) => setFormData({ ...formData, city: text })} placeholder="City" />
-                  <TextInput style={styles.modalInput} value={formData.state} onChangeText={(text) => setFormData({ ...formData, state: text })} placeholder="State" />
-                  <TextInput style={styles.modalInput} keyboardType="numeric" value={formData.zip} onChangeText={(text) => setFormData({ ...formData, zip: text })} placeholder="Zip Code" />
+                  {!!selectedVendor.notes && (
+                    <View style={styles.notesBlockModal}>
+                      <Text style={styles.inspectLabel}>Notes</Text>
+                      <Text style={styles.notesTextModal}>{selectedVendor.notes}</Text>
+                    </View>
+                  )}
                 </View>
+
               </View>
 
-              <View>
-                <Text style={styles.fieldLabel}>Notes</Text>
-                <TextInput
-                  style={[styles.modalInput, styles.textAreaInput]}
-                  multiline
-                  numberOfLines={3}
-                  value={formData.notes}
-                  onChangeText={(text) => setFormData({ ...formData, notes: text })}
-                  placeholder="Additional notes..."
-                />
+              <View style={styles.footerActionsRow}>
+                <TouchableOpacity style={styles.formCancelBtn} onPress={() => setIsDetailModalOpen(false)}>
+                  <Text style={styles.formCancelBtnText}>Close</Text>
+                </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
 
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => { setIsCreateOpen(false); setIsEditOpen(false); }}>
-                <Text style={styles.btnOutlineText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={isCreateOpen ? handleCreate : handleUpdate}>
-                <Text style={styles.btnPrimaryText}>{isCreateOpen ? "Add Vendor" : "Save Changes"}</Text>
+      {/* Filter Options Modal */}
+      <Modal visible={customPickerVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.dropdownContentCard}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownHeaderText}>{customPickerTitle}</Text>
+              <TouchableOpacity onPress={() => setCustomPickerVisible(false)} style={{ padding: 4 }}>
+                <X size={18} color={colors.textBold} />
               </TouchableOpacity>
             </View>
-          </ScrollView>
+            <ScrollView contentContainerStyle={styles.dropdownScrollView} showsVerticalScrollIndicator={false}>
+              {customPickerOptions.map((opt) => {
+                const isActive = customPickerValue === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={styles.dropdownItemRow}
+                    onPress={() => {
+                      customPickerCallback(opt.value);
+                      setCustomPickerVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, isActive && styles.dropdownItemTextActive]}>
+                      {opt.label}
+                    </Text>
+                    {isActive && <Check size={16} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
-    </View>
+
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  header: {
-    paddingTop: 50,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: Colors.surface,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: Colors.surface,
-    marginTop: 2,
-  },
-  headerButtonsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  scrollContainer: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: Colors.surface,
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.golden,
-  },
-  filterCard: {
-    backgroundColor: Colors.background,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    gap: 10,
-    marginBottom: 16,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    height: 38,
-  },
-  searchIcon: {
-    marginRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.surface,
-  },
-  dropdownsGrid: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  pickerTrigger: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 6,
-    height: 36,
-    paddingHorizontal: 8,
-    backgroundColor: "#f8fafc",
-  },
-  pickerTriggerText: {
-    fontSize: 11,
-    color: "#0f172a",
-    maxWidth: "80%",
-  },
-  listHeading: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.surface,
-    marginBottom: 12,
-  },
-  emptyContainer: {
-    padding: 32,
-    alignItems: "center",
-  },
-  emptyText: {
-    color: "#64748b",
-    fontSize: 14,
-  },
-  vendorCard: {
-    backgroundColor: Colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 14,
-    marginBottom: 12,
-  },
-  vendorCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    borderBottomWidth: 1,
-    borderColor: "#f1f5f9",
-    paddingBottom: 10,
-  },
-  vendorName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: Colors.surface,
-    marginBottom: 4,
-  },
-  categoryBadge: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: "flex-start",
-  },
-  categoryBadgeText: {
-    fontSize: 11,
-    color: "#334155",
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  bgSuccess: { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" },
-  bgDestructive: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
-  statusBadgeText: { fontSize: 11, fontWeight: "500" },
-  textSuccess: { color: "#10b981" },
-  textDestructive: { color: "#ef4444" },
-  cardDetailsGrid: {
-    paddingVertical: 10,
-    gap: 6,
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 13,
-    color: "#475569",
-  },
-  linkText: {
-    color: "#2563eb",
-    textDecorationLine: "underline",
-  },
-  cardActionsRow: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderColor: "#f1f5f9",
-    paddingTop: 10,
-    justifyContent: "space-around",
-  },
-  actionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    padding: 4,
-  },
-  actionBtnText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#64748b",
-  },
-  btn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  btnPrimary: { backgroundColor: "#0f172a" },
-  btnPrimaryText: { color: "#ffffff", fontSize: 13, fontWeight: "500" },
-  btnOutline: { borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#ffffff" },
-  btnOutlineText: { color: "#0f172a", fontSize: 13, fontWeight: "500" },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    padding: 16,
-  },
-  pickerContentContainer: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 16,
-    marginHorizontal: 16,
-  },
-  pickerModalTitle: { fontSize: 15, fontWeight: "600", marginBottom: 12, color: "#0f172a" },
-  pickerOptionItem: { paddingVertical: 12, borderBottomWidth: 1, borderColor: "#f1f5f9" },
-  pickerOptionText: { fontSize: 14, color: "#334155" },
-  modalFormContainer: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 16,
-    gap: 12,
-  },
-  modalScrollFormContainer: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 16,
-    paddingBottom: 24,
-  },
-  modalHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
-    paddingBottom: 10,
-    marginBottom: 8,
-  },
-  modalTitle: { fontSize: 16, fontWeight: "600", color: "#0f172a" },
-  fieldLabel: { fontSize: 13, fontWeight: "500", color: "#334155", marginBottom: 4 },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 6,
-    height: 38,
-    paddingHorizontal: 10,
-    fontSize: 14,
-    color: "#0f172a",
-    backgroundColor: "#f8fafc",
-  },
-  formPickerTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 6,
-    height: 38,
-    paddingHorizontal: 10,
-    backgroundColor: "#f8fafc",
-  },
-  formAddressGroup: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 4,
-  },
-  addressGroupTitle: { fontSize: 12, color: "#64748b", fontWeight: "600", marginBottom: 6 },
-  textAreaInput: { height: 70, paddingTop: 8, textAlignVertical: "top" },
-  modalFooter: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 14 },
-  viewVendorName: { fontSize: 18, fontWeight: "700", color: "#0f172a", flex: 1, marginRight: 8 },
-  viewDetailGridBlock: { borderBottomWidth: 1, borderColor: "#f1f5f9", paddingBottom: 8 },
-  viewBlockLabel: { fontSize: 12, color: "#64748b", marginBottom: 2 },
-  viewBlockValue: { fontSize: 14, fontWeight: "500", color: "#0f172a" },
-  viewNotesBox: { backgroundColor: "#f8fafc", padding: 8, borderRadius: 4, marginTop: 4, fontSize: 13, color: "#334155" },
-});

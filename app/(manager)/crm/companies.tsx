@@ -14,20 +14,13 @@ import {
   Platform,
 } from 'react-native';
 import { apiFetch } from '@/lib/admin/apiClient';
-import Colors from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, wp, hp, fs } from '@/util/styles';
 
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 
-/* ── Constants ───────────────────────────────────────────────────── */
 const STATUS_OPTIONS = ['All', 'Active', 'Prospect', 'Inactive'];
 const INDUSTRY_OPTIONS = ['All', 'Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Logistics', 'Other'];
-
-const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  Active:   { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', dot: '#10b981' },
-  Prospect: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', dot: '#3b82f6' },
-  Inactive: { bg: '#f8fafc', text: '#475569', border: '#e2e8f0', dot: '#94a3b8' },
-  Unknown:  { bg: '#f4f4f5', text: '#71717a', border: '#e4e4e7', dot: '#a1a1aa' },
-};
 
 const INDUSTRY_ICONS: Record<string, string> = {
   Technology:    '💻',
@@ -48,8 +41,6 @@ const AVATAR_PALETTES = [
   { bg: '#ffedd5', text: '#c2410c' },
 ];
 
-/* ── Helpers ─────────────────────────────────────────────────────── */
-const getStatusConfig = (status: string) => STATUS_CONFIG[status] || STATUS_CONFIG['Unknown'];
 const getIndustryIcon = (industry: string) => INDUSTRY_ICONS[industry] || '🏢';
 
 const getInitials = (name = '') => {
@@ -69,42 +60,500 @@ const avatarColor = (name = '') => {
   return AVATAR_PALETTES[Math.abs(h)];
 };
 
-/* ── Shared UI Components ────────────────────────────────────────── */
-function StatusBadge({ status }: { status: string }) {
-  const cfg = getStatusConfig(status);
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isDark ? '#0f1117' : '#f8fafc'),
+    cardBg:        uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#171717' : '#ffffff'),
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isDark ? '#ffffff' : '#0f172a'),
+    textSecondary: isDark ? '#94a3b8' : '#64748b',
+    textMuted:     isDark ? '#64748b' : '#94a3b8',
+    textDark:      isDark ? '#737373' : '#334155',
+    border:        isDark ? '#262626' : '#e2e8f0',
+    borderLight:   isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9',
+    inputBg:       isDark ? 'rgba(0,0,0,0.2)' : '#f8fafc',
+    primary:       uiTheme.customColors?.primary || (isDark ? '#6366f1' : '#4f46e5'),
+    readOnlyBg:    isDark ? 'rgba(245, 158, 11, 0.1)' : '#fffbeb',
+    readOnlyBorder:isDark ? 'rgba(245, 158, 11, 0.25)' : '#fde68a',
+    readOnlyText:  '#b45309',
+    overlayBg:     'rgba(15, 23, 42, 0.4)',
+    status: {
+      Active:   { bg: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ecfdf5', text: isDark ? '#34d399' : '#047857', border: isDark ? 'rgba(16, 185, 129, 0.25)' : '#a7f3d0', dot: '#10b981' },
+      Prospect: { bg: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', text: isDark ? '#60a5fa' : '#1d4ed8', border: isDark ? 'rgba(59, 130, 246, 0.25)' : '#bfdbfe', dot: '#3b82f6' },
+      Inactive: { bg: isDark ? 'rgba(148, 163, 184, 0.1)' : '#f8fafc', text: isDark ? '#94a3b8' : '#475569', border: isDark ? 'rgba(148, 163, 184, 0.25)' : '#e2e8f0', dot: '#94a3b8' },
+      Unknown:  { bg: isDark ? '#27272a' : '#f4f4f5', text: isDark ? '#a1a1aa' : '#71717a', border: isDark ? '#3f3f46' : '#e4e4e7', dot: '#a1a1aa' },
+    }
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: wp(4),
+      paddingTop: Platform.OS === 'android' ? hp(5) : hp(2),
+      paddingBottom: hp(1.5),
+    },
+    headerTitle: {
+      fontSize: fs(6),
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: fs(3.2),
+      color: colors.textSecondary,
+      marginTop: hp(0.25),
+    },
+    readOnlyBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.readOnlyBg,
+      borderWidth: 1,
+      borderColor: colors.readOnlyBorder,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.6),
+      borderRadius: wp(10),
+      gap: wp(1.5),
+    },
+    readOnlyPulseDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+      backgroundColor: '#fbbf24',
+    },
+    readOnlyText: {
+      color: colors.readOnlyText,
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    controlsWidget: {
+      backgroundColor: colors.cardBg,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      padding: wp(3.5),
+      gap: hp(1.5),
+    },
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      paddingHorizontal: wp(3),
+      height: hp(5.5),
+    },
+    searchIconSymbol: {
+      fontSize: fs(3.5),
+      marginRight: wp(1.5),
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fs(3.5),
+    },
+    searchClearHitbox: {
+      padding: wp(1),
+    },
+    searchClearText: {
+      color: colors.textMuted,
+      fontSize: fs(4.5),
+      fontWeight: 'bold',
+    },
+    filterRowsBlock: {
+      gap: hp(1.2),
+    },
+    statusScrollContainer: {
+      gap: wp(2),
+      paddingVertical: hp(0.25),
+    },
+    statusChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(10),
+      gap: wp(1.5),
+    },
+    chipIndicatorDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+    },
+    statusChipText: {
+      fontSize: fs(3),
+    },
+    industrySelectorDropdownButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(1),
+      borderRadius: wp(2.5),
+    },
+    industrySelectorText: {
+      fontSize: fs(3.2),
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    dropdownCaret: {
+      fontSize: fs(2.5),
+      color: colors.textSecondary,
+    },
+    centeredStateBlock: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: hp(7.5),
+      gap: hp(1.2),
+    },
+    stateMetaMessageText: {
+      color: colors.textSecondary,
+      fontSize: fs(3.5),
+      fontWeight: '500',
+    },
+    emptyGraphicIcon: {
+      fontSize: fs(9),
+      color: colors.textMuted,
+    },
+    errorTextHeading: {
+      color: '#ef4444',
+      fontSize: fs(3.5),
+      fontWeight: '600',
+      textAlign: 'center',
+      paddingHorizontal: wp(6),
+    },
+    retryButtonAction: {
+      marginTop: hp(0.75),
+      paddingHorizontal: wp(3.5),
+      paddingVertical: hp(0.75),
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2),
+    },
+    retryButtonActionText: {
+      color: colors.primary,
+      fontSize: fs(3.2),
+      fontWeight: '600',
+    },
+    listScroller: {
+      padding: wp(4),
+      gap: hp(1.5),
+    },
+    companyCardItem: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(4),
+      padding: wp(3.5),
+      gap: hp(1.5),
+    },
+    cardTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    cardMiddleIdentificationBlock: {
+      flex: 1,
+      marginLeft: wp(3),
+      marginRight: wp(2),
+      gap: hp(0.25),
+    },
+    cardCompanyName: {
+      fontSize: fs(3.8),
+      fontWeight: '700',
+      color: colors.text,
+    },
+    cardCompanyWebsite: {
+      fontSize: fs(3),
+      color: colors.primary,
+    },
+    cardMetadataFooterMetricsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: wp(2),
+      paddingTop: hp(1.2),
+      borderTopWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    cardTagItem: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(2),
+    },
+    cardTagItemText: {
+      fontSize: fs(2.8),
+      fontWeight: '600',
+      color: colors.textDark,
+    },
+    indexFooterRecordCounterText: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      fontSize: fs(3),
+      marginTop: hp(1),
+      marginBottom: hp(2.5),
+    },
+    badgeContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(10),
+      gap: wp(1),
+    },
+    badgeDot: {
+      width: wp(1.2),
+      height: wp(1.2),
+      borderRadius: wp(0.6),
+    },
+    badgeText: {
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    avatarBase: {
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarMedium: {
+      width: wp(9.5),
+      height: wp(9.5),
+      borderRadius: wp(2.5),
+    },
+    avatarLarge: {
+      width: wp(13),
+      height: wp(13),
+      borderRadius: wp(3.5),
+    },
+    avatarText: {
+      fontWeight: 'bold',
+    },
+    pillContainer: {
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pillGrayBg: { backgroundColor: colors.inputBg },
+    pillBlueBg: { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)', borderWidth: 1 },
+    pillText: { fontSize: fs(3), fontWeight: '700' },
+    pillGrayText: { color: colors.textDark },
+    pillBlueText: { color: colors.primary },
+    modalBlurDimBackdrop: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: 'flex-end',
+    },
+    industryDrawerLayoutContainer: {
+      backgroundColor: colors.cardBg,
+      borderTopLeftRadius: wp(6),
+      borderTopRightRadius: wp(6),
+      paddingBottom: Platform.OS === 'ios' ? hp(4) : hp(3),
+      maxHeight: WINDOW_HEIGHT * 0.6,
+    },
+    drawerDragHandleIndicatorBar: {
+      width: wp(10),
+      height: hp(0.5),
+      backgroundColor: colors.border,
+      borderRadius: wp(0.5),
+      alignSelf: 'center',
+      marginTop: hp(1.2),
+    },
+    drawerModalHeaderHeadline: {
+      fontSize: fs(4),
+      fontWeight: '800',
+      color: colors.text,
+      textAlign: 'center',
+      marginVertical: hp(1.8),
+    },
+    drawerItemsContentScroll: {
+      paddingHorizontal: wp(4),
+    },
+    drawerSelectionItemRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: hp(1.8),
+      borderBottomWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    drawerSelectionItemRowActive: {
+      backgroundColor: colors.inputBg,
+    },
+    drawerSelectionRowLabel: {
+      fontSize: fs(3.5),
+      fontWeight: '600',
+      color: colors.textDark,
+    },
+    drawerSelectionRowCheckmark: {
+      fontSize: fs(3.5),
+      fontWeight: 'bold',
+      color: colors.primary,
+    },
+    profileBottomSheetCardBody: {
+      backgroundColor: colors.cardBg,
+      borderTopLeftRadius: wp(7),
+      borderTopRightRadius: wp(7),
+      height: WINDOW_HEIGHT * 0.85,
+    },
+    profileSheetHeaderBlock: {
+      padding: wp(4),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      marginTop: hp(1.2),
+    },
+    profileSheetHeaderFlexAligner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      position: 'relative',
+    },
+    profileSheetHeaderIdentGroup: {
+      flex: 1,
+      marginLeft: wp(3),
+      marginRight: wp(8),
+      gap: hp(0.25),
+    },
+    profileSheetCompanyNameTitle: {
+      fontSize: fs(4),
+      fontWeight: '800',
+      color: colors.text,
+      lineHeight: fs(5),
+    },
+    profileSheetCompanyIndustrySubhead: {
+      fontSize: fs(3),
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    profileSheetCloseCircularHandleButton: {
+      position: 'absolute',
+      top: hp(0.5),
+      right: 0,
+      width: wp(7),
+      height: wp(7),
+      borderRadius: wp(3.5),
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    profileSheetCloseCircularHandleButtonText: {
+      fontSize: fs(4),
+      color: colors.textSecondary,
+      fontWeight: '700',
+      lineHeight: fs(4.5),
+    },
+    profileSheetFieldGridScrollTrack: {
+      flex: 1,
+      padding: wp(4),
+    },
+    metaInformationGridSystem: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: hp(2),
+    },
+    gridCellHalfColumnWidth: {
+      width: '50%',
+      paddingRight: wp(2),
+    },
+    gridCellFullColumnWidth: {
+      width: '100%',
+    },
+    metaCellUppercaseLabelText: {
+      fontSize: fs(2.5),
+      fontWeight: '800',
+      color: colors.textMuted,
+      letterSpacing: 0.8,
+      marginBottom: hp(0.5),
+    },
+    metaCellContentDataValueString: {
+      fontSize: fs(3.5),
+      fontWeight: '600',
+      color: colors.textDark,
+      lineHeight: fs(4.5),
+    },
+    hyperlinkTextValueString: {
+      color: colors.primary,
+      textDecorationLine: 'underline',
+    },
+    badgeAlignWrapper: {
+      alignSelf: 'flex-start',
+    },
+    profileSheetBottomFooterControlActionRow: {
+      padding: wp(4),
+      backgroundColor: colors.inputBg,
+      borderTopWidth: 1,
+      borderColor: colors.borderLight,
+      paddingBottom: Platform.OS === 'ios' ? hp(4) : hp(2),
+    },
+    profileSheetDismissButtonFrame: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(3),
+      paddingVertical: hp(1.5),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profileSheetDismissButtonFrameText: {
+      color: colors.textSecondary,
+      fontSize: fs(3.5),
+      fontWeight: '700',
+    },
+  });
+}
+
+function StatusBadge({ status, colors, styles }: { status: string; colors: any; styles: any }) {
+  const cfg = colors.status[status as keyof typeof colors.status] || colors.status.Unknown;
   return (
-    <View style={[styles.badgeContainer, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-      <View style={[styles.badgeDot, { backgroundColor: cfg.dot }]} />
-      <Text style={[styles.badgeText, { color: cfg.text }]}>{status || 'Unknown'}</Text>
+    <View style={s([styles.badgeContainer, { backgroundColor: cfg.bg, borderColor: cfg.border }])}>
+      <View style={s([styles.badgeDot, { backgroundColor: cfg.dot }])} />
+      <Text style={s([styles.badgeText, { color: cfg.text }])}>{status || 'Unknown'}</Text>
     </View>
   );
 }
 
-function CompanyAvatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'lg' }) {
+function CompanyAvatar({ name, size = 'md', styles }: { name: string; size?: 'sm' | 'lg'; styles: any }) {
   const palette = avatarColor(name);
   const sizeStyle = size === 'lg' ? styles.avatarLarge : styles.avatarMedium;
   return (
-    <View style={[styles.avatarBase, sizeStyle, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.avatarText, { color: palette.text, fontSize: size === 'lg' ? 18 : 14 }]}>
+    <View style={s([styles.avatarBase, sizeStyle, { backgroundColor: palette.bg }])}>
+      <Text style={s([styles.avatarText, { color: palette.text, fontSize: size === 'lg' ? fs(4.5) : fs(3.5) }])}>
         {getInitials(name)}
       </Text>
     </View>
   );
 }
 
-function CountPill({ value, variant = 'gray' }: { value: any; variant?: 'gray' | 'blue' }) {
+function CountPill({ value, variant = 'gray', styles }: { value: any; variant?: 'gray' | 'blue'; styles: any }) {
   const isBlue = variant === 'blue';
   return (
-    <View style={[styles.pillContainer, isBlue ? styles.pillBlueBg : styles.pillGrayBg]}>
-      <Text style={[styles.pillText, isBlue ? styles.pillBlueText : styles.pillGrayText]}>
+    <View style={s([styles.pillContainer, isBlue ? styles.pillBlueBg : styles.pillGrayBg])}>
+      <Text style={s([styles.pillText, isBlue ? styles.pillBlueText : styles.pillGrayText])}>
         {value ?? '—'}
       </Text>
     </View>
   );
 }
 
-/* ── Main Export Component ───────────────────────────────────────── */
 export default function ManagerCRMCompanies() {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [companies, setCompanies] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -161,59 +610,54 @@ export default function ManagerCRMCompanies() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Page Header */}
-      <View style={styles.headerContainer}>
+    <SafeAreaView style={s(styles.safeArea)}>
+      <View style={s(styles.headerContainer)}>
         <View>
-          <Text style={styles.headerTitle}>Companies</Text>
-          <Text style={styles.headerSubtitle}>View organization details and relationships.</Text>
+          <Text style={s(styles.headerTitle)}>Companies</Text>
+          <Text style={s(styles.headerSubtitle)}>View organization details and relationships.</Text>
         </View>
-        <View style={styles.readOnlyBadge}>
-          <View style={styles.readOnlyPulseDot} />
-          <Text style={styles.readOnlyText}>Read-only view</Text>
+        <View style={s(styles.readOnlyBadge)}>
+          <View style={s(styles.readOnlyPulseDot)} />
+          <Text style={s(styles.readOnlyText)}>Read-only view</Text>
         </View>
       </View>
 
-      {/* Control Panel (Search + Filter Track) */}
-      <View style={styles.controlsWidget}>
-        {/* Search Field */}
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIconSymbol}>🔍</Text>
+      <View style={s(styles.controlsWidget)}>
+        <View style={s(styles.searchContainer)}>
+          <Text style={s(styles.searchIconSymbol)}>🔍</Text>
           <TextInput
-            style={styles.searchInput}
+            style={s(styles.searchInput)}
             placeholder="Search by name, industry, or website…"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClearHitbox}>
-              <Text style={styles.searchClearText}>×</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={s(styles.searchClearHitbox)}>
+              <Text style={s(styles.searchClearText)}>×</Text>
             </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* Dual Filter Rows */}
-        <View style={styles.filterRowsBlock}>
-          {/* Status Segment horizontal scroller */}
+        <View style={s(styles.filterRowsBlock)}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.statusScrollContainer}
+            contentContainerStyle={s(styles.statusScrollContainer)}
           >
-            {STATUS_OPTIONS.map((s) => {
-              const active = statusFilter === s;
-              const cfg = getStatusConfig(s);
+            {STATUS_OPTIONS.map((sItem) => {
+              const active = statusFilter === sItem;
+              const cfg = colors.status[sItem as keyof typeof colors.status] || colors.status.Unknown;
               
-              let badgeBg = '#ffffff';
-              let badgeBorder = '#e2e8f0';
-              let badgeText = '#64748b';
+              let badgeBg = colors.cardBg;
+              let badgeBorder = colors.border;
+              let badgeText = colors.textSecondary;
 
               if (active) {
-                if (s === 'All') {
-                  badgeBg = '#4f46e5';
-                  badgeBorder = '#4f46e5';
+                if (sItem === 'All') {
+                  badgeBg = colors.primary;
+                  badgeBorder = colors.primary;
                   badgeText = '#ffffff';
                 } else {
                   badgeBg = cfg.bg;
@@ -224,129 +668,123 @@ export default function ManagerCRMCompanies() {
 
               return (
                 <TouchableOpacity
-                  key={s}
+                  key={sItem}
                   activeOpacity={0.7}
-                  onPress={() => setStatusFilter(s)}
-                  style={[styles.statusChip, { backgroundColor: badgeBg, borderColor: badgeBorder }]}
+                  onPress={() => setStatusFilter(sItem)}
+                  style={s([styles.statusChip, { backgroundColor: badgeBg, borderColor: badgeBorder }])}
                 >
-                  {s !== 'All' && active && <View style={[styles.chipIndicatorDot, { backgroundColor: cfg.dot }]} />}
-                  <Text style={[styles.statusChipText, { color: badgeText, fontWeight: active ? '700' : '500' }]}>
-                    {s} {statusCounts[s] !== undefined ? `(${statusCounts[s] || 0})` : '(0)'}
+                  {sItem !== 'All' && active && <View style={s([styles.chipIndicatorDot, { backgroundColor: cfg.dot }])} />}
+                  <Text style={s([styles.statusChipText, { color: badgeText, fontWeight: active ? '700' : '500' }])}>
+                    {sItem} {statusCounts[sItem] !== undefined ? `(${statusCounts[sItem] || 0})` : '(0)'}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
 
-          {/* Industry Selection Trigger Trigger */}
           <TouchableOpacity
             activeOpacity={0.7}
-            style={styles.industrySelectorDropdownButton}
+            style={s(styles.industrySelectorDropdownButton)}
             onPress={() => setIndustryModalOpen(true)}
           >
-            <Text style={styles.industrySelectorText} numberOfLines={1}>
+            <Text style={s(styles.industrySelectorText)} numberOfLines={1}>
               {industryFilter === 'All' ? '📂 All Industries' : `${getIndustryIcon(industryFilter)} ${industryFilter}`}
             </Text>
-            <Text style={styles.dropdownCaret}>▼</Text>
+            <Text style={s(styles.dropdownCaret)}>▼</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Dynamic Status Blocks */}
       {loading && (
-        <View style={styles.centeredStateBlock}>
-          <ActivityIndicator size="large" color="#4f46e5" />
-          <Text style={styles.stateMetaMessageText}>Loading companies…</Text>
+        <View style={s(styles.centeredStateBlock)}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={s(styles.stateMetaMessageText)}>Loading companies…</Text>
         </View>
       )}
 
       {!loading && error && (
-        <View style={styles.centeredStateBlock}>
-          <Text style={styles.errorTextHeading}>{error}</Text>
-          <TouchableOpacity onPress={fetchCompanies} style={styles.retryButtonAction}>
-            <Text style={styles.retryButtonActionText}>Try again</Text>
+        <View style={s(styles.centeredStateBlock)}>
+          <Text style={s(styles.errorTextHeading)}>{error}</Text>
+          <TouchableOpacity onPress={fetchCompanies} style={s(styles.retryButtonAction)}>
+            <Text style={s(styles.retryButtonActionText)}>Try again</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {!loading && !error && filteredCompanies.length === 0 && (
-        <View style={styles.centeredStateBlock}>
-          <Text style={styles.emptyGraphicIcon}>🏢</Text>
-          <Text style={styles.stateMetaMessageText}>No companies found.</Text>
+        <View style={s(styles.centeredStateBlock)}>
+          <Text style={s(styles.emptyGraphicIcon)}>🏢</Text>
+          <Text style={s(styles.stateMetaMessageText)}>No companies found.</Text>
         </View>
       )}
 
-      {/* Primary Vertical Content Scroll Container */}
       {!loading && !error && filteredCompanies.length > 0 && (
-        <ScrollView contentContainerStyle={styles.listScroller} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={s(styles.listScroller)} showsVerticalScrollIndicator={false}>
           {filteredCompanies.map((company) => (
             <TouchableOpacity
               key={company.id || company._id}
               activeOpacity={0.9}
-              style={styles.companyCardItem}
+              style={s(styles.companyCardItem)}
               onPress={() => setViewingCompany(company)}
             >
-              {/* Profile Top Row */}
-              <View style={styles.cardTopRow}>
-                <CompanyAvatar name={company.name} />
-                <View style={styles.cardMiddleIdentificationBlock}>
-                  <Text style={styles.cardCompanyName} numberOfLines={1}>
+              <View style={s(styles.cardTopRow)}>
+                <CompanyAvatar name={company.name} styles={styles} />
+                <View style={s(styles.cardMiddleIdentificationBlock)}>
+                  <Text style={s(styles.cardCompanyName)} numberOfLines={1}>
                     {company.name}
                   </Text>
                   {company.website ? (
-                    <Text style={styles.cardCompanyWebsite} numberOfLines={1}>
+                    <Text style={s(styles.cardCompanyWebsite)} numberOfLines={1}>
                       {company.website}
                     </Text>
                   ) : null}
                 </View>
-                <StatusBadge status={company.status} />
+                <StatusBadge status={company.status} colors={colors} styles={styles} />
               </View>
 
-              {/* Tag Metric Summary Footer Grid Row */}
-              <View style={styles.cardMetadataFooterMetricsRow}>
+              <View style={s(styles.cardMetadataFooterMetricsRow)}>
                 {company.industry ? (
-                  <View style={styles.cardTagItem}>
-                    <Text style={styles.cardTagItemText}>
+                  <View style={s(styles.cardTagItem)}>
+                    <Text style={s(styles.cardTagItemText)}>
                       {getIndustryIcon(company.industry)} {company.industry}
                     </Text>
                   </View>
                 ) : null}
-                <View style={styles.cardTagItem}>
-                  <Text style={styles.cardTagItemText}>👤 {company.contactCount ?? 0} contacts</Text>
+                <View style={s(styles.cardTagItem)}>
+                  <Text style={s(styles.cardTagItemText)}>👤 {company.contactCount ?? 0} contacts</Text>
                 </View>
-                <View style={[styles.cardTagItem, styles.pillBlueBg]}>
-                  <Text style={[styles.cardTagItemText, styles.pillBlueText]}>🤝 {company.activeDeals ?? 0} deals</Text>
+                <View style={s([styles.cardTagItem, styles.pillBlueBg])}>
+                  <Text style={s([styles.cardTagItemText, styles.pillBlueText])}>🤝 {company.activeDeals ?? 0} deals</Text>
                 </View>
               </View>
             </TouchableOpacity>
           ))}
           
-          <Text style={styles.indexFooterRecordCounterText}>
+          <Text style={s(styles.indexFooterRecordCounterText)}>
             Showing {filteredCompanies.length} of {companies.length} companies
           </Text>
         </ScrollView>
       )}
 
-      {/* ── Native Drawer Option Sheet for Industries ── */}
       <Modal visible={industryModalOpen} transparent animationType="slide" onRequestClose={() => setIndustryModalOpen(false)}>
-        <TouchableOpacity style={styles.modalBlurDimBackdrop} activeOpacity={1} onPress={() => setIndustryModalOpen(false)}>
-          <View style={styles.industryDrawerLayoutContainer} onStartShouldSetResponder={() => true}>
-            <View style={styles.drawerDragHandleIndicatorBar} />
-            <Text style={styles.drawerModalHeaderHeadline}>Select Industry</Text>
-            <ScrollView style={styles.drawerItemsContentScroll}>
+        <TouchableOpacity style={s(styles.modalBlurDimBackdrop)} activeOpacity={1} onPress={() => setIndustryModalOpen(false)}>
+          <View style={s(styles.industryDrawerLayoutContainer)} onStartShouldSetResponder={() => true}>
+            <View style={s(styles.drawerDragHandleIndicatorBar)} />
+            <Text style={s(styles.drawerModalHeaderHeadline)}>Select Industry</Text>
+            <ScrollView style={s(styles.drawerItemsContentScroll)}>
               {INDUSTRY_OPTIONS.map((opt) => (
                 <TouchableOpacity
                   key={opt}
-                  style={[styles.drawerSelectionItemRow, industryFilter === opt && styles.drawerSelectionItemRowActive]}
+                  style={s([styles.drawerSelectionItemRow, industryFilter === opt && styles.drawerSelectionItemRowActive])}
                   onPress={() => {
                     setIndustryFilter(opt);
                     setIndustryModalOpen(false);
                   }}
                 >
-                  <Text style={styles.drawerSelectionRowLabel}>
+                  <Text style={s(styles.drawerSelectionRowLabel)}>
                     {opt === 'All' ? '📂 All Industries' : `${getIndustryIcon(opt)} ${opt}`}
                   </Text>
-                  {industryFilter === opt && <Text style={styles.drawerSelectionRowCheckmark}>✓</Text>}
+                  {industryFilter === opt && <Text style={s(styles.drawerSelectionRowCheckmark)}>✓</Text>}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -354,88 +792,84 @@ export default function ManagerCRMCompanies() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Detail Profile Bottom Sheet Modal Layer ── */}
       <Modal visible={viewingCompany !== null} transparent animationType="slide" onRequestClose={() => setViewingCompany(null)}>
-        <TouchableOpacity style={styles.modalBlurDimBackdrop} activeOpacity={1} onPress={() => setViewingCompany(null)}>
+        <TouchableOpacity style={s(styles.modalBlurDimBackdrop)} activeOpacity={1} onPress={() => setViewingCompany(null)}>
           {viewingCompany && (
-            <View style={styles.profileBottomSheetCardBody} onStartShouldSetResponder={() => true}>
-              {/* Top Drag Indicator Element */}
-              <View style={styles.drawerDragHandleIndicatorBar} />
+            <View style={s(styles.profileBottomSheetCardBody)} onStartShouldSetResponder={() => true}>
+              <View style={s(styles.drawerDragHandleIndicatorBar)} />
 
-              {/* Dynamic Header Layout Block */}
-              <View style={[styles.profileSheetHeaderBlock, { backgroundColor: getStatusConfig(viewingCompany.status).bg }]}>
-                <View style={styles.profileSheetHeaderFlexAligner}>
-                  <CompanyAvatar name={viewingCompany.name} size="lg" />
-                  <View style={styles.profileSheetHeaderIdentGroup}>
-                    <Text style={styles.profileSheetCompanyNameTitle} numberOfLines={2}>
+              <View style={s([styles.profileSheetHeaderBlock, { backgroundColor: (colors.status[viewingCompany.status as keyof typeof colors.status] || colors.status.Unknown).bg }])}>
+                <View style={s(styles.profileSheetHeaderFlexAligner)}>
+                  <CompanyAvatar name={viewingCompany.name} size="lg" styles={styles} />
+                  <View style={s(styles.profileSheetHeaderIdentGroup)}>
+                    <Text style={s(styles.profileSheetCompanyNameTitle)} numberOfLines={2}>
                       {viewingCompany.name}
                     </Text>
-                    <Text style={styles.profileSheetCompanyIndustrySubhead}>
+                    <Text style={s(styles.profileSheetCompanyIndustrySubhead)}>
                       {getIndustryIcon(viewingCompany.industry)} {viewingCompany.industry || 'CRM Relationship Profile'}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => setViewingCompany(null)} style={styles.profileSheetCloseCircularHandleButton}>
-                    <Text style={styles.profileSheetCloseCircularHandleButtonText}>×</Text>
+                  <TouchableOpacity onPress={() => setViewingCompany(null)} style={s(styles.profileSheetCloseCircularHandleButton)}>
+                    <Text style={s(styles.profileSheetCloseCircularHandleButtonText)}>×</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Structured Metadata Fields Grid Display Box */}
-              <ScrollView style={styles.profileSheetFieldGridScrollTrack} showsVerticalScrollIndicator={false}>
-                <View style={styles.metaInformationGridSystem}>
+              <ScrollView style={s(styles.profileSheetFieldGridScrollTrack)} showsVerticalScrollIndicator={false}>
+                <View style={s(styles.metaInformationGridSystem)}>
                   
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>INDUSTRY</Text>
-                    <Text style={styles.metaCellContentDataValueString}>{viewingCompany.industry || '—'}</Text>
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>INDUSTRY</Text>
+                    <Text style={s(styles.metaCellContentDataValueString)}>{viewingCompany.industry || '—'}</Text>
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>ENTITY TYPE</Text>
-                    <Text style={styles.metaCellContentDataValueString}>{viewingCompany.entityType || '—'}</Text>
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>ENTITY TYPE</Text>
+                    <Text style={s(styles.metaCellContentDataValueString)}>{viewingCompany.entityType || '—'}</Text>
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>STATUS</Text>
-                    <View style={styles.badgeAlignWrapper}>
-                      <StatusBadge status={viewingCompany.status} />
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>STATUS</Text>
+                    <View style={s(styles.badgeAlignWrapper)}>
+                      <StatusBadge status={viewingCompany.status} colors={colors} styles={styles} />
                     </View>
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>WEBSITE</Text>
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>WEBSITE</Text>
                     {viewingCompany.website ? (
                       <TouchableOpacity onPress={() => handleWebsitePress(viewingCompany.website)}>
-                        <Text style={[styles.metaCellContentDataValueString, styles.hyperlinkTextValueString]} numberOfLines={1}>
+                        <Text style={s([styles.metaCellContentDataValueString, styles.hyperlinkTextValueString])} numberOfLines={1}>
                           {viewingCompany.website}
                         </Text>
                       </TouchableOpacity>
                     ) : (
-                      <Text style={styles.metaCellContentDataValueString}>—</Text>
+                      <Text style={s(styles.metaCellContentDataValueString)}>—</Text>
                     )}
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>LOCATION</Text>
-                    <Text style={styles.metaCellContentDataValueString}>{viewingCompany.location || '—'}</Text>
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>LOCATION</Text>
+                    <Text style={s(styles.metaCellContentDataValueString)}>{viewingCompany.location || '—'}</Text>
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>CONTACTS</Text>
-                    <View style={styles.badgeAlignWrapper}>
-                      <CountPill value={viewingCompany.contactCount} />
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>CONTACTS</Text>
+                    <View style={s(styles.badgeAlignWrapper)}>
+                      <CountPill value={viewingCompany.contactCount} styles={styles} />
                     </View>
                   </View>
 
-                  <View style={styles.gridCellHalfColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>ACTIVE DEALS</Text>
-                    <View style={styles.badgeAlignWrapper}>
-                      <CountPill value={viewingCompany.activeDeals} variant="blue" />
+                  <View style={s(styles.gridCellHalfColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>ACTIVE DEALS</Text>
+                    <View style={s(styles.badgeAlignWrapper)}>
+                      <CountPill value={viewingCompany.activeDeals} variant="blue" styles={styles} />
                     </View>
                   </View>
 
-                  <View style={styles.gridCellFullColumnWidth}>
-                    <Text style={styles.metaCellUppercaseLabelText}>DESCRIPTION</Text>
-                    <Text style={styles.metaCellContentDataValueString}>
+                  <View style={s(styles.gridCellFullColumnWidth)}>
+                    <Text style={s(styles.metaCellUppercaseLabelText)}>DESCRIPTION</Text>
+                    <Text style={s(styles.metaCellContentDataValueString)}>
                       {viewingCompany.description || 'No description available for this organization.'}
                     </Text>
                   </View>
@@ -443,10 +877,9 @@ export default function ManagerCRMCompanies() {
                 </View>
               </ScrollView>
 
-              {/* Action Sheet Dismiss Control Bar */}
-              <View style={styles.profileSheetBottomFooterControlActionRow}>
-                <TouchableOpacity onPress={() => setViewingCompany(null)} style={styles.profileSheetDismissButtonFrame}>
-                  <Text style={styles.profileSheetDismissButtonFrameText}>Close</Text>
+              <View style={s(styles.profileSheetBottomFooterControlActionRow)}>
+                <TouchableOpacity onPress={() => setViewingCompany(null)} style={s(styles.profileSheetDismissButtonFrame)}>
+                  <Text style={s(styles.profileSheetDismissButtonFrameText)}>Close</Text>
                 </TouchableOpacity>
               </View>
 
@@ -458,442 +891,3 @@ export default function ManagerCRMCompanies() {
     </SafeAreaView>
   );
 }
-
-/* ── Native Stylesheet Definition ────────────────────────────────── */
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 40 : 16,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.surface,
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  readOnlyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fffbeb',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-    gap: 6,
-  },
-  readOnlyPulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#fbbf24',
-  },
-  readOnlyText: {
-    color: '#b45309',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  controlsWidget: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 14,
-    gap: 12,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-  },
-  searchIconSymbol: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    color: '#0f172a',
-    fontSize: 14,
-  },
-  searchClearHitbox: {
-    padding: 4,
-  },
-  searchClearText: {
-    color: '#94a3b8',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  filterRowsBlock: {
-    gap: 10,
-  },
-  statusScrollContainer: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 99,
-    gap: 6,
-  },
-  chipIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusChipText: {
-    fontSize: 12,
-  },
-  industrySelectorDropdownButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  industrySelectorText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.surface,
-  },
-  dropdownCaret: {
-    fontSize: 10,
-    color: '#64748b',
-  },
-  centeredStateBlock: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    gap: 10,
-  },
-  stateMetaMessageText: {
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptyGraphicIcon: {
-    fontSize: 36,
-    color: '#94a3b8',
-  },
-  errorTextHeading: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    paddingHorizontal: 24,
-  },
-  retryButtonAction: {
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-  },
-  retryButtonActionText: {
-    color: '#2563eb',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  listScroller: {
-    padding: 16,
-    gap: 12,
-  },
-  companyCardItem: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    padding: 14,
-    gap: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardMiddleIdentificationBlock: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-    gap: 2,
-  },
-  cardCompanyName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  cardCompanyWebsite: {
-    fontSize: 12,
-    color: '#6366f1',
-  },
-  cardMetadataFooterMetricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  cardTagItem: {
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  cardTagItemText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  indexFooterRecordCounterText: {
-    textAlign: 'center',
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  badgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 99,
-    gap: 4,
-  },
-  badgeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  avatarBase: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarMedium: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-  },
-  avatarLarge: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-  },
-  avatarText: {
-    fontWeight: 'bold',
-  },
-  pillContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillGrayBg: { backgroundColor: '#f1f5f9' },
-  pillBlueBg: { backgroundColor: '#eff6ff', borderColor: '#dbeafe', borderWidth: 1 },
-  pillText: { fontSize: 12, fontWeight: '700' },
-  pillGrayText: { color: '#334155' },
-  pillBlueText: { color: '#1e40af' },
-  modalBlurDimBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    justifyContent: 'flex-end',
-  },
-  industryDrawerLayoutContainer: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-    maxHeight: WINDOW_HEIGHT * 0.6,
-  },
-  drawerDragHandleIndicatorBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 10,
-  },
-  drawerModalHeaderHeadline: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    textAlign: 'center',
-    marginVertical: 14,
-  },
-  drawerItemsContentScroll: {
-    paddingHorizontal: 16,
-  },
-  drawerSelectionItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  drawerSelectionItemRowActive: {
-    backgroundColor: '#fafafa',
-  },
-  drawerSelectionRowLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  drawerSelectionRowCheckmark: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#4f46e5',
-  },
-  profileBottomSheetCardBody: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    height: WINDOW_HEIGHT * 0.85,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 24,
-  },
-  profileSheetHeaderBlock: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-    marginTop: 10,
-  },
-  profileSheetHeaderFlexAligner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  profileSheetHeaderIdentGroup: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 32,
-    gap: 2,
-  },
-  profileSheetCompanyNameTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    lineHeight: 20,
-  },
-  profileSheetCompanyIndustrySubhead: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  profileSheetCloseCircularHandleButton: {
-    position: 'absolute',
-    top: 4,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileSheetCloseCircularHandleButtonText: {
-    fontSize: 16,
-    color: '#64748b',
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  profileSheetFieldGridScrollTrack: {
-    flex: 1,
-    padding: 16,
-  },
-  metaInformationGridSystem: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 16,
-  },
-  gridCellHalfColumnWidth: {
-    width: '50%',
-    paddingRight: 8,
-  },
-  gridCellFullColumnWidth: {
-    width: '100%',
-  },
-  metaCellUppercaseLabelText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94a3b8',
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  metaCellContentDataValueString: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-    lineHeight: 18,
-  },
-  hyperlinkTextValueString: {
-    color: '#4f46e5',
-    textDecorationLine: 'underline',
-  },
-  badgeAlignWrapper: {
-    alignSelf: 'flex-start',
-  },
-  profileSheetBottomFooterControlActionRow: {
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderTopWidth: 1,
-    borderColor: '#f1f5f9',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-  },
-  profileSheetDismissButtonFrame: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileSheetDismissButtonFrameText: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-});

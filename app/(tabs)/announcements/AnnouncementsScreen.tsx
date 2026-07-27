@@ -29,6 +29,7 @@ import {
 // IMPORT YOUR EXACT API MODULE HERE
 import { apiRequest } from '@/services/api'; // Adjust this path to match your file structure
 import { getAnnouncementWebSocket } from "@/services/announcementWebSocket";
+import { s, wp, hp, fs } from '@/util/styles';
 
 export interface Announcement {
   id: string;
@@ -143,69 +144,69 @@ export default function EmployeeAnnouncements({
 
   if (isLoading) {
     return (
-      <View style={styles.loaderCenterContainer}>
+      <View style={s(styles.loaderCenterContainer)}>
         <ActivityIndicator size="large" color="#00C6FF" />
-        <Text style={styles.loadingPulseText}>Refreshing control feed...</Text>
+        <Text style={s(styles.loadingPulseText)}>Refreshing control feed...</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.mainLayoutContainer, { paddingTop: insets.top - insets.top  }]}>
+    <View style={s([styles.mainLayoutContainer, { paddingTop: insets.top - insets.top }])}>
       
       {/* HIGH-DENSITY DASHBOARD PANEL */}
-      <View style={styles.controlDeckWidgetCard}>
-        <View style={styles.identityRowHeader}>
-          <View style={styles.brandingBoxIcon}>
-            <Bell size={20} color="#00C6FF" />
+      <View style={s(styles.controlDeckWidgetCard)}>
+        <View style={s(styles.identityRowHeader)}>
+          <View style={s(styles.brandingBoxIcon)}>
+            <Bell size={fs(5)} color="#00C6FF" />
           </View>
           <View>
-            <Text style={styles.layoutTitleHeading}>Announcements</Text>
-            <Text style={styles.layoutSubtitleText}>Stay updated with operational instructions</Text>
+            <Text style={s(styles.layoutTitleHeading)}>Announcements</Text>
+            <Text style={s(styles.layoutSubtitleText)}>Stay updated with operational instructions</Text>
           </View>
         </View>
 
         {/* METRICS ROW STRIP CHIPS */}
-        <View style={styles.metricsBarWrapperRow}>
+        <View style={s(styles.metricsBarWrapperRow)}>
           <TouchableOpacity 
-            style={[styles.metricChipButton, tab === 'unread' && styles.metricChipButtonActive]} 
+            style={s([styles.metricChipButton, tab === 'unread' && styles.metricChipButtonActive])} 
             onPress={() => setTab('unread')}
           >
-            <Bell size={12} color={tab === 'unread' ? '#00C6FF' : '#8b949e'} />
-            <Text style={[styles.metricChipValue, tab === 'unread' && { color: '#00C6FF' }]}>
+            <Bell size={fs(3)} color={tab === 'unread' ? '#00C6FF' : '#8b949e'} />
+            <Text style={s([styles.metricChipValue, tab === 'unread' && { color: '#00C6FF' }])}>
               {metrics.unreadCount}
             </Text>
-            <Text style={styles.metricChipLabel}>Unread</Text>
+            <Text style={s(styles.metricChipLabel)}>Unread</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.metricChipButton, tab === 'all' && styles.metricChipButtonActive]} 
+            style={s([styles.metricChipButton, tab === 'all' && styles.metricChipButtonActive])} 
             onPress={() => setTab('all')}
           >
-            <Layers size={12} color="#8b949e" />
-            <Text style={styles.metricChipValue}>{metrics.totalCount}</Text>
-            <Text style={styles.metricChipLabel}>All</Text>
+            <Layers size={fs(3)} color="#8b949e" />
+            <Text style={s(styles.metricChipValue)}>{metrics.totalCount}</Text>
+            <Text style={s(styles.metricChipLabel)}>All</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.metricChipButton, tab === 'emergency' && styles.metricChipButtonActive]} 
+            style={s([styles.metricChipButton, tab === 'emergency' && styles.metricChipButtonActive])} 
             onPress={() => setTab('emergency')}
           >
-            <Flame size={12} color="#f87171" />
-            <Text style={[styles.metricChipValue, { color: '#f87171' }]}>{metrics.emergencyCount}</Text>
-            <Text style={styles.metricChipLabel}>Urgent</Text>
+            <Flame size={fs(3)} color="#f87171" />
+            <Text style={s([styles.metricChipValue, { color: '#f87171' }])}>{metrics.emergencyCount}</Text>
+            <Text style={s(styles.metricChipLabel)}>Urgent</Text>
           </TouchableOpacity>
         </View>
 
         {/* TAB NAVIGATION ROW CONTROLS */}
-        <View style={styles.inlineHorizontalTabsStrip}>
+        <View style={s(styles.inlineHorizontalTabsStrip)}>
           {['unread', 'all', 'important', 'emergency'].map((tabKey) => (
             <TouchableOpacity
               key={tabKey}
               onPress={() => setTab(tabKey)}
-              style={[styles.navigationTabButtonItem, tab === tabKey && styles.navigationTabButtonActive]}
+              style={s([styles.navigationTabButtonItem, tab === tabKey && styles.navigationTabButtonActive])}
             >
-              <Text style={[styles.navigationTabTextItem, tab === tabKey && styles.navigationTabActiveText]}>
+              <Text style={s([styles.navigationTabTextItem, tab === tabKey && styles.navigationTabActiveText])}>
                 {tabKey.charAt(0).toUpperCase() + tabKey.slice(1)}
               </Text>
             </TouchableOpacity>
@@ -217,7 +218,7 @@ export default function EmployeeAnnouncements({
       <FlatList
         data={announcements}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.scrollListContainer}
+        contentContainerStyle={s(styles.scrollListContainer)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#00C6FF" />
@@ -225,70 +226,70 @@ export default function EmployeeAnnouncements({
         renderItem={({ item }) => {
           const uiColors = priorityColors[item.priority] || priorityColors.low;
           return (
-            <View style={[
+            <View style={s([
               styles.announcementCardLayoutBox,
               item.emergency ? styles.cardBorderEmergency : !item.isRead ? styles.cardBorderUnread : styles.cardBorderNormal
-            ]}>
+            ])}>
               {item.emergency && (
-                <View style={styles.alertHeaderEmergencyBadgeStrip}>
-                  <AlertTriangle size={12} color="#f87171" />
-                  <Text style={styles.alertHeaderEmergencyBadgeText}>EMERGENCY</Text>
+                <View style={s(styles.alertHeaderEmergencyBadgeStrip)}>
+                  <AlertTriangle size={fs(3)} color="#f87171" />
+                  <Text style={s(styles.alertHeaderEmergencyBadgeText)}>EMERGENCY</Text>
                 </View>
               )}
 
               {!item.isRead && !item.emergency && (
-                <View style={styles.unreadPulseIndicatorDot} />
+                <View style={s(styles.unreadPulseIndicatorDot)} />
               )}
 
-              <Text style={styles.announcementCardTitleText}>{item.title}</Text>
+              <Text style={s(styles.announcementCardTitleText)}>{item.title}</Text>
 
               {/* DENSE BADGE CONTAINER LAYOUTS */}
-              <View style={styles.badgeWrapFlexContainerRow}>
-                <View style={[styles.badgeContainerView, { backgroundColor: uiColors.bg, borderColor: uiColors.border }]}>
-                  <Text style={[styles.badgeContentLabelText, { color: uiColors.text }]}>
+              <View style={s(styles.badgeWrapFlexContainerRow)}>
+                <View style={s([styles.badgeContainerView, { backgroundColor: uiColors.bg, borderColor: uiColors.border }])}>
+                  <Text style={s([styles.badgeContentLabelText, { color: uiColors.text }])}>
                     {item.priority.toUpperCase()}
                   </Text>
                 </View>
 
                 {item.requiresAcknowledgement && !item.isAcknowledged && (
-                  <View style={[styles.badgeContainerView, styles.badgeAckRequired]}>
-                    <Text style={[styles.badgeContentLabelText, { color: '#fb923c' }]}>Requires Ack</Text>
+                  <View style={s([styles.badgeContainerView, styles.badgeAckRequired])}>
+                    <Text style={s([styles.badgeContentLabelText, { color: '#fb923c' }])}>Requires Ack</Text>
                   </View>
                 )}
 
                 {item.isAcknowledged && (
-                  <View style={[styles.badgeContainerView, styles.badgeAckSuccess]}>
-                    <CheckCircle2 size={10} color="#4ade80" style={{ marginRight: 4 }} />
-                    <Text style={[styles.badgeContentLabelText, { color: '#4ade80' }]}>Acknowledged</Text>
+                  <View style={s([styles.badgeContainerView, styles.badgeAckSuccess])}>
+                    <CheckCircle2 size={fs(2.5)} color="#4ade80" style={s({ marginRight: wp(1) })} />
+                    <Text style={s([styles.badgeContentLabelText, { color: '#4ade80' }])}>Acknowledged</Text>
                   </View>
                 )}
               </View>
 
-              <Text style={styles.metaInformationLineText}>
+              <Text style={s(styles.metaInformationLineText)}>
                 From {item.authorName} • {new Date(item.createdAt).toLocaleDateString()}
               </Text>
 
-              <Text style={styles.bodyDescriptionPreviewText} numberOfLines={3}>
+              <Text style={s(styles.bodyDescriptionPreviewText)} numberOfLines={3}>
                 {item.body}
               </Text>
 
               {/* CONTROL INTERACTIVE ROUTING PANEL */}
-              <View style={styles.actionButtonsContainerRow}>
+              <View style={s(styles.actionButtonsContainerRow)}>
                 <TouchableOpacity 
                   activeOpacity={0.7}
                   disabled={readMutation.isPending}
-                  style={[styles.interactiveActionButtonBase, styles.buttonVariantOutline]}
+                  style={s([styles.interactiveActionButtonBase, styles.buttonVariantOutline])}
                   onPress={() => handleActionPress(item)}
                 >
                   {item.isRead ? (
                     <>
-                      <Eye size={14} color="#f0f6fc" style={{ marginRight: 6 }} />
-                      <Text style={styles.buttonActionTextLabel}>Read</Text>
+                      <Eye size={fs(3.5)} color="#f0f6fc" style={s({ marginRight: wp(1.5) })} />
+                      <Text style={s(styles.buttonActionTextLabel)}>Read</Text>
                     </>
                   ) : (
                     <>
-                      <EyeOff size={14} color="#00C6FF" style={{ marginRight: 6 }} />
-                      <Text style={[styles.buttonActionTextLabel, { color: '#00C6FF' }]}>Mark as Read</Text>
+                      <EyeOff size={fs(3.5)} color="#00C6FF" style={s({ marginRight: wp(1.5) })} />
+                      <Text style={s([styles.buttonActionTextLabel, { color: '#00C6FF' }])}>Mark as Read</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -296,14 +297,14 @@ export default function EmployeeAnnouncements({
                 {item.requiresAcknowledgement && !item.isAcknowledged && (
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={[styles.interactiveActionButtonBase, styles.buttonVariantSuccessFilled]}
+                    style={s([styles.interactiveActionButtonBase, styles.buttonVariantSuccessFilled])}
                     onPress={() => {
                       setSelectedAnnouncement(item);
                       setShowAcknowledgementModal(true);
                     }}
                   >
-                    <CheckCircle2 size={14} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={[styles.buttonActionTextLabel, { color: '#fff', fontWeight: '700' }]}>
+                    <CheckCircle2 size={fs(3.5)} color="#fff" style={s({ marginRight: wp(1.5) })} />
+                    <Text style={s([styles.buttonActionTextLabel, { color: '#fff', fontWeight: '700' }])}>
                       Acknowledge
                     </Text>
                   </TouchableOpacity>
@@ -313,11 +314,11 @@ export default function EmployeeAnnouncements({
           );
         }}
         ListEmptyComponent={
-          <View style={styles.dashboardFramedEmptyLayoutView}>
-            <View style={styles.emptyIconCircleWrapperBorder}>
-              <Inbox size={28} color="rgba(255,255,255,0.2)" />
+          <View style={s(styles.dashboardFramedEmptyLayoutView)}>
+            <View style={s(styles.emptyIconCircleWrapperBorder)}>
+              <Inbox size={fs(7)} color="rgba(255,255,255,0.2)" />
             </View>
-            <Text style={styles.emptyViewHeaderTitleText}>No announcements</Text>
+            <Text style={s(styles.emptyViewHeaderTitleText)}>No announcements</Text>
            
           </View>
         }
@@ -330,47 +331,47 @@ export default function EmployeeAnnouncements({
         transparent={true}
         onRequestClose={() => setShowAcknowledgementModal(false)}
       >
-        <View style={styles.modalScreenOverlayContainer}>
-          <View style={styles.modalContentSheetSurfaceCard}>
-            <View style={styles.modalHeaderTitleControlsRow}>
-              <Text style={styles.modalHeadingTitleText}>Review Directive</Text>
+        <View style={s(styles.modalScreenOverlayContainer)}>
+          <View style={s(styles.modalContentSheetSurfaceCard)}>
+            <View style={s(styles.modalHeaderTitleControlsRow)}>
+              <Text style={s(styles.modalHeadingTitleText)}>Review Directive</Text>
               <TouchableOpacity 
-                style={styles.modalDismissIconCircularButton} 
+                style={s(styles.modalDismissIconCircularButton)} 
                 onPress={() => setShowAcknowledgementModal(false)}
               >
-                <X size={16} color="#fff" />
+                <X size={fs(4)} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalDynamicBodyScrollingRegion} showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalAnnouncementContentTitle}>{selectedAnnouncement?.title}</Text>
-              <Text style={styles.modalAnnouncementContentBody}>{selectedAnnouncement?.body}</Text>
+            <ScrollView style={s(styles.modalDynamicBodyScrollingRegion)} showsVerticalScrollIndicator={false}>
+              <Text style={s(styles.modalAnnouncementContentTitle)}>{selectedAnnouncement?.title}</Text>
+              <Text style={s(styles.modalAnnouncementContentBody)}>{selectedAnnouncement?.body}</Text>
               
-              <View style={styles.warningAcknowledgementCardNoticeBox}>
-                <AlertTriangle size={16} color="#fb923c" style={{ marginRight: 10, marginTop: 2 }} />
-                <Text style={styles.warningAcknowledgementNoticeParagraphText}>
+              <View style={s(styles.warningAcknowledgementCardNoticeBox)}>
+                <AlertTriangle size={fs(4)} color="#fb923c" style={s({ marginRight: wp(2.5), marginTop: hp(0.25) })} />
+                <Text style={s(styles.warningAcknowledgementNoticeParagraphText)}>
                   By confirming below, you certify that you have read, understand, and agree to adhere to the updates detailed above.
                 </Text>
               </View>
             </ScrollView>
 
-            <View style={styles.modalActionWorkflowFooterPanel}>
+            <View style={s(styles.modalActionWorkflowFooterPanel)}>
               <TouchableOpacity
-                style={styles.modalDismissFallbackButton}
+                style={s(styles.modalDismissFallbackButton)}
                 onPress={() => setShowAcknowledgementModal(false)}
               >
-                <Text style={styles.modalDismissFallbackButtonText}>Cancel</Text>
+                <Text style={s(styles.modalDismissFallbackButtonText)}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalExecuteSuccessButton}
+                style={s(styles.modalExecuteSuccessButton)}
                 disabled={acknowledgeMutation.isPending}
                 onPress={() => selectedAnnouncement && acknowledgeMutation.mutate(selectedAnnouncement.id)}
               >
                 {acknowledgeMutation.isPending ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.modalExecuteSuccessButtonText}>I Acknowledge</Text>
+                  <Text style={s(styles.modalExecuteSuccessButtonText)}>I Acknowledge</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -390,40 +391,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: 16,
-    padding: 12,
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 6,
+    borderRadius: wp(4),
+    padding: wp(3),
+    marginHorizontal: wp(3),
+    marginTop: hp(1),
+    marginBottom: hp(0.75),
   },
   identityRowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: hp(1.5),
   },
   brandingBoxIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: wp(9),
+    height: wp(9),
+    borderRadius: wp(2.5),
     backgroundColor: 'rgba(0, 198, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: wp(3),
   },
   layoutTitleHeading: {
-    fontSize: 18,
+    fontSize: fs(4.5),
     fontWeight: '800',
     color: '#fff'
   },
   layoutSubtitleText: {
-    fontSize: 11,
+    fontSize: fs(2.8),
     color: 'rgba(255,255,255,0.5)',
-    marginTop: 1
+    marginTop: hp(0.1)
   },
   metricsBarWrapperRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginBottom: 12,
+    gap: wp(1.5),
+    marginBottom: hp(1.5),
   },
   metricChipButton: {
     flex: 1,
@@ -432,9 +433,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.2)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    borderRadius: wp(2),
+    paddingVertical: hp(0.75),
+    paddingHorizontal: wp(2),
   },
   metricChipButtonActive: {
     borderColor: 'rgba(255,255,255,0.12)',
@@ -442,51 +443,51 @@ const styles = StyleSheet.create({
   },
   metricChipValue: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: fs(3),
     fontWeight: '700',
-    marginLeft: 6,
-    marginRight: 4,
+    marginLeft: wp(1.5),
+    marginRight: wp(1),
   },
   metricChipLabel: {
     color: '#8b949e',
-    fontSize: 10,
+    fontSize: fs(2.5),
     fontWeight: '500',
   },
   inlineHorizontalTabsStrip: {
     flexDirection: 'row',
     backgroundColor: 'rgba(0,0,0,0.25)',
-    borderRadius: 8,
-    padding: 3,
+    borderRadius: wp(2),
+    padding: wp(0.75),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.03)',
   },
   navigationTabButtonItem: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: hp(0.75),
     alignItems: 'center',
-    borderRadius: 6,
+    borderRadius: wp(1.5),
   },
   navigationTabButtonActive: {
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   navigationTabTextItem: {
     color: '#8b949e',
-    fontSize: 11,
+    fontSize: fs(2.8),
     fontWeight: '600',
   },
   navigationTabActiveText: {
     color: '#fff',
   },
   scrollListContainer: {
-    paddingHorizontal: 12,
-    paddingBottom: 32,
-    paddingTop: 4,
+    paddingHorizontal: wp(3),
+    paddingBottom: hp(4),
+    paddingTop: hp(0.5),
   },
   announcementCardLayoutBox: {
-    borderRadius: 12,
+    borderRadius: wp(3),
     borderWidth: 1,
-    padding: 14,
-    marginBottom: 10,
+    padding: wp(3.5),
+    marginBottom: hp(1.2),
     position: 'relative',
     backgroundColor: 'rgba(255, 255, 255, 0.015)',
   },
@@ -508,50 +509,50 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.2)',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 20,
-    marginBottom: 10,
+    paddingVertical: hp(0.4),
+    paddingHorizontal: wp(2),
+    borderRadius: wp(5),
+    marginBottom: hp(1.2),
   },
   alertHeaderEmergencyBadgeText: {
     color: '#f87171',
-    fontSize: 9,
+    fontSize: fs(2.2),
     fontWeight: '800',
-    marginLeft: 4,
+    marginLeft: wp(1),
     letterSpacing: 0.3,
   },
   unreadPulseIndicatorDot: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    top: hp(1.5),
+    right: wp(3.5),
+    width: wp(1.8),
+    height: wp(1.8),
+    borderRadius: wp(0.9),
     backgroundColor: '#00C6FF',
   },
   announcementCardTitleText: {
-    fontSize: 15,
+    fontSize: fs(3.8),
     fontWeight: '700',
     color: '#fff',
-    lineHeight: 20,
+    lineHeight: fs(5),
   },
   badgeWrapFlexContainerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-    marginBottom: 6,
+    gap: wp(1.5),
+    marginTop: hp(1),
+    marginBottom: hp(0.75),
   },
   badgeContainerView: {
     borderWidth: 1,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingVertical: hp(0.25),
+    paddingHorizontal: wp(2),
+    borderRadius: wp(1.5),
     flexDirection: 'row',
     alignItems: 'center',
   },
   badgeContentLabelText: {
-    fontSize: 10,
+    fontSize: fs(2.5),
     fontWeight: '700',
   },
   badgeAckRequired: {
@@ -563,25 +564,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(74, 222, 128, 0.15)',
   },
   metaInformationLineText: {
-    fontSize: 11,
+    fontSize: fs(2.8),
     color: 'rgba(255,255,255,0.4)',
-    marginVertical: 4,
+    marginVertical: hp(0.5),
   },
   bodyDescriptionPreviewText: {
-    fontSize: 13,
+    fontSize: fs(3.2),
     color: 'rgba(255,255,255,0.75)',
-    lineHeight: 18,
-    marginVertical: 4,
+    lineHeight: fs(4.5),
+    marginVertical: hp(0.5),
   },
   actionButtonsContainerRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    gap: wp(2),
+    marginTop: hp(1.2),
   },
   interactiveActionButtonBase: {
     flex: 1,
-    height: 34,
-    borderRadius: 8,
+    height: hp(4.2),
+    borderRadius: wp(2),
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
@@ -595,7 +596,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#166534',
   },
   buttonActionTextLabel: {
-    fontSize: 12,
+    fontSize: fs(3),
     fontWeight: '600',
     color: '#f0f6fc',
   },
@@ -603,35 +604,35 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.01)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 16,
-    paddingVertical: 44,
-    paddingHorizontal: 20,
+    borderRadius: wp(4),
+    paddingVertical: hp(5.5),
+    paddingHorizontal: wp(5),
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: hp(2),
   },
   emptyIconCircleWrapperBorder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: wp(12),
+    height: wp(12),
+    borderRadius: wp(6),
     backgroundColor: 'rgba(255,255,255,0.02)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: hp(1.5),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
   },
   emptyViewHeaderTitleText: {
-    fontSize: 14,
+    fontSize: fs(3.5),
     fontWeight: '700',
     color: '#f0f6fc',
-    marginBottom: 4,
+    marginBottom: hp(0.5),
   },
   emptyViewParagraphBodyText: {
     color: '#8b949e',
-    fontSize: 11,
+    fontSize: fs(2.8),
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: fs(4),
   },
   loaderCenterContainer: {
     flex: 1,
@@ -640,9 +641,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#090d13',
   },
   loadingPulseText: {
-    marginTop: 12,
+    marginTop: hp(1.5),
     color: '#8b949e',
-    fontSize: 12,
+    fontSize: fs(3),
     fontWeight: '500',
   },
   modalScreenOverlayContainer: {
@@ -652,74 +653,74 @@ const styles = StyleSheet.create({
   },
   modalContentSheetSurfaceCard: {
     backgroundColor: '#0d1117',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: wp(5),
+    borderTopRightRadius: wp(5),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    paddingBottom: 34,
+    paddingBottom: hp(4.2),
     maxHeight: '80%',
   },
   modalHeaderTitleControlsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: wp(4),
     borderBottomWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
   modalHeadingTitleText: {
-    fontSize: 15,
+    fontSize: fs(3.8),
     fontWeight: '800',
     color: '#fff',
   },
   modalDismissIconCircularButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: wp(6.5),
+    height: wp(6.5),
+    borderRadius: wp(3.25),
     backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalDynamicBodyScrollingRegion: {
-    padding: 16,
+    padding: wp(4),
   },
   modalAnnouncementContentTitle: {
-    fontSize: 18,
+    fontSize: fs(4.5),
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 12,
+    marginBottom: hp(1.5),
   },
   modalAnnouncementContentBody: {
-    fontSize: 14,
+    fontSize: fs(3.5),
     color: 'rgba(255,255,255,0.8)',
-    lineHeight: 22,
-    marginBottom: 20,
+    lineHeight: fs(5.5),
+    marginBottom: hp(2.5),
   },
   warningAcknowledgementCardNoticeBox: {
     flexDirection: 'row',
     backgroundColor: 'rgba(249, 115, 22, 0.05)',
     borderWidth: 1,
     borderColor: 'rgba(249, 115, 22, 0.15)',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 24,
+    padding: wp(3),
+    borderRadius: wp(2.5),
+    marginBottom: hp(3),
   },
   warningAcknowledgementNoticeParagraphText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: fs(3),
     color: '#fb923c',
-    lineHeight: 18,
+    lineHeight: fs(4.5),
   },
   modalActionWorkflowFooterPanel: {
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    marginTop: 8,
+    gap: wp(2.5),
+    paddingHorizontal: wp(4),
+    marginTop: hp(1),
   },
   modalDismissFallbackButton: {
     flex: 1,
-    height: 42,
-    borderRadius: 8,
+    height: hp(5.2),
+    borderRadius: wp(2),
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -728,20 +729,20 @@ const styles = StyleSheet.create({
   },
   modalDismissFallbackButtonText: {
     color: '#8b949e',
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontWeight: '600',
   },
   modalExecuteSuccessButton: {
     flex: 2,
-    height: 42,
-    borderRadius: 8,
+    height: hp(5.2),
+    borderRadius: wp(2),
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#16a34a',
   },
   modalExecuteSuccessButtonText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: fs(3.2),
     fontWeight: '700',
   },
 });

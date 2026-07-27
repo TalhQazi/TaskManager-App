@@ -7,13 +7,15 @@ import {
   TouchableOpacity,
   FlatList,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Search, FileText, CheckCircle2, Clock, ChevronDown, X } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
-import Colors from "@/constants/colors";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 
 interface OnboardingItem {
   id: string;
@@ -25,7 +27,7 @@ interface OnboardingItem {
   overallStatus: string;
 }
 
-type OnboardingApi = {
+interface OnboardingApi {
   id: string;
   employeeName: string;
   overallStatus: string;
@@ -40,10 +42,10 @@ type OnboardingApi = {
   digitalSignature?: { status?: string };
   workInfo?: { completed?: boolean };
   createdAt?: string;
-};
+}
 
-function docDone(s?: string) {
-  return s === "submitted" || s === "verified";
+function docDone(statusStr?: string): boolean {
+  return statusStr === "submitted" || statusStr === "verified";
 }
 
 function normalizeItem(i: OnboardingApi): OnboardingItem {
@@ -52,31 +54,281 @@ function normalizeItem(i: OnboardingApi): OnboardingItem {
   if (
     docDone(i.identityVerification?.primaryId?.status) &&
     docDone(i.identityVerification?.secondaryId?.status)
-  ) uploaded++;
+  ) {
+    uploaded++;
+  }
   if (docDone(i.w4Form?.status)) uploaded++;
   if (docDone(i.employeeHandbook?.status)) uploaded++;
   if (docDone(i.digitalSignature?.status)) uploaded++;
 
   return {
-    id: i.id,
+    id: String(i.id || ""),
     employeeName: i.employeeName || "—",
     startDate: i.createdAt || "",
-    progress: i.progress ?? 0,
+    progress: typeof i.progress === "number" ? i.progress : 0,
     documentsUploaded: uploaded,
     documentsRequired: 5,
     overallStatus: i.overallStatus || "not_started",
   };
 }
 
-const statusTheme: Record<string, { bg: string; text: string; label: string }> = {
-  not_started: { bg: "rgba(142, 142, 147, 0.15)", text: "#8E8E93", label: "Not Started" },
-  in_progress: { bg: "rgba(245, 158, 11, 0.15)", text: "#D97706", label: "In Progress" },
-  submitted: { bg: "rgba(0, 122, 255, 0.15)", text: "#007AFF", label: "Pending Review" },
-  approved: { bg: "rgba(52, 199, 89, 0.15)", text: "#34C759", label: "Approved" },
-  rejected: { bg: "rgba(255, 59, 48, 0.15)", text: "#FF3B30", label: "Rejected" },
-};
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
+    panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
+    textSecondary:   isDark ? "#94a3b8" : "#475569",
+    border:          isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+    primary:         uiTheme.customColors?.primary                || "#3b82f6",
+    success:         "#16C784",
+    warning:         "#F59E0B",
+    danger:          "#EF4444",
+    info:            "#007AFF",
+    neutral:         "#8E8E93"
+  };
+}
+
+function createStyles(
+  colors: ReturnType<typeof buildColors>,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number
+) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    center: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: wp(6),
+    },
+    errorText: {
+      color: colors.danger,
+      fontSize: wp(3.5),
+      textAlign: "center",
+    },
+    headerContainer: {
+      padding: wp(4.2),
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    pageTitle: {
+      fontSize: wp(6),
+      fontWeight: "900",
+      color: colors.text,
+    },
+    pageSubtitle: {
+      fontSize: wp(3.3),
+      color: colors.textSecondary,
+      marginTop: hp(0.5),
+      marginBottom: hp(2),
+    },
+    statsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      marginBottom: hp(2),
+      gap: wp(2.5),
+    },
+    statCard: {
+      width: wp(43),
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(3),
+      padding: wp(3.2),
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    statContent: {
+      flex: 1,
+    },
+    statLabel: {
+      fontSize: wp(3),
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    statValue: {
+      fontSize: wp(5),
+      fontWeight: "800",
+      marginTop: hp(0.5),
+      color: colors.text,
+    },
+    searchBarRow: {
+      flexDirection: "row",
+      marginTop: hp(0.5),
+      gap: wp(2),
+    },
+    searchContainer: {
+      flex: 1,
+      flexDirection: "row",
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(2.5),
+      alignItems: "center",
+      paddingHorizontal: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+      height: hp(4.8),
+    },
+    searchIcon: {
+      marginRight: wp(2),
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: wp(3.3),
+      padding: 0,
+    },
+    pickerTrigger: {
+      width: wp(32),
+      height: hp(4.8),
+      backgroundColor: colors.cardBg,
+      borderRadius: wp(2.5),
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: wp(3),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pickerTriggerText: {
+      fontSize: wp(3),
+      fontWeight: "600",
+      color: colors.text,
+      flex: 1,
+      marginRight: wp(1),
+    },
+    employeeCard: {
+      backgroundColor: colors.cardBg,
+      marginHorizontal: wp(4.2),
+      marginTop: hp(1.5),
+      borderRadius: wp(3),
+      padding: wp(4),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: hp(1.5),
+    },
+    empName: {
+      fontSize: wp(3.8),
+      fontWeight: "700",
+      color: colors.text,
+      flex: 1,
+      marginRight: wp(2),
+    },
+    badge: {
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(1.5),
+    },
+    badgeText: {
+      fontSize: wp(2.5),
+      fontWeight: "700",
+    },
+    progressContainer: {
+      marginBottom: hp(1),
+    },
+    progressMeta: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: hp(0.5),
+    },
+    progressText: {
+      fontSize: wp(3),
+      color: colors.textSecondary,
+    },
+    docCount: {
+      fontSize: wp(3),
+      color: colors.textSecondary,
+    },
+    progressBarTrack: {
+      height: hp(0.75),
+      backgroundColor: colors.border,
+      borderRadius: wp(1),
+      overflow: "hidden",
+    },
+    progressBarFill: {
+      height: "100%",
+    },
+    startDate: {
+      fontSize: wp(2.8),
+      color: colors.textSecondary,
+      opacity: 0.8,
+    },
+    emptyContainer: {
+      padding: wp(12),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyText: {
+      color: colors.textSecondary,
+      fontSize: wp(3.5),
+      fontStyle: "italic",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: colors.panelHeader,
+      borderTopLeftRadius: wp(4),
+      borderTopRightRadius: wp(4),
+      paddingBottom: hp(4.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(4.2),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: wp(3.8),
+      fontWeight: "800",
+      color: colors.text,
+    },
+    modalItem: {
+      padding: wp(4.2),
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    modalItemSelected: {
+      backgroundColor: colors.border,
+    },
+    modalItemText: {
+      fontSize: wp(3.5),
+      color: colors.text,
+    },
+    modalItemTextSelected: {
+      color: colors.primary,
+      fontWeight: "700",
+    },
+  });
+}
 
 export default function OnboardingMonitoring() {
+  const { width, height } = useWindowDimensions();
+  const wp = useMemo(() => (p: number) => (width * p) / 100, [width]);
+  const hp = useMemo(() => (p: number) => (height * p) / 100, [height]);
+
+  const { uiTheme } = useTheme();
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(() => createStyles(colors, wp, hp), [colors, wp, hp]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -85,7 +337,7 @@ export default function OnboardingMonitoring() {
     queryKey: ["onboarding"],
     queryFn: async () => {
       const res = await apiFetch<{ items: OnboardingApi[] }>("/api/onboarding/admin/all");
-      return res.items.map(normalizeItem);
+      return (res.items || []).map(normalizeItem);
     },
   });
 
@@ -100,11 +352,11 @@ export default function OnboardingMonitoring() {
     });
   }, [items, searchQuery, statusFilter]);
 
-  const approvedCount = items.filter((i) => i.overallStatus === "approved").length;
-  const pendingReviewCount = items.filter((i) => i.overallStatus === "submitted").length;
-  const inProgressCount = items.filter(
+  const approvedCount = useMemo(() => items.filter((i) => i.overallStatus === "approved").length, [items]);
+  const pendingReviewCount = useMemo(() => items.filter((i) => i.overallStatus === "submitted").length, [items]);
+  const inProgressCount = useMemo(() => items.filter(
     (i) => i.overallStatus === "in_progress" || i.overallStatus === "not_started"
-  ).length;
+  ).length, [items]);
 
   const filterOptions = [
     { value: "all", label: "All Status" },
@@ -115,80 +367,99 @@ export default function OnboardingMonitoring() {
     { value: "rejected", label: "Rejected" },
   ];
 
+  const statusThemeMap = useMemo(() => ({
+    not_started: { bg: "rgba(142, 142, 147, 0.12)", text: colors.neutral, label: "Not Started" },
+    in_progress: { bg: "rgba(245, 158, 11, 0.12)", text: colors.warning, label: "In Progress" },
+    submitted:   { bg: "rgba(0, 122, 255, 0.12)", text: colors.info, label: "Pending Review" },
+    approved:    { bg: "rgba(22, 199, 132, 0.12)", text: colors.success, label: "Approved" },
+    rejected:    { bg: "rgba(239, 68, 68, 0.12)", text: colors.danger, label: "Rejected" },
+  }), [colors]);
+
+  const formatCommencementDate = (dateString: string) => {
+    if (!dateString) return "—";
+    const convertedDate = new Date(dateString);
+    if (isNaN(convertedDate.getTime())) return dateString;
+    return convertedDate.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+  };
+
   const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <Text style={styles.pageTitle}>Onboarding Monitoring</Text>
-      <Text style={styles.pageSubtitle}>Track employee onboarding progress and approvals</Text>
+    <View style={s(styles.headerContainer)}>
+      <Text style={s(styles.pageTitle)}>Onboarding Monitoring</Text>
+      <Text style={s(styles.pageSubtitle)}>Track employee onboarding progress and approvals</Text>
 
-      {/* STATS MATRIX GRID */}
-      <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <View style={styles.statContent}>
-            <Text style={styles.statLabel}>In Progress</Text>
-            <Text style={styles.statValue}>{inProgressCount}</Text>
+      <View style={s(styles.statsGrid)}>
+        <View style={s(styles.statCard)}>
+          <View style={s(styles.statContent)}>
+            <Text style={s(styles.statLabel)}>In Progress</Text>
+            <Text style={s(styles.statValue)}>{inProgressCount}</Text>
           </View>
-          <Clock size={24} color="#D97706" style={{ opacity:1 }} />
+          <Clock size={20} color={colors.warning} />
         </View>
 
-        <View style={styles.statCard}>
-          <View style={styles.statContent}>
-            <Text style={styles.statLabel}>Pending</Text>
-            <Text style={styles.statValue}>{pendingReviewCount}</Text>
+        <View style={s(styles.statCard)}>
+          <View style={s(styles.statContent)}>
+            <Text style={s(styles.statLabel)}>Pending</Text>
+            <Text style={s(styles.statValue)}>{pendingReviewCount}</Text>
           </View>
-          <Clock size={24} color="#007AFF" style={{ opacity:1 }} />
+          <Clock size={20} color={colors.info} />
         </View>
 
-        <View style={styles.statCard}>
-          <View style={styles.statContent}>
-            <Text style={styles.statLabel}>Approved</Text>
-            <Text style={styles.statValue}>{approvedCount}</Text>
+        <View style={s(styles.statCard)}>
+          <View style={s(styles.statContent)}>
+            <Text style={s(styles.statLabel)}>Approved</Text>
+            <Text style={s(styles.statValue)}>{approvedCount}</Text>
           </View>
-          <CheckCircle2 size={24} color="#34C759" style={{ opacity: 1 }} />
+          <CheckCircle2 size={20} color={colors.success} />
         </View>
 
-        <View style={styles.statCard}>
-          <View style={styles.statContent}>
-            <Text style={styles.statLabel}>Total</Text>
-            <Text style={styles.statValue}>{items.length}</Text>
+        <View style={s(styles.statCard)}>
+          <View style={s(styles.statContent)}>
+            <Text style={s(styles.statLabel)}>Total</Text>
+            <Text style={s(styles.statValue)}>{items.length}</Text>
           </View>
-          <FileText size={24} color="#5856D6" style={{ opacity: 1}} />
+          <FileText size={20} color={colors.primary} />
         </View>
       </View>
 
-      {/* SEARCH AND SELECT CONTROLS */}
-      <View style={styles.searchBarRow}>
-        <View style={styles.searchContainer}>
-          <Search size={16} color="#8E8E93" style={styles.searchIcon} />
+      <View style={s(styles.searchBarRow)}>
+        <View style={s(styles.searchContainer)}>
+          <Search size={14} color={colors.textSecondary} style={s(styles.searchIcon)} />
           <TextInput
-            style={styles.searchInput}
+            style={s(styles.searchInput)}
             placeholder="Search employee..."
+            placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            autoCorrect={false}
           />
         </View>
 
         <TouchableOpacity 
-          style={styles.pickerTrigger} 
+          style={s(styles.pickerTrigger)} 
           onPress={() => setPickerVisible(true)}
         >
-          <Text style={styles.pickerTriggerText} numberOfLines={1}>
+          <Text style={s(styles.pickerTriggerText)} numberOfLines={1}>
             {filterOptions.find(o => o.value === statusFilter)?.label || "Filter"}
           </Text>
-          <ChevronDown size={16} color="#000" />
+          <ChevronDown size={14} color={colors.text} />
         </TouchableOpacity>
       </View>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={s(styles.container)} edges={["top", "left", "right"]}>
       {onboardingQuery.isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#007AFF" />
+        <View style={s(styles.center)}>
+          <ActivityIndicator size="small" color={colors.primary} />
         </View>
       ) : onboardingQuery.isError ? (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>
+        <View style={s(styles.center)}>
+          <Text style={s(styles.errorText)}>
             {onboardingQuery.error instanceof Error ? onboardingQuery.error.message : "Failed to load records"}
           </Text>
         </View>
@@ -197,67 +468,66 @@ export default function OnboardingMonitoring() {
           data={filtered}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderHeader}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ paddingBottom: hp(5) }}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
-            const currentTheme = statusTheme[item.overallStatus] || statusTheme.not_started;
+            const currentTheme = statusThemeMap[item.overallStatus as keyof typeof statusThemeMap] || statusThemeMap.not_started;
             return (
-              <View style={styles.employeeCard}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.empName}>{item.employeeName}</Text>
-                  <View style={[styles.badge, { backgroundColor: currentTheme.bg }]}>
-                    <Text style={[styles.badgeText, { color: currentTheme.text }]}>
+              <View style={s(styles.employeeCard)}>
+                <View style={s(styles.cardHeader)}>
+                  <Text style={s(styles.empName)} numberOfLines={1}>{item.employeeName}</Text>
+                  <View style={s([styles.badge, { backgroundColor: currentTheme.bg }])}>
+                    <Text style={s([styles.badgeText, { color: currentTheme.text }])}>
                       {currentTheme.label}
                     </Text>
                   </View>
                 </View>
 
-                {/* Custom Native Progress Component */}
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressMeta}>
-                    <Text style={styles.progressText}>Progress: {item.progress}%</Text>
-                    <Text style={styles.docCount}>
+                <View style={s(styles.progressContainer)}>
+                  <View style={s(styles.progressMeta)}>
+                    <Text style={s(styles.progressText)}>Progress: {item.progress}%</Text>
+                    <Text style={s(styles.docCount)}>
                       Docs: {item.documentsUploaded}/{item.documentsRequired}
                     </Text>
                   </View>
-                  <View style={styles.progressBarTrack}>
-                    <View style={[styles.progressBarFill, { width: `${item.progress}%` }]} />
+                  <View style={s(styles.progressBarTrack)}>
+                    <View style={s([styles.progressBarFill, { width: `${item.progress}%`, backgroundColor: item.progress === 100 ? colors.success : colors.primary }])} />
                   </View>
                 </View>
 
-                <Text style={styles.startDate}>
-                  Started: {item.startDate ? new Date(item.startDate).toLocaleDateString() : "—"}
+                <Text style={s(styles.startDate)}>
+                  Started: {formatCommencementDate(item.startDate)}
                 </Text>
               </View>
             );
           }}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No onboarding records found</Text>
+            <View style={s(styles.emptyContainer)}>
+              <Text style={s(styles.emptyText)}>No onboarding records found</Text>
             </View>
           }
         />
       )}
 
-      {/* FILTER OPTION BOTTOM MODAL SHEET */}
-      <Modal visible={pickerVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Status</Text>
+      <Modal visible={pickerVisible} animationType="slide" transparent onRequestClose={() => setPickerVisible(false)}>
+        <View style={s(styles.modalOverlay)}>
+          <View style={s(styles.modalContent)}>
+            <View style={s(styles.modalHeader)}>
+              <Text style={s(styles.modalTitle)}>Select Status</Text>
               <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                <X size={22} color="#000" />
+                <X size={18} color={colors.text} />
               </TouchableOpacity>
             </View>
             {filterOptions.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                style={[styles.modalItem, statusFilter === opt.value && styles.modalItemSelected]}
+                style={s([styles.modalItem, statusFilter === opt.value && styles.modalItemSelected])}
                 onPress={() => {
                   setStatusFilter(opt.value);
                   setPickerVisible(false);
                 }}
               >
-                <Text style={[styles.modalItemText, statusFilter === opt.value && styles.modalItemTextSelected]}>
+                <Text style={s([styles.modalItemText, statusFilter === opt.value && styles.modalItemTextSelected])}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
@@ -268,56 +538,3 @@ export default function OnboardingMonitoring() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  errorText: { color: "#FF3B30", fontSize: 15, padding: 16 },
-  headerContainer: { padding: 16, backgroundColor: Colors.background, borderBottomWidth: 1, borderColor: "#E5E5EA" },
-  pageTitle: { fontSize: 24, fontWeight: "bold", color: Colors.surface},
-  pageSubtitle: { fontSize: 13, color: "#8E8E93", marginTop: 4, marginBottom: 16 },
-  
-  // Matrix Box Grid Styles
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 16 },
-  statCard: { width: "48%", backgroundColor: "#F8F9FA", borderRadius: 12, padding: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, borderWidth: 1, borderColor: "#E5E5EA" },
-  statContent: { flex: 1 },
-  statLabel: { fontSize: 12, color: "#8E8E93" },
-  statValue: { fontSize: 20, fontWeight: "bold", marginTop: 4 },
-
-  // Control Rows
-  searchBarRow: { flexDirection: "row", marginTop: 4 },
-  searchContainer: { flex: 1, flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 10, alignItems: "center", paddingHorizontal: 10, marginRight: 8 },
-  searchIcon: { marginRight: 6 },
-  searchInput: { flex: 1, height: 36, fontSize: 14, padding: 0 },
-  pickerTrigger: { width: 130, height: 36, backgroundColor: "#F2F2F7", borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10 },
-  pickerTriggerText: { fontSize: 13, fontWeight: "500", flex: 1, marginRight: 4 },
-
-  // Native Data List Card Elements
-  employeeCard: { backgroundColor: Colors.background, marginHorizontal: 16, marginTop: 12, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E5E5EA" },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
-  empName: { fontSize: 16, fontWeight: "600", color: Colors.surface, flex: 1, marginRight: 8 },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { fontSize: 11, fontWeight: "600" },
-  
-  // Custom Progress Styles
-  progressContainer: { marginBottom: 8 },
-  progressMeta: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-  progressText: { fontSize: 12, color: "#8E8E93" },
-  docCount: { fontSize: 12, color: "#8E8E93" },
-  progressBarTrack: { height: 6, backgroundColor: "#E5E5EA", borderRadius: 3, overflow: "hidden" },
-  progressBarFill: { height: "100%", backgroundColor: "#34C759" },
-  startDate: { fontSize: 11, color: "#AEAEB2" },
-
-  emptyContainer: { padding: 40, alignItems: "center" },
-  emptyText: { color: "#8E8E93", fontSize: 15 },
-
-  // Interactive Modal Sheets
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalContent: { backgroundColor: "#FFF", borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 32 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderColor: "#E5E5EA" },
-  modalTitle: { fontSize: 16, fontWeight: "bold" },
-  modalItem: { padding: 16, borderBottomWidth: 1, borderColor: "#F2F2F7" },
-  modalItemSelected: { backgroundColor: "#F2F2F7" },
-  modalItemText: { fontSize: 15, color: "#000" },
-  modalItemTextSelected: { color: "#007AFF", fontWeight: "600" }
-});

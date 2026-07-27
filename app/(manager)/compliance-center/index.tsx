@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,7 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
+import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   Shield,
@@ -24,23 +24,18 @@ import {
   TrendingUp,
   Search,
   Calendar,
-  ExternalLink,
   ChevronRight,
   ChevronDown,
   X,
-  User,
-  Clock,
-  History,
   Lock,
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Download,
   ArrowRight,
-  FileText
+  History
 } from "lucide-react-native";
+import { s, wp, hp, fs } from "@/util/styles";
 
-// --- Types & Interfaces ---
 interface Website {
   _id: string;
   siteName: string;
@@ -129,50 +124,620 @@ interface ComplianceReport {
   }[];
 }
 
+function buildColors(uiTheme: any, isDark: boolean, isMetallic: boolean) {
+  return {
+    background:    uiTheme.panelColors?.dashboardBackground     || (isMetallic ? "#111315" : isDark ? "#09090b" : "#F8FAFC"),
+    cardBg:        uiTheme.panelColors?.dashboardCardBackground || (isMetallic ? "#2b2c2d" : isDark ? "#18181b" : "#FFFFFF"),
+    text:          uiTheme.panelColors?.dashboardTextColor      || (isMetallic ? "#ffffff" : isDark ? "#F4F4F5" : "#0F172A"),
+    textSecondary: isDark || isMetallic ? "#A1A1AA" : "#475569",
+    textMuted:     isDark || isMetallic ? "#71717A" : "#64748B",
+    border:        isMetallic ? "rgba(255,210,122,0.2)" : (isDark ? "#27272A" : "#E2E8F0"),
+    borderLight:   isDark || isMetallic ? "rgba(255,255,255,0.05)" : "#F1F5F9",
+    inputBg:       isDark || isMetallic ? "#1c1c1e" : "#FFFFFF",
+    primary:       isMetallic ? "#ffd27a" : (uiTheme.customColors?.primary || (isDark ? "#3b82f6" : "#133767")),
+    accent:        isMetallic ? "#ffd27a" : "#00C6FF",
+    overlayBg:     "rgba(0, 0, 0, 0.5)",
+    success:       "#22c55e",
+    warning:       "#f59e0b",
+    danger:        "#ef4444",
+    dangerBg:      isDark || isMetallic ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
+    dangerBorder:  isDark || isMetallic ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
+    purple:        "#a855f7",
+    purpleBg:      isDark || isMetallic ? "rgba(168, 85, 247, 0.15)" : "rgba(168, 85, 247, 0.1)",
+    badgeText:     "#ffffff",
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerPadding: {
+      padding: wp(4),
+    },
+    topBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: wp(2),
+      marginBottom: hp(2),
+    },
+    mainTitle: {
+      fontSize: fs(5),
+      fontWeight: "900",
+      letterSpacing: -0.5,
+      color: colors.text,
+    },
+    actionRow: {
+      flexDirection: "row",
+      gap: wp(2),
+    },
+    btnOutline: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(1.5),
+      backgroundColor: colors.cardBg,
+    },
+    btnOutlineText: {
+      fontSize: fs(3),
+      fontWeight: "600",
+      color: colors.text,
+    },
+    btnPrimary: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+      paddingHorizontal: wp(3),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(1.5),
+      backgroundColor: colors.primary,
+    },
+    btnPrimaryText: {
+      fontSize: fs(3),
+      fontWeight: "700",
+    },
+    statsScroll: {
+      marginBottom: hp(2),
+    },
+    statCard: {
+      width: wp(35),
+      padding: wp(3),
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+    },
+    statLabel: {
+      fontSize: fs(2.8),
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    statValue: {
+      fontSize: fs(5.5),
+      fontWeight: "900",
+      marginVertical: hp(0.5),
+      color: colors.primary,
+    },
+    statSub: {
+      fontSize: fs(2.5),
+      color: colors.textMuted,
+    },
+    textGreen: { color: colors.success, fontSize: fs(5.5), fontWeight: "900", marginVertical: hp(0.5) },
+    textAmber: { color: colors.warning, fontSize: fs(5.5), fontWeight: "900", marginVertical: hp(0.5) },
+    textRed: { color: colors.danger, fontSize: fs(5.5), fontWeight: "900", marginVertical: hp(0.5) },
+    filterContainer: {
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+      marginBottom: hp(2),
+    },
+    sectionTitle: {
+      fontSize: fs(3.5),
+      fontWeight: "bold",
+      marginBottom: hp(1),
+      color: colors.text,
+    },
+    searchWrapper: {
+      position: "relative",
+      justifyContent: "center",
+    },
+    searchIcon: {
+      position: "absolute",
+      left: wp(2.5),
+      zIndex: 1,
+    },
+    inputField: {
+      height: hp(4.8),
+      borderWidth: 1,
+      borderRadius: wp(1.5),
+      paddingLeft: wp(8.5),
+      paddingRight: wp(2.5),
+      fontSize: fs(3.2),
+      color: colors.text,
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    dropdownTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(1.5),
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.75),
+      minWidth: wp(28),
+      backgroundColor: colors.inputBg,
+    },
+    dropdownTriggerText: {
+      fontSize: fs(2.8),
+      fontWeight: "500",
+      marginRight: wp(1),
+      color: colors.textMuted,
+    },
+    listHeaderTitle: {
+      fontSize: fs(3.8),
+      fontWeight: "800",
+      marginTop: hp(0.5),
+      color: colors.text,
+    },
+    siteCard: {
+      marginHorizontal: wp(4),
+      marginBottom: hp(1.5),
+      borderRadius: wp(2.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: wp(3.5),
+      backgroundColor: colors.cardBg,
+    },
+    siteHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: hp(1.2),
+    },
+    siteNameText: {
+      fontSize: fs(3.8),
+      fontWeight: "bold",
+      color: colors.text,
+    },
+    siteUrlText: {
+      fontSize: fs(3),
+      marginTop: hp(0.25),
+      color: colors.accent,
+    },
+    badge: {
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(3),
+    },
+    badgeText: {
+      color: colors.badgeText,
+      fontSize: fs(2.8),
+      fontWeight: "bold",
+    },
+    detailsGrid: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      padding: wp(2),
+      borderRadius: wp(1.5),
+      marginBottom: hp(1),
+      backgroundColor: colors.borderLight,
+    },
+    detailLabel: {
+      fontSize: fs(2.5),
+      fontWeight: "500",
+      color: colors.textMuted,
+    },
+    detailValue: {
+      fontSize: fs(3),
+      fontWeight: "600",
+      marginTop: hp(0.1),
+      color: colors.textMuted,
+    },
+    countdownRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+      marginBottom: hp(1),
+    },
+    countdownText: {
+      fontSize: fs(2.8),
+      fontWeight: "500",
+      color: colors.text,
+    },
+    overrideIndicator: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1),
+      backgroundColor: colors.purpleBg,
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(1),
+      marginBottom: hp(1),
+      alignSelf: "flex-start",
+    },
+    overrideIndicatorText: {
+      color: colors.purple,
+      fontSize: fs(2.5),
+      fontWeight: "600",
+      maxWidth: wp(50),
+    },
+    viewChecklistBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: wp(1),
+      paddingVertical: hp(1),
+      borderRadius: wp(1.5),
+      marginTop: hp(0.5),
+      backgroundColor: colors.primary,
+    },
+    viewChecklistBtnText: {
+      fontSize: fs(3),
+      fontWeight: "700",
+    },
+    emptyView: {
+      padding: hp(4),
+      alignItems: "center",
+    },
+    footerContainer: {
+      padding: wp(4),
+      paddingBottom: hp(4),
+    },
+    leaderboardCard: {
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+    },
+    leaderboardRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: hp(1),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    leaderboardRank: {
+      width: wp(7),
+      fontSize: fs(3),
+      fontWeight: "900",
+      color: colors.primary,
+    },
+    leaderboardName: {
+      flex: 1,
+      fontSize: fs(3.2),
+      fontWeight: "600",
+      color: colors.text,
+    },
+    leaderboardCount: {
+      fontSize: fs(2.8),
+      color: colors.textMuted,
+    },
+    modalContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: wp(4),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: fs(4),
+      fontWeight: "bold",
+      color: colors.text,
+    },
+    modalSubtitle: {
+      fontSize: fs(2.8),
+      marginTop: hp(0.25),
+      color: colors.textSecondary,
+    },
+    closeBtn: {
+      padding: wp(1),
+    },
+    modalScrollBody: {
+      padding: wp(4),
+    },
+    loaderCentering: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    adminOverrideTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: wp(1.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: wp(2),
+      borderRadius: wp(1.5),
+      marginBottom: hp(2),
+      backgroundColor: colors.purpleBg,
+    },
+    adminOverrideTriggerText: {
+      color: colors.purple,
+      fontSize: fs(3),
+      fontWeight: "600",
+    },
+    accordionBox: {
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+      marginBottom: hp(1.2),
+      overflow: "hidden",
+    },
+    accordionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(3),
+      backgroundColor: colors.borderLight,
+    },
+    accordionTitle: {
+      fontSize: fs(3.2),
+      fontWeight: "bold",
+      color: colors.textMuted,
+    },
+    accordionBadgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(2),
+    },
+    miniBadge: {
+      paddingHorizontal: wp(1.5),
+      paddingVertical: hp(0.25),
+      borderRadius: wp(1),
+      backgroundColor: colors.background,
+    },
+    miniBadgeText: {
+      fontSize: fs(2.5),
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    accordionContent: {
+      padding: wp(2.5),
+      gap: hp(1.2),
+    },
+    checkpointItem: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderLight,
+      paddingBottom: hp(1.2),
+      marginBottom: hp(0.5),
+    },
+    checkpointTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    checkpointStatusIndicator: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+      flex: 1,
+    },
+    checkpointTitleText: {
+      fontSize: fs(3.2),
+      fontWeight: "600",
+      color: colors.text,
+    },
+    evidenceLabelAlert: {
+      color: colors.warning,
+      fontSize: fs(2.2),
+      fontWeight: "bold",
+      backgroundColor: "rgba(245,158,11,0.1)",
+      paddingHorizontal: wp(1),
+      paddingVertical: hp(0.15),
+      borderRadius: wp(0.8),
+    },
+    checkpointDescText: {
+      fontSize: fs(2.8),
+      marginTop: hp(0.5),
+      paddingLeft: wp(5.5),
+      color: colors.textSecondary,
+    },
+    notesBlock: {
+      padding: wp(1.5),
+      borderRadius: wp(1),
+      marginTop: hp(0.75),
+      marginLeft: wp(5.5),
+      backgroundColor: colors.borderLight,
+    },
+    notesText: { fontSize: fs(2.8), color: colors.text },
+    blockedBlock: {
+      backgroundColor: colors.dangerBg,
+      padding: wp(1.5),
+      borderRadius: wp(1),
+      marginTop: hp(0.75),
+      marginLeft: wp(5.5),
+    },
+    blockedText: { color: colors.danger, fontSize: fs(2.8) },
+    updateCheckpointTriggerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-end",
+      gap: wp(0.5),
+      marginTop: hp(1),
+    },
+    editCheckpointForm: {
+      padding: wp(2.5),
+      borderRadius: wp(1.5),
+      marginTop: hp(1),
+      backgroundColor: colors.borderLight,
+    },
+    formSectionLabel: {
+      fontSize: fs(2.8),
+      fontWeight: "600",
+      marginBottom: hp(0.5),
+      color: colors.textSecondary,
+    },
+    uploadSimulatedBtn: {
+      padding: wp(2),
+      borderRadius: wp(1.5),
+      alignItems: "center",
+      marginBottom: hp(1),
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    uploadSimulatedBtnText: {
+      fontSize: fs(3),
+      fontWeight: "500",
+      color: colors.text,
+    },
+    editActionRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: wp(3),
+      marginTop: hp(1.2),
+    },
+    btnCancelMini: {
+      paddingVertical: hp(0.75),
+      paddingHorizontal: wp(3),
+    },
+    btnSaveMini: {
+      paddingVertical: hp(0.75),
+      paddingHorizontal: wp(3.5),
+      borderRadius: wp(1),
+    },
+    historyWrapper: {
+      marginTop: hp(2),
+      borderRadius: wp(2.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+      padding: wp(3),
+    },
+    historyLogItem: {
+      paddingVertical: hp(0.75),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderLight,
+    },
+    historyLogMeta: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    logUser: { fontSize: fs(2.8), fontWeight: "bold", color: colors.text },
+    logNotes: { fontSize: fs(2.8), marginTop: hp(0.25), color: colors.textSecondary },
+    splitRow: {
+      flexDirection: "row",
+      gap: wp(2.5),
+    },
+    btnSubmitFull: {
+      paddingVertical: hp(1.5),
+      borderRadius: wp(1.5),
+      marginTop: hp(1.5),
+    },
+    dialogOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: "center",
+      padding: wp(5),
+    },
+    dialogContent: {
+      borderRadius: wp(2.5),
+      padding: wp(4),
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dialogActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: wp(3),
+      marginTop: hp(1.8),
+    },
+    pickerOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: "flex-end",
+    },
+    pickerContainer: {
+      borderTopLeftRadius: wp(3),
+      borderTopRightRadius: wp(3),
+      backgroundColor: colors.cardBg,
+      maxHeight: Dimensions.get("window").height * 0.45,
+      paddingBottom: Platform.OS === "ios" ? hp(3) : hp(1.5),
+    },
+    pickerHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(4),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    pickerTitle: {
+      fontSize: fs(3.5),
+      fontWeight: "bold",
+      color: colors.text,
+    },
+    pickerOptionRow: {
+      paddingVertical: hp(1.8),
+      paddingHorizontal: wp(4),
+    },
+    pickerOptionText: {
+      fontSize: fs(3.5),
+      color: colors.text,
+    },
+  });
+}
+
 export default function ComplianceCenter() {
   const { uiTheme } = useTheme();
-  const isMetallic = true;//uiTheme?.theme === "metallic-elite";
+  const isMetallic = (uiTheme?.theme as string) === "metallic-elite";
+  const isDark = (uiTheme?.theme as string) === "dark" || isMetallic;
+  
+  const colors = useMemo(() => buildColors(uiTheme, isDark, isMetallic), [uiTheme, isDark, isMetallic]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super-admin";
 
-  // Data state
   const [websites, setWebsites] = useState<Website[]>([]);
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
   const [report, setReport] = useState<ComplianceReport | null>(null);
 
-  // Loading state
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Filters state
   const [search, setSearch] = useState("");
   const [scoreFilter, setScoreFilter] = useState("all");
   const [envFilter, setEnvFilter] = useState("all");
   const [buFilter, setBuFilter] = useState("all");
 
-  // Selection state
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [siteHistory, setSiteHistory] = useState<ChecklistHistory[]>([]);
   
-  // Modals visibility state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isOverrideOpen, setIsOverrideOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  // Custom Selector Modals for Dropdowns on mobile
   const [activePicker, setActivePicker] = useState<{ type: string; current: string; options: string[] } | null>(null);
 
-  // Override Form state
   const [overrideScore, setOverrideScore] = useState("");
   const [overrideStatus, setOverrideStatus] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
 
-  // Accordion open tracker for checklist categories
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  // Create website form state
   const [newSite, setNewSite] = useState({
     siteName: "",
     url: "",
@@ -189,7 +754,6 @@ export default function ComplianceCenter() {
     complianceTemplate: "",
   });
 
-  // Edit checkpoint entry state
   const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null);
   const [itemStatus, setItemStatus] = useState<ChecklistItem["status"]>("pending");
   const [itemNotes, setItemNotes] = useState("");
@@ -197,7 +761,7 @@ export default function ComplianceCenter() {
   const [itemEvidenceFile, setItemEvidenceFile] = useState("");
   const [itemBlockedReason, setItemBlockedReason] = useState("");
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const activeRes = await apiFetch<{ items: Website[] }>("/api/websites/active");
@@ -219,11 +783,11 @@ export default function ComplianceCenter() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredWebsites = useMemo(() => {
     return websites.filter((site) => {
@@ -389,10 +953,7 @@ export default function ComplianceCenter() {
     }
   };
 
-  // Safe file loader abstracting base64 strings
   const simulateEvidenceUpload = () => {
-    // In React Native, this would use DocumentPicker / ImagePicker
-    // Setting clean sample mock base64 to match web file conversion workflows
     setItemEvidenceFile("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
     Alert.alert("Attachment Added", "Evidence attachment file processed.");
   };
@@ -421,17 +982,6 @@ export default function ComplianceCenter() {
     setExpandedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  // Theme-color helpers
-  const themeStyles = {
-    bg: isMetallic ? "#111315" : "#f8fafc",
-    cardBg: isMetallic ? "#2b2c2d" : "#ffffff",
-    border: isMetallic ? "rgba(255,210,122,0.2)" : "#e2e8f0",
-    text: isMetallic ? "#ffffff" : "#0f172a",
-    mutedText: isMetallic ? "#a1a1aa" : "#64748b",
-    primary: isMetallic ? "#ffd27a" : "#133767",
-    accent: isMetallic ? "#d8a537" : "#00C6FF",
-  };
-
   const openPicker = (type: string, current: string, options: string[]) => {
     setActivePicker({ type, current, options });
   };
@@ -442,169 +992,164 @@ export default function ComplianceCenter() {
     if (type === "scoreFilter") setScoreFilter(value);
     else if (type === "envFilter") setEnvFilter(value);
     else if (type === "buFilter") setBuFilter(value);
-    else if (type === "websiteType") setNewSite({ ...newSite, websiteType: value as any });
+    else if (type === "websiteType") setNewSite({ ...newSite, websiteType: value as "active" | "future" });
     else if (type === "environment") setNewSite({ ...newSite, environment: value });
     else if (type === "businessUnit") setNewSite({ ...newSite, businessUnit: value });
     else if (type === "complianceTemplate") setNewSite({ ...newSite, complianceTemplate: value });
     else if (type === "overrideStatus") setOverrideStatus(value);
-    else if (type === "itemStatus") setItemStatus(value as any);
+    else if (type === "itemStatus") setItemStatus(value as ChecklistItem["status"]);
 
     setActivePicker(null);
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeStyles.bg }]}>
-      {/* Main List holding headers, metrics, and items avoiding view nesting limits */}
+    <SafeAreaView style={s(styles.container)}>
       <FlatList
         data={filteredWebsites}
         keyExtractor={(item) => item._id}
         refreshing={loading}
         onRefresh={() => void loadData()}
         ListHeaderComponent={
-          <View style={styles.headerPadding}>
-            {/* Title Section */}
-            <View style={styles.topBar}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Shield size={28} color={themeStyles.primary} />
-                <Text style={[styles.mainTitle, { color: themeStyles.text }]}>Compliance Center</Text>
+          <View style={s(styles.headerPadding)}>
+            <View style={s(styles.topBar)}>
+              <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(2) })}>
+                <Shield size={fs(7)} color={colors.primary} />
+                <Text style={s(styles.mainTitle)}>Compliance Center</Text>
               </View>
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.btnOutline, { borderColor: themeStyles.border }]} onPress={() => void loadData()}>
-                  <RefreshCw size={14} color={themeStyles.text} />
-                  <Text style={[styles.btnOutlineText, { color: themeStyles.text }]}>Sync</Text>
+              <View style={s(styles.actionRow)}>
+                <TouchableOpacity style={s(styles.btnOutline)} onPress={() => void loadData()}>
+                  <RefreshCw size={fs(3.5)} color={colors.text} />
+                  <Text style={s(styles.btnOutlineText)}>Sync</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: themeStyles.primary }]} onPress={() => setIsCreateOpen(true)}>
-                  <Plus size={14} color={isMetallic ? "#000" : "#fff"} />
-                  <Text style={[styles.btnPrimaryText, { color: isMetallic ? "#000" : "#fff" }]}>Register</Text>
+                <TouchableOpacity style={s(styles.btnPrimary)} onPress={() => setIsCreateOpen(true)}>
+                  <Plus size={fs(3.5)} color={isMetallic ? "#000" : "#fff"} />
+                  <Text style={s([styles.btnPrimaryText, { color: isMetallic ? "#000" : "#fff" }])}>Register</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Metrics Dashboard */}
             {report && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll} contentContainerStyle={{ gap: 12 }}>
-                <View style={[styles.statCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                  <Text style={[styles.statLabel, { color: themeStyles.mutedText }]}>Average Score</Text>
-                  <Text style={[styles.statValue, { color: themeStyles.primary }]}>{report.avgScore}%</Text>
-                  <Text style={[styles.statSub, { color: themeStyles.mutedText }]}>{report.totalWebsites} Pipelines tracked</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s(styles.statsScroll)} contentContainerStyle={s({ gap: wp(3) })}>
+                <View style={s(styles.statCard)}>
+                  <Text style={s(styles.statLabel)}>Average Score</Text>
+                  <Text style={s(styles.statValue)}>{report.avgScore}%</Text>
+                  <Text style={s(styles.statSub)}>{report.totalWebsites} Pipelines tracked</Text>
                 </View>
-                <View style={[styles.statCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                  <Text style={[styles.statLabel, { color: themeStyles.mutedText }]}>Green (100%)</Text>
-                  <Text style={styles.textGreen}>{report.statusBreakdown.green} sites</Text>
-                  <Text style={[styles.statSub, { color: themeStyles.mutedText }]}>Fully Compliant</Text>
+                <View style={s(styles.statCard)}>
+                  <Text style={s(styles.statLabel)}>Green (100%)</Text>
+                  <Text style={s(styles.textGreen)}>{report.statusBreakdown.green} sites</Text>
+                  <Text style={s(styles.statSub)}>Fully Compliant</Text>
                 </View>
-                <View style={[styles.statCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                  <Text style={[styles.statLabel, { color: themeStyles.mutedText }]}>Yellow (80-99%)</Text>
-                  <Text style={styles.textAmber}>{report.statusBreakdown.yellow} sites</Text>
-                  <Text style={[styles.statSub, { color: themeStyles.mutedText }]}>Approaching Verification</Text>
+                <View style={s(styles.statCard)}>
+                  <Text style={s(styles.statLabel)}>Yellow (80-99%)</Text>
+                  <Text style={s(styles.textAmber)}>{report.statusBreakdown.yellow} sites</Text>
+                  <Text style={s(styles.statSub)}>Approaching Verification</Text>
                 </View>
-                <View style={[styles.statCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                  <Text style={[styles.statLabel, { color: themeStyles.mutedText }]}>Red (&lt;80%)</Text>
-                  <Text style={styles.textRed}>{report.statusBreakdown.red} sites</Text>
-                  <Text style={[styles.statSub, { color: themeStyles.mutedText }]}>Early Stage / Action Required</Text>
+                <View style={s(styles.statCard)}>
+                  <Text style={s(styles.statLabel)}>Red (&lt;80%)</Text>
+                  <Text style={s(styles.textRed)}>{report.statusBreakdown.red} sites</Text>
+                  <Text style={s(styles.statSub)}>Early Stage / Action Required</Text>
                 </View>
               </ScrollView>
             )}
 
-            {/* Filter Panel */}
-            <View style={[styles.filterContainer, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-              <Text style={[styles.sectionTitle, { color: themeStyles.text }]}>Filters</Text>
-              <View style={styles.searchWrapper}>
-                <Search size={16} color={themeStyles.mutedText} style={styles.searchIcon} />
+            <View style={s(styles.filterContainer)}>
+              <Text style={s(styles.sectionTitle)}>Filters</Text>
+              <View style={s(styles.searchWrapper)}>
+                <Search size={fs(4)} color={colors.textMuted} style={s(styles.searchIcon)} />
                 <TextInput
                   placeholder="Search project domain or lead..."
-                  placeholderTextColor={themeStyles.mutedText}
+                  placeholderTextColor={colors.textMuted}
                   value={search}
                   onChangeText={setSearch}
-                  style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]}
+                  style={s(styles.inputField)}
                 />
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ marginTop: 8 }}>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("scoreFilter", scoreFilter, ["all", "green", "yellow", "red"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>Score: {scoreFilter}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s({ gap: wp(2) })} style={s({ marginTop: hp(1) })}>
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("scoreFilter", scoreFilter, ["all", "green", "yellow", "red"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>Score: {scoreFilter}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("envFilter", envFilter, ["all", "Production", "Staging", "Development"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>Env: {envFilter}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("envFilter", envFilter, ["all", "Production", "Staging", "Development"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>Env: {envFilter}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("buFilter", buFilter, ["all", "Marketing", "SaaS", "E-Commerce", "Operations"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>BU: {buFilter}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("buFilter", buFilter, ["all", "Marketing", "SaaS", "E-Commerce", "Operations"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>BU: {buFilter}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
               </ScrollView>
             </View>
 
-            <Text style={[styles.listHeaderTitle, { color: themeStyles.text }]}>Monitored Launch Pipelines</Text>
+            <Text style={s(styles.listHeaderTitle)}>Monitored Launch Pipelines</Text>
           </View>
         }
         renderItem={({ item }) => {
           const countdown = getCountdownDays(item.launchDate);
           return (
-            <View style={[styles.siteCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-              <View style={styles.siteHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.siteNameText, { color: themeStyles.text }]}>{item.siteName}</Text>
-                  <Text style={[styles.siteUrlText, { color: themeStyles.accent }]}>{item.url}</Text>
+            <View style={s(styles.siteCard)}>
+              <View style={s(styles.siteHeader)}>
+                <View style={s({ flex: 1 })}>
+                  <Text style={s(styles.siteNameText)}>{item.siteName}</Text>
+                  <Text style={s(styles.siteUrlText)}>{item.url}</Text>
                 </View>
-                <View style={[styles.badge, { backgroundColor: item.readinessScore === 100 ? "#22c55e" : item.readinessScore >= 80 ? "#f59e0b" : "#ef4444" }]}>
-                  <Text style={styles.badgeText}>{item.readinessScore}%</Text>
+                <View style={s([styles.badge, { backgroundColor: item.readinessScore === 100 ? colors.success : item.readinessScore >= 80 ? colors.warning : colors.danger }])}>
+                  <Text style={s(styles.badgeText)}>{item.readinessScore}%</Text>
                 </View>
               </View>
 
-              <View style={styles.detailsGrid}>
+              <View style={s(styles.detailsGrid)}>
                 <View>
-                  <Text style={[styles.detailLabel, { color: themeStyles.mutedText }]}>Lead Developer</Text>
-                  <Text style={[styles.detailValue, { color: themeStyles.text }]}>{item.leadDeveloper || "Unassigned"}</Text>
+                  <Text style={s(styles.detailLabel)}>Lead Developer</Text>
+                  <Text style={s(styles.detailValue)}>{item.leadDeveloper || "Unassigned"}</Text>
                 </View>
                 <View>
-                  <Text style={[styles.detailLabel, { color: themeStyles.mutedText }]}>Unit / Env</Text>
-                  <Text style={[styles.detailValue, { color: themeStyles.text }]}>{item.businessUnit} • {item.environment}</Text>
+                  <Text style={s(styles.detailLabel)}>Unit / Env</Text>
+                  <Text style={s(styles.detailValue)}>{item.businessUnit} • {item.environment}</Text>
                 </View>
               </View>
 
               {item.launchDate && (
-                <View style={styles.countdownRow}>
-                  <Calendar size={14} color={themeStyles.mutedText} />
-                  <Text style={[styles.countdownText, { color: themeStyles.text }]}>
+                <View style={s(styles.countdownRow)}>
+                  <Calendar size={fs(3.5)} color={colors.textMuted} />
+                  <Text style={s(styles.countdownText)}>
                     {new Date(item.launchDate).toLocaleDateString()} ({countdown !== null && countdown > 0 ? `${countdown} days left` : countdown === 0 ? "Launch Day!" : "Launched"})
                   </Text>
                 </View>
               )}
 
               {item.overrideReason && (
-                <View style={styles.overrideIndicator}>
-                  <Lock size={12} color="#a855f7" />
-                  <Text style={styles.overrideIndicatorText} numberOfLines={1}>Forced: {item.overrideReason}</Text>
+                <View style={s(styles.overrideIndicator)}>
+                  <Lock size={fs(3)} color={colors.purple} />
+                  <Text style={s(styles.overrideIndicatorText)} numberOfLines={1}>Forced: {item.overrideReason}</Text>
                 </View>
               )}
 
-              <TouchableOpacity style={[styles.viewChecklistBtn, { backgroundColor: themeStyles.primary }]} onPress={() => openComplianceDrawer(item)}>
-                <Text style={[styles.viewChecklistBtnText, { color: isMetallic ? "#000" : "#fff" }]}>View Checklist & Audits</Text>
-                <ChevronRight size={14} color={isMetallic ? "#000" : "#fff"} />
+              <TouchableOpacity style={s(styles.viewChecklistBtn)} onPress={() => openComplianceDrawer(item)}>
+                <Text style={s([styles.viewChecklistBtnText, { color: isMetallic ? "#000" : "#fff" }])}>View Checklist & Audits</Text>
+                <ChevronRight size={fs(3.5)} color={isMetallic ? "#000" : "#fff"} />
               </TouchableOpacity>
             </View>
           );
         }}
         ListEmptyComponent={
-          <View style={styles.emptyView}>
-            <Text style={{ color: themeStyles.mutedText }}>No pipelines match active filter queries.</Text>
+          <View style={s(styles.emptyView)}>
+            <Text style={s({ color: colors.textMuted })}>No pipelines match active filter queries.</Text>
           </View>
         }
         ListFooterComponent={
-          /* Global Contributions Leaderboard inside safe footer view */
-          <View style={styles.footerContainer}>
-            <View style={[styles.leaderboardCard, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                <TrendingUp size={18} color={themeStyles.primary} />
-                <Text style={[styles.sectionTitle, { color: themeStyles.text, marginBottom: 0 }]}>Employee Leaderboard</Text>
+          <View style={s(styles.footerContainer)}>
+            <View style={s(styles.leaderboardCard)}>
+              <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(1.5), marginBottom: hp(1.5) })}>
+                <TrendingUp size={fs(4.5)} color={colors.primary} />
+                <Text style={s([styles.sectionTitle, { marginBottom: 0 }])}>Employee Leaderboard</Text>
               </View>
               {leaderboard.map((item, idx) => (
-                <View key={item.username} style={[styles.leaderboardRow, { borderBottomColor: themeStyles.border }]}>
-                  <Text style={[styles.leaderboardRank, { color: themeStyles.primary }]}>#{idx + 1}</Text>
-                  <Text style={[styles.leaderboardName, { color: themeStyles.text }]}>{item.username}</Text>
-                  <Text style={[styles.leaderboardCount, { color: themeStyles.mutedText }]}>{item.count} tasks done</Text>
+                <View key={item.username} style={s(styles.leaderboardRow)}>
+                  <Text style={s(styles.leaderboardRank)}>#{idx + 1}</Text>
+                  <Text style={s(styles.leaderboardName)}>{item.username}</Text>
+                  <Text style={s(styles.leaderboardCount)}>{item.count} tasks done</Text>
                 </View>
               ))}
             </View>
@@ -612,105 +1157,102 @@ export default function ComplianceCenter() {
         }
       />
 
-      {/* --- SIDE/DRAWER CHECKLIST DETAILS MODAL --- */}
       <Modal visible={isDrawerOpen} animationType="slide" onRequestClose={closeDrawer}>
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: themeStyles.bg }]}>
-          <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.modalTitle, { color: themeStyles.text }]}>{selectedWebsite?.siteName} Checklist</Text>
-              <Text style={[styles.modalSubtitle, { color: themeStyles.mutedText }]}>{selectedWebsite?.environment} • {selectedWebsite?.businessUnit}</Text>
+        <SafeAreaView style={s(styles.modalContainer)}>
+          <View style={s(styles.modalHeader)}>
+            <View style={s({ flex: 1 })}>
+              <Text style={s(styles.modalTitle)}>{selectedWebsite?.siteName} Checklist</Text>
+              <Text style={s(styles.modalSubtitle)}>{selectedWebsite?.environment} • {selectedWebsite?.businessUnit}</Text>
             </View>
-            <TouchableOpacity onPress={closeDrawer} style={styles.closeBtn}>
-              <X size={20} color={themeStyles.text} />
+            <TouchableOpacity onPress={closeDrawer} style={s(styles.closeBtn)}>
+              <X size={fs(5)} color={colors.text} />
             </TouchableOpacity>
           </View>
 
           {actionLoading && checklistItems.length === 0 ? (
-            <View style={styles.loaderCentering}>
-              <ActivityIndicator size="large" color={themeStyles.primary} />
+            <View style={s(styles.loaderCentering)}>
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (
-            <ScrollView style={styles.modalScrollBody} contentContainerStyle={{ paddingBottom: 32 }}>
-              {/* Admin Force Buttons */}
+            <ScrollView style={s(styles.modalScrollBody)} contentContainerStyle={s({ paddingBottom: hp(4) })}>
               {isAdmin && (
-                <TouchableOpacity style={styles.adminOverrideTrigger} onPress={() => { setOverrideScore(String(selectedWebsite?.readinessScore || "")); setOverrideStatus(selectedWebsite?.status || ""); setIsOverrideOpen(true); }}>
-                  <Lock size={14} color="#a855f7" />
-                  <Text style={styles.adminOverrideTriggerText}>Access Admin Override Panel</Text>
+                <TouchableOpacity style={s(styles.adminOverrideTrigger)} onPress={() => { setOverrideScore(String(selectedWebsite?.readinessScore || "")); setOverrideStatus(selectedWebsite?.status || ""); setIsOverrideOpen(true); }}>
+                  <Lock size={fs(3.5)} color={colors.purple} />
+                  <Text style={s(styles.adminOverrideTriggerText)}>Access Admin Override Panel</Text>
                 </TouchableOpacity>
               )}
 
-              {/* Categorized Accordion Elements */}
               {Object.entries(groupedChecklistItems).map(([category, items]) => {
                 const isExpanded = !!expandedCategories[category];
                 const completedCount = items.filter((i) => i.status === "completed").length;
                 return (
-                  <View key={category} style={[styles.accordionBox, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                    <TouchableOpacity style={styles.accordionHeader} onPress={() => toggleCategory(category)}>
-                      <Text style={[styles.accordionTitle, { color: themeStyles.text }]}>{category}</Text>
-                      <View style={styles.accordionBadgeRow}>
-                        <View style={styles.miniBadge}>
-                          <Text style={styles.miniBadgeText}>{completedCount}/{items.length} Done</Text>
+                  <View key={category} style={s(styles.accordionBox)}>
+                    <TouchableOpacity style={s(styles.accordionHeader)} onPress={() => toggleCategory(category)}>
+                      <Text style={s(styles.accordionTitle)}>{category}</Text>
+                      <View style={s(styles.accordionBadgeRow)}>
+                        <View style={s(styles.miniBadge)}>
+                          <Text style={s(styles.miniBadgeText)}>{completedCount}/{items.length} Done</Text>
                         </View>
-                        {isExpanded ? <ChevronDown size={16} color={themeStyles.text} /> : <ChevronRight size={16} color={themeStyles.text} />}
+                        {isExpanded ? <ChevronDown size={fs(4)} color={colors.text} /> : <ChevronRight size={fs(4)} color={colors.text} />}
                       </View>
                     </TouchableOpacity>
 
                     {isExpanded && (
-                      <View style={styles.accordionContent}>
+                      <View style={s(styles.accordionContent)}>
                         {items.map((item) => {
                           const isEditing = editingItem?._id === item._id;
                           return (
-                            <View key={item._id} style={[styles.checkpointItem, { borderColor: themeStyles.border }]}>
-                              <View style={styles.checkpointTop}>
-                                <View style={styles.checkpointStatusIndicator}>
-                                  {item.status === "completed" ? <CheckCircle2 size={16} color="#22c55e" /> : item.status === "blocked" ? <XCircle size={16} color="#ef4444" /> : <AlertTriangle size={16} color="#f59e0b" />}
-                                  <Text style={[styles.checkpointTitleText, { color: themeStyles.text }]}>{item.title}</Text>
+                            <View key={item._id} style={s(styles.checkpointItem)}>
+                              <View style={s(styles.checkpointTop)}>
+                                <View style={s(styles.checkpointStatusIndicator)}>
+                                  {item.status === "completed" ? <CheckCircle2 size={fs(4)} color={colors.success} /> : item.status === "blocked" ? <XCircle size={fs(4)} color={colors.danger} /> : <AlertTriangle size={fs(4)} color={colors.warning} />}
+                                  <Text style={s(styles.checkpointTitleText)}>{item.title}</Text>
                                 </View>
-                                {item.requiresEvidence && <Text style={styles.evidenceLabelAlert}>Evidence Required</Text>}
+                                {item.requiresEvidence && <Text style={s(styles.evidenceLabelAlert)}>Evidence Required</Text>}
                               </View>
-                              <Text style={[styles.checkpointDescText, { color: themeStyles.mutedText }]}>{item.description}</Text>
+                              <Text style={s(styles.checkpointDescText)}>{item.description}</Text>
 
                               {item.notes && !isEditing && (
-                                <View style={styles.notesBlock}><Text style={styles.notesText}><Text style={{ fontWeight: "bold" }}>Notes: </Text>{item.notes}</Text></View>
+                                <View style={s(styles.notesBlock)}><Text style={s(styles.notesText)}><Text style={s({ fontWeight: "bold" })}>Notes: </Text>{item.notes}</Text></View>
                               )}
                               {item.status === "blocked" && item.blockedReason && !isEditing && (
-                                <View style={styles.blockedBlock}><Text style={styles.blockedText}><Text style={{ fontWeight: "bold" }}>Reason: </Text>{item.blockedReason}</Text></View>
+                                <View style={s(styles.blockedBlock)}><Text style={s(styles.blockedText)}><Text style={s({ fontWeight: "bold" })}>Reason: </Text>{item.blockedReason}</Text></View>
                               )}
 
                               {isEditing ? (
-                                <View style={styles.editCheckpointForm}>
-                                  <Text style={styles.formSectionLabel}>Change Verification Status</Text>
-                                  <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border, marginBottom: 8 }]} onPress={() => openPicker("itemStatus", itemStatus, ["pending", "in-progress", "blocked", "completed"])}>
-                                    <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{itemStatus}</Text>
-                                    <ChevronDown size={14} color={themeStyles.mutedText} />
+                                <View style={s(styles.editCheckpointForm)}>
+                                  <Text style={s(styles.formSectionLabel)}>Change Verification Status</Text>
+                                  <TouchableOpacity style={s([styles.dropdownTrigger, { marginBottom: hp(1) }])} onPress={() => openPicker("itemStatus", itemStatus, ["pending", "in-progress", "blocked", "completed"])}>
+                                    <Text style={s(styles.dropdownTriggerText)}>{itemStatus}</Text>
+                                    <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                                   </TouchableOpacity>
 
-                                  <Text style={styles.formSectionLabel}>Evidence Resource Link URL</Text>
-                                  <TextInput value={itemEvidenceUrl} onChangeText={setItemEvidenceUrl} placeholder="https://..." placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border, marginBottom: 8 }]} />
+                                  <Text style={s(styles.formSectionLabel)}>Evidence Resource Link URL</Text>
+                                  <TextInput value={itemEvidenceUrl} onChangeText={setItemEvidenceUrl} placeholder="https://..." placeholderTextColor={colors.textMuted} style={s([styles.inputField, { marginBottom: hp(1) }])} />
 
                                   {itemStatus === "blocked" && (
                                     <>
-                                      <Text style={styles.formSectionLabel}>Reason Blocked *</Text>
-                                      <TextInput value={itemBlockedReason} onChangeText={setItemBlockedReason} placeholder="Explain block root cause..." placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border, marginBottom: 8 }]} />
+                                      <Text style={s(styles.formSectionLabel)}>Reason Blocked *</Text>
+                                      <TextInput value={itemBlockedReason} onChangeText={setItemBlockedReason} placeholder="Explain block root cause..." placeholderTextColor={colors.textMuted} style={s([styles.inputField, { marginBottom: hp(1) }])} />
                                     </>
                                   )}
 
-                                  <TouchableOpacity style={styles.uploadSimulatedBtn} onPress={simulateEvidenceUpload}>
-                                    <Text style={styles.uploadSimulatedBtnText}>{itemEvidenceFile ? "✓ File Ready" : "Attach Screenshot Evidence"}</Text>
+                                  <TouchableOpacity style={s(styles.uploadSimulatedBtn)} onPress={simulateEvidenceUpload}>
+                                    <Text style={s(styles.uploadSimulatedBtnText)}>{itemEvidenceFile ? "✓ File Ready" : "Attach Screenshot Evidence"}</Text>
                                   </TouchableOpacity>
 
-                                  <Text style={styles.formSectionLabel}>Audit Verification Notes</Text>
-                                  <TextInput value={itemNotes} onChangeText={setItemNotes} placeholder="Add verification confirmation metrics..." placeholderTextColor={themeStyles.mutedText} multiline numberOfLines={2} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border, height: 50, textAlignVertical: "top" }]} />
+                                  <Text style={s(styles.formSectionLabel)}>Audit Verification Notes</Text>
+                                  <TextInput value={itemNotes} onChangeText={setItemNotes} placeholder="Add verification confirmation metrics..." placeholderTextColor={colors.textMuted} multiline numberOfLines={2} style={s([styles.inputField, { height: hp(6.2), textAlignVertical: "top" }])} />
 
-                                  <View style={styles.editActionRow}>
-                                    <TouchableOpacity style={styles.btnCancelMini} onPress={() => setEditingItem(null)}><Text style={{ color: "#ef4444" }}>Cancel</Text></TouchableOpacity>
-                                    <TouchableOpacity style={[styles.btnSaveMini, { backgroundColor: themeStyles.primary }]} onPress={() => void saveChecklistItem(item)}><Text style={{ color: isMetallic ? "#000" : "#fff", fontWeight: "bold" }}>Save</Text></TouchableOpacity>
+                                  <View style={s(styles.editActionRow)}>
+                                    <TouchableOpacity style={s(styles.btnCancelMini)} onPress={() => setEditingItem(null)}><Text style={s({ color: colors.danger })}>Cancel</Text></TouchableOpacity>
+                                    <TouchableOpacity style={s([styles.btnSaveMini, { backgroundColor: colors.primary }])} onPress={() => void saveChecklistItem(item)}><Text style={s({ color: isMetallic ? "#000" : "#fff", fontWeight: "bold" })}>Save</Text></TouchableOpacity>
                                   </View>
                                 </View>
                               ) : (
-                                <TouchableOpacity style={styles.updateCheckpointTriggerRow} onPress={() => { setEditingItem(item); setItemStatus(item.status); setItemNotes(item.notes || ""); setItemEvidenceUrl(item.evidenceUrl || ""); setItemEvidenceFile(""); setItemBlockedReason(item.blockedReason || ""); }}>
-                                  <Text style={{ color: themeStyles.accent, fontSize: 12, fontWeight: "600" }}>Update Checkpoint</Text>
-                                  <ArrowRight size={12} color={themeStyles.accent} />
+                                <TouchableOpacity style={s(styles.updateCheckpointTriggerRow)} onPress={() => { setEditingItem(item); setItemStatus(item.status); setItemNotes(item.notes || ""); setItemEvidenceUrl(item.evidenceUrl || ""); setItemEvidenceFile(""); setItemBlockedReason(item.blockedReason || ""); }}>
+                                  <Text style={s({ color: colors.accent, fontSize: fs(3), fontWeight: "600" })}>Update Checkpoint</Text>
+                                  <ArrowRight size={fs(3)} color={colors.accent} />
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -722,22 +1264,21 @@ export default function ComplianceCenter() {
                 );
               })}
 
-              {/* History Trail Logs within Drawer */}
-              <View style={[styles.historyWrapper, { backgroundColor: themeStyles.cardBg, borderColor: themeStyles.border }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                  <History size={16} color={themeStyles.text} />
-                  <Text style={[styles.sectionTitle, { color: themeStyles.text, marginBottom: 0 }]}>Checkpoint Audit Trail</Text>
+              <View style={s(styles.historyWrapper)}>
+                <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(1.5), marginBottom: hp(1.5) })}>
+                  <History size={fs(4)} color={colors.text} />
+                  <Text style={s([styles.sectionTitle, { marginBottom: 0 }])}>Checkpoint Audit Trail</Text>
                 </View>
                 {siteHistory.length === 0 ? (
-                  <Text style={{ color: themeStyles.mutedText, fontSize: 12, textAlign: "center", paddingVertical: 12 }}>No execution signatures registered yet.</Text>
+                  <Text style={s({ color: colors.textMuted, fontSize: fs(3), textAlign: "center", paddingVertical: hp(1.5) })}>No execution signatures registered yet.</Text>
                 ) : (
                   siteHistory.map((log) => (
-                    <View key={log._id} style={styles.historyLogItem}>
-                      <View style={styles.historyLogMeta}>
-                        <Text style={[styles.logUser, { color: themeStyles.text }]}>{log.username}</Text>
-                        <Text style={{ color: themeStyles.mutedText, fontSize: 10 }}>{new Date(log.createdAt).toLocaleDateString()}</Text>
+                    <View key={log._id} style={s(styles.historyLogItem)}>
+                      <View style={s(styles.historyLogMeta)}>
+                        <Text style={s(styles.logUser)}>{log.username}</Text>
+                        <Text style={s({ color: colors.textMuted, fontSize: fs(2.5) })}>{new Date(log.createdAt).toLocaleDateString()}</Text>
                       </View>
-                      <Text style={[styles.logNotes, { color: themeStyles.text }]}>{log.notes}</Text>
+                      <Text style={s(styles.logNotes)}>{log.notes}</Text>
                     </View>
                   ))
                 )}
@@ -747,118 +1288,115 @@ export default function ComplianceCenter() {
         </SafeAreaView>
       </Modal>
 
-      {/* --- REGISTER SITE ENTRY DIALOG --- */}
       <Modal visible={isCreateOpen} animationType="slide" onRequestClose={() => setIsCreateOpen(false)}>
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: themeStyles.bg }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: themeStyles.text }]}>Register Website Launch</Text>
-            <TouchableOpacity onPress={() => setIsCreateOpen(false)} style={styles.closeBtn}><X size={20} color={themeStyles.text} /></TouchableOpacity>
+        <SafeAreaView style={s(styles.modalContainer)}>
+          <View style={s(styles.modalHeader)}>
+            <Text style={s(styles.modalTitle)}>Register Website Launch</Text>
+            <TouchableOpacity onPress={() => setIsCreateOpen(false)} style={s(styles.closeBtn)}><X size={fs(5)} color={colors.text} /></TouchableOpacity>
           </View>
-          <ScrollView style={{ padding: 16 }} contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
+          <ScrollView style={s({ padding: wp(4) })} contentContainerStyle={s({ gap: hp(1.5), paddingBottom: hp(5) })}>
             <View>
-              <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Website Name *</Text>
-              <TextInput value={newSite.siteName} onChangeText={(text) => setNewSite({ ...newSite, siteName: text })} placeholder="e.g. Acme SaaS Platform" placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]} />
+              <Text style={s(styles.formSectionLabel)}>Website Name *</Text>
+              <TextInput value={newSite.siteName} onChangeText={(text) => setNewSite({ ...newSite, siteName: text })} placeholder="e.g. Acme SaaS Platform" placeholderTextColor={colors.textMuted} style={s(styles.inputField)} />
             </View>
             <View>
-              <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Domain / URL *</Text>
-              <TextInput value={newSite.url} onChangeText={(text) => setNewSite({ ...newSite, url: text })} placeholder="e.g. acme.com" placeholderTextColor={themeStyles.mutedText} autoCapitalize="none" style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]} />
+              <Text style={s(styles.formSectionLabel)}>Domain / URL *</Text>
+              <TextInput value={newSite.url} onChangeText={(text) => setNewSite({ ...newSite, url: text })} placeholder="e.g. acme.com" placeholderTextColor={colors.textMuted} autoCapitalize="none" style={s(styles.inputField)} />
             </View>
 
-            <View style={styles.splitRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Type</Text>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("websiteType", newSite.websiteType, ["active", "future"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{newSite.websiteType}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+            <View style={s(styles.splitRow)}>
+              <View style={s({ flex: 1 })}>
+                <Text style={s(styles.formSectionLabel)}>Type</Text>
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("websiteType", newSite.websiteType, ["active", "future"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>{newSite.websiteType}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Environment</Text>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("environment", newSite.environment, ["Production", "Staging", "Development"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{newSite.environment}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+              <View style={s({ flex: 1 })}>
+                <Text style={s(styles.formSectionLabel)}>Environment</Text>
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("environment", newSite.environment, ["Production", "Staging", "Development"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>{newSite.environment}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View style={styles.splitRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Business Unit</Text>
-                <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("businessUnit", newSite.businessUnit, ["Marketing", "SaaS", "E-Commerce", "Operations"])}>
-                  <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{newSite.businessUnit}</Text>
-                  <ChevronDown size={14} color={themeStyles.mutedText} />
+            <View style={s(styles.splitRow)}>
+              <View style={s({ flex: 1 })}>
+                <Text style={s(styles.formSectionLabel)}>Business Unit</Text>
+                <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("businessUnit", newSite.businessUnit, ["Marketing", "SaaS", "E-Commerce", "Operations"])}>
+                  <Text style={s(styles.dropdownTriggerText)}>{newSite.businessUnit}</Text>
+                  <ChevronDown size={fs(3.5)} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Lead Developer</Text>
-                <TextInput value={newSite.leadDeveloper} onChangeText={(text) => setNewSite({ ...newSite, leadDeveloper: text })} placeholder="username" placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]} />
+              <View style={s({ flex: 1 })}>
+                <Text style={s(styles.formSectionLabel)}>Lead Developer</Text>
+                <TextInput value={newSite.leadDeveloper} onChangeText={(text) => setNewSite({ ...newSite, leadDeveloper: text })} placeholder="username" placeholderTextColor={colors.textMuted} style={s(styles.inputField)} />
               </View>
             </View>
 
             <View>
-              <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Platform Engine</Text>
-              <TextInput value={newSite.platform} onChangeText={(text) => setNewSite({ ...newSite, platform: text })} placeholder="e.g. Next.js, Webflow" placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]} />
+              <Text style={s(styles.formSectionLabel)}>Platform Engine</Text>
+              <TextInput value={newSite.platform} onChangeText={(text) => setNewSite({ ...newSite, platform: text })} placeholder="e.g. Next.js, Webflow" placeholderTextColor={colors.textMuted} style={s(styles.inputField)} />
             </View>
 
             <View>
-              <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Compliance Template Map</Text>
-              <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border }]} onPress={() => openPicker("complianceTemplate", newSite.complianceTemplate, templates.map((t) => t.key))}>
-                <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{newSite.complianceTemplate || "Select template path"}</Text>
-                <ChevronDown size={14} color={themeStyles.mutedText} />
+              <Text style={s(styles.formSectionLabel)}>Compliance Template Map</Text>
+              <TouchableOpacity style={s(styles.dropdownTrigger)} onPress={() => openPicker("complianceTemplate", newSite.complianceTemplate, templates.map((t) => t.key))}>
+                <Text style={s(styles.dropdownTriggerText)}>{newSite.complianceTemplate || "Select template path"}</Text>
+                <ChevronDown size={fs(3.5)} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             <View>
-              <Text style={[styles.formSectionLabel, { color: themeStyles.text }]}>Target Launch Date (YYYY-MM-DD)</Text>
-              <TextInput value={newSite.launchDate} onChangeText={(text) => setNewSite({ ...newSite, launchDate: text })} placeholder="e.g. 2026-12-31" placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border }]} />
+              <Text style={s(styles.formSectionLabel)}>Target Launch Date (YYYY-MM-DD)</Text>
+              <TextInput value={newSite.launchDate} onChangeText={(text) => setNewSite({ ...newSite, launchDate: text })} placeholder="e.g. 2026-12-31" placeholderTextColor={colors.textMuted} style={s(styles.inputField)} />
             </View>
 
-            <TouchableOpacity style={[styles.btnSubmitFull, { backgroundColor: themeStyles.primary }]} disabled={actionLoading} onPress={handleCreateWebsite}>
-              <Text style={{ color: isMetallic ? "#000" : "#fff", fontWeight: "bold", textAlign: "center" }}>Create Pipeline Profile</Text>
+            <TouchableOpacity style={s(styles.btnSubmitFull)} disabled={actionLoading} onPress={handleCreateWebsite}>
+              <Text style={s({ color: isMetallic ? "#000" : "#fff", fontWeight: "bold", textAlign: "center" })}>Create Pipeline Profile</Text>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* --- ADMIN OVERRIDE MODAL --- */}
       <Modal visible={isOverrideOpen} transparent animationType="fade" onRequestClose={() => setIsOverrideOpen(false)}>
-        <View style={styles.dialogOverlay}>
-          <View style={[styles.dialogContent, { backgroundColor: themeStyles.cardBg }]}>
-            <Text style={[styles.modalTitle, { color: themeStyles.text }]}>Admin Override Panel</Text>
-            <Text style={{ color: "#ef4444", fontSize: 11, marginBottom: 12 }}>Forcing parameters updates accountability logs bypass signatures.</Text>
+        <View style={s(styles.dialogOverlay)}>
+          <View style={s(styles.dialogContent)}>
+            <Text style={s(styles.modalTitle)}>Admin Override Panel</Text>
+            <Text style={s({ color: colors.danger, fontSize: fs(2.8), marginBottom: hp(1.5) })}>Forcing parameters updates accountability logs bypass signatures.</Text>
 
-            <Text style={styles.formSectionLabel}>Force Readiness Score (0-100)</Text>
-            <TextInput value={overrideScore} onChangeText={setOverrideScore} keyboardType="numeric" placeholder="100" placeholderTextColor={themeStyles.mutedText} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border, marginBottom: 8 }]} />
+            <Text style={s(styles.formSectionLabel)}>Force Readiness Score (0-100)</Text>
+            <TextInput value={overrideScore} onChangeText={setOverrideScore} keyboardType="numeric" placeholder="100" placeholderTextColor={colors.textMuted} style={s([styles.inputField, { marginBottom: hp(1) }])} />
 
-            <Text style={styles.formSectionLabel}>Force Site Status</Text>
-            <TouchableOpacity style={[styles.dropdownTrigger, { borderColor: themeStyles.border, marginBottom: 8 }]} onPress={() => openPicker("overrideStatus", overrideStatus, ["Live", "Maintenance", "Development", "Offline"])}>
-              <Text style={[styles.dropdownTriggerText, { color: themeStyles.text }]}>{overrideStatus || "Select Status"}</Text>
-              <ChevronDown size={14} color={themeStyles.mutedText} />
+            <Text style={s(styles.formSectionLabel)}>Force Site Status</Text>
+            <TouchableOpacity style={s([styles.dropdownTrigger, { marginBottom: hp(1) }])} onPress={() => openPicker("overrideStatus", overrideStatus, ["Live", "Maintenance", "Development", "Offline"])}>
+              <Text style={s(styles.dropdownTriggerText)}>{overrideStatus || "Select Status"}</Text>
+              <ChevronDown size={fs(3.5)} color={colors.textMuted} />
             </TouchableOpacity>
 
-            <Text style={styles.formSectionLabel}>Override Reason Protocol *</Text>
-            <TextInput value={overrideReason} onChangeText={setOverrideReason} placeholder="Detail cause for authorization bypass..." placeholderTextColor={themeStyles.mutedText} multiline numberOfLines={3} style={[styles.inputField, { color: themeStyles.text, borderColor: themeStyles.border, height: 60, textAlignVertical: "top" }]} />
+            <Text style={s(styles.formSectionLabel)}>Override Reason Protocol *</Text>
+            <TextInput value={overrideReason} onChangeText={setOverrideReason} placeholder="Detail cause for authorization bypass..." placeholderTextColor={colors.textMuted} multiline numberOfLines={3} style={s([styles.inputField, { height: hp(7.5), textAlignVertical: "top" }])} />
 
-            <View style={styles.dialogActions}>
-              <TouchableOpacity style={styles.btnCancelMini} onPress={() => setIsOverrideOpen(false)}><Text style={{ color: themeStyles.text }}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.btnSaveMini, { backgroundColor: "#a855f7" }]} onPress={submitOverride}><Text style={{ color: "#fff", fontWeight: "bold" }}>Authorize Bypass</Text></TouchableOpacity>
+            <View style={s(styles.dialogActions)}>
+              <TouchableOpacity style={s(styles.btnCancelMini)} onPress={() => setIsOverrideOpen(false)}><Text style={s({ color: colors.text })}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={s([styles.btnSaveMini, { backgroundColor: colors.purple }])} onPress={submitOverride}><Text style={s({ color: "#fff", fontWeight: "bold" })}>Authorize Bypass</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* --- BOTTOM DROPDOWN SELECT SHEET COMPONENT --- */}
       <Modal visible={activePicker !== null} transparent animationType="slide" onRequestClose={() => setActivePicker(null)}>
-        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setActivePicker(null)}>
-          <View style={[styles.pickerContainer, { backgroundColor: themeStyles.cardBg }]}>
-            <View style={styles.pickerHeader}>
-              <Text style={[styles.pickerTitle, { color: themeStyles.text }]}>Select Option</Text>
-              <TouchableOpacity onPress={() => setActivePicker(null)}><X size={18} color={themeStyles.text} /></TouchableOpacity>
+        <TouchableOpacity style={s(styles.pickerOverlay)} activeOpacity={1} onPress={() => setActivePicker(null)}>
+          <View style={s(styles.pickerContainer)}>
+            <View style={s(styles.pickerHeader)}>
+              <Text style={s(styles.pickerTitle)}>Select Option</Text>
+              <TouchableOpacity onPress={() => setActivePicker(null)}><X size={fs(4.5)} color={colors.text} /></TouchableOpacity>
             </View>
             <ScrollView>
               {activePicker?.options.map((opt) => (
-                <TouchableOpacity key={opt} style={[styles.pickerOptionRow, activePicker.current === opt && { backgroundColor: "rgba(0,0,0,0.05)" }]} onPress={() => handlePickerSelect(opt)}>
-                  <Text style={[styles.pickerOptionText, { color: themeStyles.text }, activePicker.current === opt && { fontWeight: "bold" }]}>{opt || "None"}</Text>
+                <TouchableOpacity key={opt} style={s([styles.pickerOptionRow, activePicker.current === opt && { backgroundColor: colors.borderLight }])} onPress={() => handlePickerSelect(opt)}>
+                  <Text style={s([styles.pickerOptionText, activePicker.current === opt && { fontWeight: "bold" }])}>{opt || "None"}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -868,499 +1406,3 @@ export default function ComplianceCenter() {
     </SafeAreaView>
   );
 }
-
-// --- Native Styles Object Compiler ---
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerPadding: {
-    padding: 16,
-  },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 16,
-  },
-  mainTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-  },
-  actionRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  btnOutline: {
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  btnOutlineText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  btnPrimary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  btnPrimaryText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  statsScroll: {
-    marginBottom: 16,
-  },
-  statCard: {
-    width: 140,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: "900",
-    marginVertical: 4,
-  },
-  statSub: {
-    fontSize: 10,
-  },
-  textGreen: { color: "#22c55e", fontSize: 22, fontWeight: "900", marginVertical: 4 },
-  textAmber: { color: "#f59e0b", fontSize: 22, fontWeight: "900", marginVertical: 4 },
-  textRed: { color: "#ef4444", fontSize: 22, fontWeight: "900", marginVertical: 4 },
-  filterContainer: {
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  searchWrapper: {
-    position: "relative",
-    justifyContent: "center",
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 10,
-    zIndex: 1,
-  },
-  inputField: {
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingLeft: 32,
-    paddingRight: 10,
-    fontSize: 13,
-    backgroundColor: "rgba(0,0,0,0.02)",
-  },
-  dropdownTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minWidth: 100,
-    backgroundColor: "rgba(0,0,0,0.01)",
-  },
-  dropdownTriggerText: {
-    fontSize: 11,
-    fontWeight: "500",
-    marginRight: 4,
-  },
-  listHeaderTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  siteCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 14,
-  },
-  siteHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "start",
-    marginBottom: 10,
-  },
-  siteNameText: {
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  siteUrlText: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "bold",
-  },
-  detailsGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(0,0,0,0.02)",
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: "500",
-  },
-  detailValue: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  countdownRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 8,
-  },
-  countdownText: {
-    fontSize: 11,
-    fontWeight: "500",
-  },
-  overrideIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(168,85,247,0.1)",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    marginBottom: 8,
-    alignSelf: "flex-start",
-  },
-  overrideIndicatorText: {
-    color: "#a855f7",
-    fontSize: 10,
-    fontWeight: "600",
-    maxWidth: 200,
-  },
-  viewChecklistBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  viewChecklistBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  emptyView: {
-    padding: 32,
-    alignItems: "center",
-  },
-  footerContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  leaderboardCard: {
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  leaderboardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  leaderboardRank: {
-    width: 28,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  leaderboardName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  leaderboardCount: {
-    fontSize: 11,
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  modalSubtitle: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  closeBtn: {
-    padding: 4,
-  },
-  modalScrollBody: {
-    padding: 16,
-  },
-  loaderCentering: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  adminOverrideTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "rgba(168,85,247,0.3)",
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 16,
-    backgroundColor: "rgba(168,85,247,0.03)",
-  },
-  adminOverrideTriggerText: {
-    color: "#a855f7",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  accordionBox: {
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 10,
-    overflow: "hidden",
-  },
-  accordionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 12,
-    backgroundColor: "rgba(0,0,0,0.01)",
-  },
-  accordionTitle: {
-    fontSize: 13,
-    fontWeight: "bold",
-  },
-  accordionBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  miniBadge: {
-    backgroundColor: "rgba(0,0,0,0.06)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  miniBadgeText: {
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  accordionContent: {
-    padding: 10,
-    gap: 10,
-    backgroundColor: "rgba(0,0,0,0.01)",
-  },
-  checkpointItem: {
-    borderBottomWidth: 1,
-    paddingBottom: 10,
-    marginBottom: 4,
-  },
-  checkpointTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  checkpointStatusIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flex: 1,
-  },
-  checkpointTitleText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  evidenceLabelAlert: {
-    color: "#f59e0b",
-    fontSize: 9,
-    fontWeight: "bold",
-    backgroundColor: "rgba(245,158,11,0.1)",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
-  },
-  checkpointDescText: {
-    fontSize: 11,
-    marginTop: 4,
-    paddingLeft: 22,
-  },
-  notesBlock: {
-    backgroundColor: "rgba(0,0,0,0.04)",
-    padding: 6,
-    borderRadius: 4,
-    marginTop: 6,
-    marginLeft: 22,
-  },
-  notesText: { fontSize: 11 },
-  blockedBlock: {
-    backgroundColor: "rgba(239,68,68,0.08)",
-    padding: 6,
-    borderRadius: 4,
-    marginTop: 6,
-    marginLeft: 22,
-  },
-  blockedText: { color: "#ef4444", fontSize: 11 },
-  updateCheckpointTriggerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    gap: 2,
-    marginTop: 8,
-  },
-  editCheckpointForm: {
-    backgroundColor: "rgba(0,0,0,0.02)",
-    padding: 10,
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  formSectionLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    marginBottom: 4,
-    color: "gray",
-  },
-  uploadSimulatedBtn: {
-    backgroundColor: "rgba(0,0,0,0.05)",
-    padding: 8,
-    borderRadius: 6,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  uploadSimulatedBtnText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  editActionRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 10,
-  },
-  btnCancelMini: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  btnSaveMini: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 4,
-  },
-  historyWrapper: {
-    marginTop: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-  },
-  historyLogItem: {
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.03)",
-  },
-  historyLogMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  logUser: { fontSize: 11, fontWeight: "bold" },
-  logNotes: { fontSize: 11, marginTop: 2 },
-  splitRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  btnSubmitFull: {
-    paddingVertical: 12,
-    borderRadius: 6,
-    marginTop: 12,
-  },
-  dialogOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  dialogContent: {
-    borderRadius: 10,
-    padding: 16,
-  },
-  dialogActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 14,
-  },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  pickerContainer: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    maxHeight: Dimensions.get("window").height * 0.45,
-    paddingBottom: Platform.OS === "ios" ? 24 : 12,
-  },
-  pickerHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-  },
-  pickerTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  pickerOptionRow: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  pickerOptionText: {
-    fontSize: 14,
-  },
-});

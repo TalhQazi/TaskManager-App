@@ -9,17 +9,18 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { Calendar, Plus, Trash2, ChevronDown } from "lucide-react-native";
-
-// --- API & State Toast Imports ---
-// Replace paths with your exact workspace directory layout structures
 import { createLeaveRequest, deleteLeaveRequest, getMyLeaveRequests } from "@/lib/admin/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
 type LeaveType = "pto" | "vacation" | "sick" | "holiday" | "unpaid" | "other";
 type LeaveStatus = "pending" | "approved" | "rejected";
 
-type LeaveRequestItem = {
+interface LeaveRequestItem {
   id: string;
   employeeName: string;
   type: LeaveType;
@@ -29,7 +30,7 @@ type LeaveRequestItem = {
   reason?: string;
   exemptFromEOD?: boolean;
   createdAt?: string;
-};
+}
 
 function toDateInputValue(d: Date) {
   const year = d.getFullYear();
@@ -38,31 +39,45 @@ function toDateInputValue(d: Date) {
   return `${year}-${month}-${day}`;
 }
 
-// --- Native Render Badge Layout Component ---
 function StatusBadge({ status }: { status: LeaveStatus }) {
   if (status === "approved") {
     return (
-      <View style={[styles.badge, { backgroundColor: "#16a34a30", borderColor: "#16a34a60" }]}>
-        <Text style={[styles.badgeText, { color: "#4ade80" }]}>Approved</Text>
+      <View style={s([styles.badge, { backgroundColor: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.3)" }])}>
+        <Text style={s([styles.badgeText, { color: "#22c55e" }])}>Approved</Text>
       </View>
     );
   }
   if (status === "rejected") {
     return (
-      <View style={[styles.badge, { backgroundColor: "#dc262630", borderColor: "#dc262660" }]}>
-        <Text style={[styles.badgeText, { color: "#f87171" }]}>Rejected</Text>
+      <View style={s([styles.badge, { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.3)" }])}>
+        <Text style={s([styles.badgeText, { color: "#ef4444" }])}>Rejected</Text>
       </View>
     );
   }
   return (
-    <View style={[styles.badge, { backgroundColor: "#27272a50", borderColor: "#3f3f46" }]}>
-      <Text style={[styles.badgeText, { color: "#a1a1aa" }]}>Pending</Text>
+    <View style={s([styles.badge, { backgroundColor: "rgba(113,113,122,0.15)", borderColor: "rgba(113,113,122,0.3)" }])}>
+      <Text style={s([styles.badgeText, { color: "#a1a1aa" }])}>Pending</Text>
     </View>
   );
 }
 
 export default function EmployeeLeaveRequestsScreen() {
+  const { uiTheme } = useTheme();
   const today = useMemo(() => new Date(), []);
+  
+  const isLightTheme = useMemo(() => {
+    return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
+  }, [uiTheme]);
+
+  const bg = useMemo(() => uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b"), [uiTheme, isLightTheme]);
+  const cardBg = useMemo(() => uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#f8fafc" : "#18181b"), [uiTheme, isLightTheme]);
+  const tintColor = useMemo(() => uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#ffffff"), [uiTheme, isLightTheme]);
+  const mutedText = useMemo(() => (isLightTheme ? "#64748b" : "#a1a1aa"), [isLightTheme]);
+  const primaryColor = useMemo(() => uiTheme.customColors?.primary || "#3b82f6", [uiTheme]);
+  const border = useMemo(() => (isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)"), [isLightTheme]);
+  const headerBg = useMemo(() => (isLightTheme ? "#f1f5f9" : "#1c1c1f"), [isLightTheme]);
+  const inputBg = useMemo(() => (isLightTheme ? "#ffffff" : "#09090b"), [isLightTheme]);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<LeaveRequestItem[]>([]);
@@ -71,7 +86,6 @@ export default function EmployeeLeaveRequestsScreen() {
   const [startDate, setStartDate] = useState(toDateInputValue(today));
   const [endDate, setEndDate] = useState(toDateInputValue(today));
   const [reason, setReason] = useState("");
-
   const [showTypePicker, setShowTypePicker] = useState(false);
 
   const load = async () => {
@@ -80,14 +94,14 @@ export default function EmployeeLeaveRequestsScreen() {
       const res = await getMyLeaveRequests();
       setItems(res.items || []);
     } catch (e) {
-     // Alert.alert("Error", e instanceof Error ? e.message : "Failed to load leave requests");
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void load();
+    load();
   }, []);
 
   const onSubmit = async () => {
@@ -108,7 +122,7 @@ export default function EmployeeLeaveRequestsScreen() {
       setReason("");
       await load();
     } catch (e) {
-     // Alert.alert("Error", e instanceof Error ? e.message : "Failed to submit leave request");
+      console.error(e);
     } finally {
       setSubmitting(false);
     }
@@ -128,7 +142,7 @@ export default function EmployeeLeaveRequestsScreen() {
               await deleteLeaveRequest(id);
               await load();
             } catch (e) {
-             // Alert.alert("Error", e instanceof Error ? e.message : "Failed to delete leave request");
+              console.error(e);
             }
           },
         },
@@ -145,145 +159,138 @@ export default function EmployeeLeaveRequestsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={s([styles.container, { backgroundColor: bg }])}>
+      <StatusBar barStyle={isLightTheme ? "dark-content" : "light-content"} backgroundColor={bg} />
+      <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false}>
         
-        {/* Screen Header Title Segment */}
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mainHeading}>Leave Requests</Text>
-            <Text style={styles.subHeading}>Request PTO/leave and track approval status.</Text>
+        <View style={s(styles.headerRow)}>
+          <View style={s({ flex: 1 })}>
+            <Text style={s([styles.mainHeading, { color: tintColor }])}>Leave Requests</Text>
+            <Text style={s([styles.subHeading, { color: mutedText }])}>Request PTO/leave and track approval status.</Text>
           </View>
-          <Calendar color="#a1a1aa" size={24} />
+          <Calendar color={mutedText} size={fs(6)} />
         </View>
 
-        {/* Create Request Module Card Form */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderBar}>
-            <Plus color="#ffffff" size={18} style={{ marginRight: 8 }} />
-            <View>
-              <Text style={styles.cardTitleText}>Create Request</Text>
-              <Text style={styles.cardDescriptionText}>Submit a new leave request (admin will approve/reject).</Text>
+        <View style={s([styles.card, { backgroundColor: cardBg, borderColor: border }])}>
+          <View style={s([styles.cardHeaderBar, { backgroundColor: headerBg, borderBottomColor: border }])}>
+            <Plus color={tintColor} size={fs(4.5)} style={s({ marginRight: wp(2) })} />
+            <View style={s({ flex: 1 })}>
+              <Text style={s([styles.cardTitleText, { color: tintColor }])}>Create Request</Text>
+              <Text style={s([styles.cardDescriptionText, { color: mutedText }])}>Submit a new leave request (admin will approve/reject).</Text>
             </View>
           </View>
 
-          <View style={styles.cardContent}>
-            
-            {/* Custom Dropdown Picker Element */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Type</Text>
+          <View style={s(styles.cardContent)}>
+            <View style={s(styles.formGroup)}>
+              <Text style={s([styles.formLabel, { color: tintColor }])}>Type</Text>
               <TouchableOpacity
                 activeOpacity={0.8}
-                style={styles.customPickerTrigger}
+                style={s([styles.customPickerTrigger, { backgroundColor: inputBg, borderColor: border }])}
                 onPress={() => setShowTypePicker(true)}
               >
-                <Text style={styles.pickerValueText}>{type.toUpperCase()}</Text>
-                <ChevronDown color="#71717a" size={16} />
+                <Text style={s([styles.pickerValueText, { color: tintColor }])}>{type.toUpperCase()}</Text>
+                <ChevronDown color={mutedText} size={fs(4)} />
               </TouchableOpacity>
             </View>
 
-            {/* Date Range Inputs */}
-            <View style={styles.gridRow}>
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.formLabel}>Start Date</Text>
+            <View style={s(styles.gridRow)}>
+              <View style={s([styles.formGroup, { flex: 1 }])}>
+                <Text style={s([styles.formLabel, { color: tintColor }])}>Start Date</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={s([styles.textInput, { backgroundColor: inputBg, borderColor: border, color: tintColor }])}
                   value={startDate}
                   onChangeText={setStartDate}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#71717a"
+                  placeholderTextColor={mutedText}
                 />
               </View>
 
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.formLabel}>End Date</Text>
+              <View style={s([styles.formGroup, { flex: 1 }])}>
+                <Text style={s([styles.formLabel, { color: tintColor }])}>End Date</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={s([styles.textInput, { backgroundColor: inputBg, borderColor: border, color: tintColor }])}
                   value={endDate}
                   onChangeText={setEndDate}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#71717a"
+                  placeholderTextColor={mutedText}
                 />
               </View>
             </View>
 
-            {/* Optional Reason Context Textarea */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Reason (optional)</Text>
+            <View style={s(styles.formGroup)}>
+              <Text style={s([styles.formLabel, { color: tintColor }])}>Reason (optional)</Text>
               <TextInput
-                style={[styles.textInput, styles.textAreaInput]}
+                style={s([styles.textInput, styles.textAreaInput, { backgroundColor: inputBg, borderColor: border, color: tintColor }])}
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
                 value={reason}
                 onChangeText={setReason}
                 placeholder="Write your primary structural context reason here..."
-                placeholderTextColor="#71717a"
+                placeholderTextColor={mutedText}
               />
             </View>
 
-            {/* Submit Control Action Button */}
             <TouchableOpacity
               activeOpacity={0.8}
-              style={[styles.primarySubmitBtn, submitting && styles.disabledBtn]}
+              style={s([styles.primarySubmitBtn, { backgroundColor: primaryColor }, submitting && styles.disabledBtn])}
               disabled={submitting}
               onPress={onSubmit}
             >
               {submitting ? (
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
-                <Text style={styles.submitBtnText}>Submit Request</Text>
+                <Text style={s(styles.submitBtnText)}>Submit Request</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Existing Leave Requests Log Module */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderBar}>
+        <View style={s([styles.card, { backgroundColor: cardBg, borderColor: border }])}>
+          <View style={s([styles.cardHeaderBar, { backgroundColor: headerBg, borderBottomColor: border }])}>
             <View>
-              <Text style={styles.cardTitleText}>My Requests</Text>
-              <Text style={styles.cardDescriptionText}>Pending requests can be deleted before approval.</Text>
+              <Text style={s([styles.cardTitleText, { color: tintColor }])}>My Requests</Text>
+              <Text style={s([styles.cardDescriptionText, { color: mutedText }])}>Pending requests can be deleted before approval.</Text>
             </View>
           </View>
 
-          <View style={[styles.cardContent, { padding: 12 }]}>
+          <View style={s([styles.cardContent, { padding: wp(3) }])}>
             {loading ? (
-              <ActivityIndicator size="small" color="#3b82f6" style={{ marginVertical: 20 }} />
+              <ActivityIndicator size="small" color={primaryColor} style={s({ marginVertical: hp(2.5) })} />
             ) : items.length === 0 ? (
-              <Text style={styles.emptyStateText}>No leave requests filed yet.</Text>
+              <Text style={s([styles.emptyStateText, { color: mutedText }])}>No leave requests filed yet.</Text>
             ) : (
-              <View style={{ gap: 10 }}>
+              <View style={s({ gap: hp(1.2) })}>
                 {items.map((r) => (
-                  <View key={r.id} style={styles.requestItemRow}>
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <div style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <Text style={styles.requestTypeName}>{r.type}</Text>
+                  <View key={r.id} style={s([styles.requestItemRow, { backgroundColor: inputBg, borderColor: border }])}>
+                    <View style={s({ flex: 1, gap: hp(0.5) })}>
+                      <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(1.5), flexWrap: "wrap" })}>
+                        <Text style={s([styles.requestTypeName, { color: tintColor }])}>{r.type}</Text>
                         <StatusBadge status={r.status} />
-                        {r.exemptFromEOD && (
-                          <View style={[styles.badge, styles.outlineBadge]}>
-                            <Text style={styles.outlineBadgeText}>EOD Exempt</Text>
+                        {r.exemptFromEOD ? (
+                          <View style={s([styles.badge, styles.outlineBadge, { borderColor: border }])}>
+                            <Text style={s([styles.outlineBadgeText, { color: mutedText }])}>EOD Exempt</Text>
                           </View>
-                        )}
-                      </div>
+                        ) : null}
+                      </View>
                       
-                      <Text style={styles.requestTimeText}>
+                      <Text style={s([styles.requestTimeText, { color: mutedText }])}>
                         {formatLocaleDateStr(r.startDate)} - {formatLocaleDateStr(r.endDate)}
                       </Text>
                       
-                      {r.reason ? <Text style={styles.requestReasonText}>{r.reason}</Text> : null}
+                      {r.reason ? <Text style={s([styles.requestReasonText, { color: tintColor }])}>{r.reason}</Text> : null}
                     </View>
 
-                    {r.status === "pending" && (
+                    {r.status === "pending" ? (
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        style={styles.deleteActionButton}
+                        style={s([styles.deleteActionButton, { backgroundColor: cardBg, borderColor: border }])}
                         onPress={() => onDelete(r.id)}
                       >
-                        <Trash2 color="#f87171" size={15} style={{ marginRight: 4 }} />
-                        <Text style={styles.deleteBtnText}>Delete</Text>
+                        <Trash2 color="#ef4444" size={fs(3.5)} style={s({ marginRight: wp(1) })} />
+                        <Text style={s(styles.deleteBtnText)}>Delete</Text>
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -293,15 +300,14 @@ export default function EmployeeLeaveRequestsScreen() {
 
       </ScrollView>
 
-      {/* Type Picker Bottom Action Sheet Overlay */}
       <Modal visible={showTypePicker} transparent animationType="slide">
         <TouchableOpacity 
-          style={styles.modalOverlay} 
+          style={s(styles.modalOverlay)} 
           activeOpacity={1} 
           onPress={() => setShowTypePicker(false)}
         >
-          <View style={styles.bottomSheetContainer}>
-            <Text style={styles.sheetHeading}>Select Leave Category Type</Text>
+          <View style={s([styles.bottomSheetContainer, { backgroundColor: cardBg, borderTopColor: border }])}>
+            <Text style={s([styles.sheetHeading, { color: tintColor }])}>Select Leave Category Type</Text>
             {([
               { key: "pto", label: "Paid Time Off (PTO)" },
               { key: "vacation", label: "Vacation Leave" },
@@ -312,13 +318,13 @@ export default function EmployeeLeaveRequestsScreen() {
             ] as const).map((opt) => (
               <TouchableOpacity
                 key={opt.key}
-                style={[styles.sheetItem, type === opt.key && styles.activeSheetItem]}
+                style={s([styles.sheetItem, { borderBottomColor: border }, type === opt.key && { backgroundColor: inputBg }])}
                 onPress={() => {
                   setType(opt.key);
                   setShowTypePicker(false);
                 }}
               >
-                <Text style={[styles.sheetItemText, type === opt.key && styles.activeSheetItemText]}>
+                <Text style={s([styles.sheetItemText, { color: mutedText }, type === opt.key && { color: primaryColor, fontWeight: "600" }])}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
@@ -326,68 +332,45 @@ export default function EmployeeLeaveRequestsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
-// --- Matte Deep Dark Structural Layout Stylesheet Configuration ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#09090b" },
-  scrollContainer: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
-  
-  // Header Elements Configuration Styles 
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 12 },
-  mainHeading: { color: "#ffffff", fontSize: 24, fontWeight: "bold", letterSpacing: -0.5 },
-  subHeading: { color: "#a1a1aa", fontSize: 13, marginTop: 4 },
-
-  // Base Structural Atomic Components Cards Architecture 
-  card: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, marginBottom: 16, overflow: "hidden" },
-  cardHeaderBar: { padding: 16, backgroundColor: "#1c1c1f", borderBottomWidth: 1, borderBottomColor: "#27272a", flexDirection: "row", alignItems: "flex-start" },
-  cardTitleText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
-  cardDescriptionText: { color: "#a1a1aa", fontSize: 12, marginTop: 2, maxWidth: "95%" },
-  cardContent: { padding: 16 },
-
-  // Form Field Component Layout Grid Rules 
-  formGroup: { marginBottom: 14, gap: 6 },
-  gridRow: { flexDirection: "row", gap: 12 },
-  formLabel: { color: "#e4e4e7", fontSize: 13, fontWeight: "500" },
-  
-  // Custom Selector Dropdown Replacement components 
-  customPickerTrigger: { height: 42, backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pickerValueText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
-
-  // Native Inputs Base Styling Definitions 
-  textInput: { height: 42, backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, color: "#ffffff", fontSize: 13 },
-  textAreaInput: { height: 80, paddingTop: 10, paddingBottom: 10 },
-
-  // Form Button Actions 
-  primarySubmitBtn: { height: 44, backgroundColor: "#3b82f6", borderRadius: 6, alignItems: "center", justifyContent: "center", marginTop: 4 },
-  submitBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
+  container: { flex: 1 },
+  scrollContainer: { paddingHorizontal: wp(4), paddingTop: hp(2.5), paddingBottom: hp(5) },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: hp(2.5), gap: wp(3) },
+  mainHeading: { fontSize: fs(5.8), fontWeight: "bold", letterSpacing: -0.5 },
+  subHeading: { fontSize: fs(3.2), marginTop: hp(0.5) },
+  card: { borderWidth: 1, borderRadius: wp(3), marginBottom: hp(2), overflow: "hidden" },
+  cardHeaderBar: { padding: wp(4), borderBottomWidth: 1, flexDirection: "row", alignItems: "flex-start" },
+  cardTitleText: { fontSize: fs(3.8), fontWeight: "600" },
+  cardDescriptionText: { fontSize: fs(3), marginTop: hp(0.3), maxWidth: "95%" },
+  cardContent: { padding: wp(4) },
+  formGroup: { marginBottom: hp(1.8), gap: hp(0.8) },
+  gridRow: { flexDirection: "row", gap: wp(3) },
+  formLabel: { fontSize: fs(3.2), fontWeight: "500" },
+  customPickerTrigger: { height: hp(5.2), borderWidth: 1, borderRadius: wp(1.5), paddingHorizontal: wp(3), flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pickerValueText: { fontSize: fs(3.2), fontWeight: "600" },
+  textInput: { height: hp(5.2), borderWidth: 1, borderRadius: wp(1.5), paddingHorizontal: wp(3), fontSize: fs(3.2) },
+  textAreaInput: { height: hp(10), paddingTop: hp(1.2), paddingBottom: hp(1.2) },
+  primarySubmitBtn: { height: hp(5.5), borderRadius: wp(1.5), alignItems: "center", justifyContent: "center", marginTop: hp(0.5) },
+  submitBtnText: { color: "#ffffff", fontSize: fs(3.5), fontWeight: "600" },
   disabledBtn: { opacity: 0.5 },
-
-  // Requests Feed Components Rows Layout mapping 
-  emptyStateText: { color: "#71717a", fontSize: 13, textAlign: "center", paddingVertical: 16 },
-  requestItemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderColor: "#27272a", borderWidth: 1, borderRadius: 8, backgroundColor: "#1c1c1f", gap: 12 },
-  requestTypeName: { color: "#ffffff", fontSize: 14, fontWeight: "600", textTransform: "capitalize" },
-  requestTimeText: { color: "#71717a", fontSize: 12 },
-  requestReasonText: { color: "#e4e4e7", fontSize: 13, marginTop: 2 },
-  
-  // Atomic Native Badge Layout Structures 
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderWidth: 1, justifyContent: "center", alignItems: "center" },
-  badgeText: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
-  outlineBadge: { borderColor: "#27272a", backgroundColor: "transparent" },
-  outlineBadgeText: { color: "#a1a1aa", fontSize: 10, fontWeight: "600" },
-
-  // Destructive Delete Actions Button Component 
-  deleteActionButton: { flexDirection: "row", alignItems: "center", height: 32, paddingHorizontal: 10, borderColor: "#27272a", borderWidth: 1, borderRadius: 6, backgroundColor: "#09090b" },
-  deleteBtnText: { color: "#f87171", fontSize: 12, fontWeight: "500" },
-
-  // Native Picker Bottom Sheets Modal Fallbacks
-  modalOverlay: { flex: 1, backgroundColor: "#00000060", justifyContent: "flex-end" },
-  bottomSheetContainer: { backgroundColor: "#18181b", borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 20, borderTopWidth: 1, borderTopColor: "#27272a" },
-  sheetHeading: { color: "#ffffff", fontSize: 15, fontWeight: "600", marginBottom: 12 },
-  sheetItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#27272a" },
-  activeSheetItem: { backgroundColor: "#1c1c1f" },
-  sheetItemText: { color: "#a1a1aa", fontSize: 14 },
-  activeSheetItemText: { color: "#3b82f6", fontWeight: "600" },
+  emptyStateText: { fontSize: fs(3.2), textAlign: "center", paddingVertical: hp(2) },
+  requestItemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: wp(3), borderWidth: 1, borderRadius: wp(2), gap: wp(3) },
+  requestTypeName: { fontSize: fs(3.5), fontWeight: "600", textTransform: "capitalize" },
+  requestTimeText: { fontSize: fs(3) },
+  requestReasonText: { fontSize: fs(3.2), marginTop: hp(0.3) },
+  badge: { paddingHorizontal: wp(2), paddingVertical: hp(0.3), borderRadius: wp(1), borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  badgeText: { fontSize: fs(2.5), fontWeight: "700", textTransform: "uppercase" },
+  outlineBadge: { backgroundColor: "transparent" },
+  outlineBadgeText: { fontSize: fs(2.5), fontWeight: "600" },
+  deleteActionButton: { flexDirection: "row", alignItems: "center", height: hp(4), paddingHorizontal: wp(2.5), borderWidth: 1, borderRadius: wp(1.5) },
+  deleteBtnText: { color: "#ef4444", fontSize: fs(3), fontWeight: "500" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  bottomSheetContainer: { borderTopLeftRadius: wp(3.5), borderTopRightRadius: wp(3.5), padding: wp(5), borderTopWidth: 1 },
+  sheetHeading: { fontSize: fs(3.8), fontWeight: "600", marginBottom: hp(1.5) },
+  sheetItem: { paddingVertical: hp(1.8), borderBottomWidth: 1 },
+  sheetItemText: { fontSize: fs(3.5) },
 });

@@ -6,7 +6,6 @@ import {
   ScrollView, 
   TouchableOpacity, 
   ActivityIndicator, 
-  Dimensions 
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Svg, Circle } from "react-native-svg";
@@ -21,12 +20,10 @@ import {
   ListTodo, 
   AlertTriangle, 
   DollarSign, 
-  CheckSquare2, 
   UserCog, 
   ChevronDown, 
   ChevronUp, 
   Briefcase, 
-  Bug, 
   Utensils, 
   Coffee 
 } from "lucide-react-native";
@@ -42,8 +39,7 @@ import {
   apiFetch 
 } from "@/lib/admin/apiClient";
 import { useSocket } from "@/contexts/SocketContext";
-
-const { width } = Dimensions.get("window");
+import { s, wp, hp, fs } from "@/util/styles";
 
 interface TeamLeadMapping {
   teamLead: string;
@@ -54,7 +50,7 @@ interface TeamLeadMapping {
 // --- Reusable Shared Layout Subcomponents ---
 
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  return <View style={s([styles.card, style])}>{children}</View>;
 }
 
 function Badge({ children, variant = "default", style }: { children: React.ReactNode; variant?: string; style?: any }) {
@@ -76,8 +72,8 @@ function Badge({ children, variant = "default", style }: { children: React.React
   }
 
   return (
-    <View style={[styles.badge, { backgroundColor: bg, borderColor: border, borderWidth: 1 }, style]}>
-      <Text style={[styles.badgeText, { color: text }]}>{children}</Text>
+    <View style={s([styles.badge, { backgroundColor: bg, borderColor: border, borderWidth: 1 }, style])}>
+      <Text style={s([styles.badgeText, { color: text }])}>{children}</Text>
     </View>
   );
 }
@@ -90,12 +86,12 @@ function EmployeeStatCardNative({ title, value, icon: Icon, variant, onPress }: 
   if (variant === "red") color = "#ef4444";
 
   return (
-    <TouchableOpacity style={styles.statCard} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.statIconContainer, { backgroundColor: `${color}15` }]}>
-        <Icon color={color} size={18} />
+    <TouchableOpacity style={s(styles.statCard)} onPress={onPress} activeOpacity={0.7}>
+      <View style={s([styles.statIconContainer, { backgroundColor: `${color}15` }])}>
+        <Icon color={color} size={fs(4.5)} />
       </View>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
+      <Text style={s(styles.statTitle)}>{title}</Text>
+      <Text style={s(styles.statValue)} numberOfLines={1}>{value}</Text>
     </TouchableOpacity>
   );
 }
@@ -112,8 +108,8 @@ function CircularProgress({ value, total, color, icon: Icon, label }: any) {
   if (color.includes("orange")) strokeColor = "#f97316";
 
   return (
-    <View style={styles.circleWidget}>
-      <View style={styles.circleWrapper}>
+    <View style={s(styles.circleWidget)}>
+      <View style={s(styles.circleWrapper)}>
         <Svg width="80" height="80" style={{ transform: [{ rotate: "-90deg" }] }}>
           <Circle cx="40" cy="40" r={radius} stroke="#27272a" strokeWidth="5" fill="transparent" />
           <Circle 
@@ -123,13 +119,13 @@ function CircularProgress({ value, total, color, icon: Icon, label }: any) {
             strokeLinecap="round" 
           />
         </Svg>
-        <View style={styles.circleIconContainer}>
-          <Icon color={strokeColor} size={20} />
+        <View style={s(styles.circleIconContainer)}>
+          <Icon color={strokeColor} size={fs(5)} />
         </View>
       </View>
-      <Text style={styles.circleValue}>{value}</Text>
-      <Text style={styles.circleLabel}>{label}</Text>
-      {total > 0 && <Text style={styles.circlePercentage}>{Math.round(percentage)}%</Text>}
+      <Text style={s(styles.circleValue)}>{value}</Text>
+      <Text style={s(styles.circleLabel)}>{label}</Text>
+      {total > 0 && <Text style={s(styles.circlePercentage)}>{Math.round(percentage)}%</Text>}
     </View>
   );
 }
@@ -146,56 +142,35 @@ export default function EmployeeDashboard() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamExpanded, setTeamExpanded] = useState(false);
 
-  // Queries
-  const _dashboardQuery = useQuery({
+  // Queries safely rewritten to avoid returning 'undefined' values
+  const dashboardQuery = useQuery({
     queryKey: ["employee-dashboard"],
-    queryFn: async () => (await getEmployeeDashboard()).item,
+    queryFn: async () => {
+      const res = await getEmployeeDashboard();
+      return res?.item ?? null;
+    },
     refetchOnWindowFocus: false,
   });
 
-  const _profileQuery = useQuery({
+  const profileQuery = useQuery({
     queryKey: ["employee-profile"],
-    queryFn: async () => (await getEmployeeProfile()).item,
+    queryFn: async () => {
+      const res = await getEmployeeProfile();
+      return res?.item ?? null;
+    },
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  const _onboardingQuery = useQuery({
+  const onboardingQuery = useQuery({
     queryKey: ["onboarding-status"],
-    queryFn: async () => (await getOnboardingStatus()).item,
+    queryFn: async () => {
+      const res = await getOnboardingStatus();
+      return res?.item ?? null;
+    },
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
-
-  // Queries rewritten to safely avoid returning 'undefined' values
-const dashboardQuery = useQuery({
-  queryKey: ["employee-dashboard"],
-  queryFn: async () => {
-    const res = await getEmployeeDashboard();
-    return res?.item ?? null; // Added fallback
-  },
-  refetchOnWindowFocus: false,
-});
-
-const profileQuery = useQuery({
-  queryKey: ["employee-profile"],
-  queryFn: async () => {
-    const res = await getEmployeeProfile();
-    return res?.item ?? null; // Added fallback
-  },
-  staleTime: 5 * 60 * 1000,
-  refetchOnWindowFocus: false,
-});
-
-const onboardingQuery = useQuery({
-  queryKey: ["onboarding-status"],
-  queryFn: async () => {
-    const res = await getOnboardingStatus();
-    return res?.item ?? null; // Added fallback
-  },
-  staleTime: 5 * 60 * 1000,
-  refetchOnWindowFocus: false,
-});
 
   // Time remaining tick effect for lunch/break countdown
   useEffect(() => {
@@ -285,7 +260,6 @@ const onboardingQuery = useQuery({
         const res = await apiFetch<{ items: TeamLeadMapping[] }>("/api/team-lead-mappings/me");
         setTeamMappings(res?.items || []);
       } catch (e) {
-        // Safe catch implementation prevents component layout exception crashes
         console.log("[Dashboard] Team lead endpoint not available yet or returned an error:", e);
         setTeamMappings([]); 
       } finally {
@@ -329,16 +303,18 @@ const onboardingQuery = useQuery({
 
   const employeeName = useMemo(() => String(profileQuery.data?.name || "").trim(), [profileQuery.data?.name]);
   const data = dashboardQuery.data || null;
+
   const onboardingStatus = onboardingQuery.data?.overallStatus || "not_started";
   const isOnboardingApproved = onboardingStatus === "approved";
+
   const stats = data?.tasks || { total: 0, completed: 0, pending: 0, inProgress: 0 };
   const isClockedIn = data?.clock?.clockIn && !data?.clock?.clockOut;
 
   if (dashboardQuery.isLoading || profileQuery.isLoading) {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={s([styles.container, styles.center])}>
         <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading your dashboard...</Text>
+        <Text style={s(styles.loadingText)}>Loading your dashboard...</Text>
       </View>
     );
   }
@@ -372,30 +348,27 @@ const onboardingQuery = useQuery({
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={s(styles.container)} contentContainerStyle={s(styles.contentContainer)}>
       
       {/* 1. Top Stat Horizontal Row */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s(styles.horizontalRow)}>
         <EmployeeStatCardNative title="CURRENT PAY PERIOD" value={`$${(data?.earnings || 0).toFixed(2)}`} icon={DollarSign} variant="green" onPress={() => router.push("/(tabs)/payroll")} />
         <EmployeeStatCardNative title="HOURS WORKED" value={`${data?.hoursWorked || 0} hrs`} icon={Clock} variant="blue" onPress={() => router.push("/(tabs)/clock")} />
         <EmployeeStatCardNative title="PENDING TASKS" value={data?.tasks?.pending || 0} icon={Briefcase} variant="orange" onPress={() => router.push("/(tabs)/tasks")} />
-        {/*<EmployeeStatCardNative title="OPEN BUGS" value={myBugCount} icon={Bug} variant={myBugCount > 0 ? "red" : "blue"} onPress={() => router.push("/(tabs)/bugs")} />
-        <EmployeeStatCardNative title="ALERTS" value={data?.alerts?.length || 0} icon={AlertCircle} variant={(data?.alerts?.length || 0) > 0 ? "red" : "blue"} onPress={() => router.push("/(tabs)/profile")} />
-        */}
       </ScrollView>
 
       {/* 2. Important Alerts Banner */}
       {(data?.alerts?.length || 0) > 0 && (
         <Card style={styles.errorCard}>
-          <View style={styles.row}>
-            <AlertCircle color="#ef4444" size={20} />
-            <Text style={styles.errorTitle}>Important Alerts</Text>
+          <View style={s(styles.row)}>
+            <AlertCircle color="#ef4444" size={fs(5)} />
+            <Text style={s(styles.errorTitle)}>Important Alerts</Text>
           </View>
-          <View style={styles.alertListContainer}>
+          <View style={s(styles.alertListContainer)}>
             {data?.alerts?.map((alert: string, index: number) => (
-              <View key={index} style={styles.alertItem}>
-                <AlertCircle color="#fca5a5" size={14} style={{ marginRight: 6 }} />
-                <Text style={styles.alertItemText}>{alert}</Text>
+              <View key={index} style={s(styles.alertItem)}>
+                <AlertCircle color="#fca5a5" size={fs(3.5)} style={s({ marginRight: wp(1.5) })} />
+                <Text style={s(styles.alertItemText)}>{alert}</Text>
               </View>
             ))}
           </View>
@@ -403,69 +376,69 @@ const onboardingQuery = useQuery({
       )}
 
       {/* 3. Welcome Banner */}
-      <View style={styles.welcomeBanner}>
-        <View style={styles.welcomeLeft}>
-          <Text style={styles.welcomeTitle}>Welcome{employeeName ? `, ${employeeName}` : " to Employee Portal"}</Text>
-          <Text style={styles.welcomeSub}>View your tasks and manage your work efficiently.</Text>
+      <View style={s(styles.welcomeBanner)}>
+        <View style={s(styles.welcomeLeft)}>
+          <Text style={s(styles.welcomeTitle)}>Welcome{employeeName ? `, ${employeeName}` : " to Employee Portal"}</Text>
+          <Text style={s(styles.welcomeSub)}>View your tasks and manage your work efficiently.</Text>
         </View>
         {isClockedIn ? (
-          <View style={styles.clockBadge}>
-            <Clock color="#4ade80" size={14} style={{ marginRight: 4 }} />
-            <Text style={styles.clockBadgeText}>Clocked In</Text>
+          <View style={s(styles.clockBadge)}>
+            <Clock color="#4ade80" size={fs(3.5)} style={s({ marginRight: wp(1) })} />
+            <Text style={s(styles.clockBadgeText)}>Clocked In</Text>
           </View>
         ) : data?.clock?.clockOut ? (
-          <View style={styles.shiftCompleteBadge}>
-            <CheckCircle color="#fbbf24" size={14} style={{ marginRight: 4 }} />
-            <Text style={styles.shiftCompleteText}>Shift Complete</Text>
+          <View style={s(styles.shiftCompleteBadge)}>
+            <CheckCircle color="#fbbf24" size={fs(3.5)} style={s({ marginRight: wp(1) })} />
+            <Text style={s(styles.shiftCompleteText)}>Shift Complete</Text>
           </View>
         ) : null}
       </View>
 
       {/* 4. Dynamic Status Widget */}
-      <View style={[styles.statusWidget, { backgroundColor: statusBg, borderColor: statusBorder }]}>
-        <View style={styles.statusWidgetHeader}>
-          <View style={styles.row}>
-            <View style={styles.statusIconBox}>
-              <StatusIcon color={statusIconColor} size={24} />
+      <View style={s([styles.statusWidget, { backgroundColor: statusBg, borderColor: statusBorder }])}>
+        <View style={s(styles.statusWidgetHeader)}>
+          <View style={s(styles.row)}>
+            <View style={s(styles.statusIconBox)}>
+              <StatusIcon color={statusIconColor} size={fs(6)} />
             </View>
             <View>
-              <View style={styles.row}>
-                <Text style={styles.statusLabelText}>{statusLabel}</Text>
+              <View style={s(styles.row)}>
+                <Text style={s(styles.statusLabelText)}>{statusLabel}</Text>
                 {currentStatus !== "AVAILABLE" && (
-                  <Badge variant="outline" style={{ marginLeft: 8 }}><Text style={{ color: statusAccent, fontSize: 10 }}>Active</Text></Badge>
+                  <Badge variant="outline" style={s({ marginLeft: wp(2) })}><Text style={{ color: statusAccent, fontSize: fs(2.5) }}>Active</Text></Badge>
                 )}
               </View>
-              <Text style={styles.statusDescText}>{statusDesc}</Text>
+              <Text style={s(styles.statusDescText)}>{statusDesc}</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.statusControlsRow}>
+        <View style={s(styles.statusControlsRow)}>
           {currentStatus !== "AVAILABLE" && timeLeft !== null && (
-            <View style={styles.timerBox}>
-              <Timer color="#a1a1aa" size={14} style={{ marginRight: 6 }} />
-              <Text style={styles.timerLabel}>Remaining: </Text>
-              <Text style={[styles.timerValue, { color: statusAccent }]}>{formatTimeLeft(timeLeft)}</Text>
+            <View style={s(styles.timerBox)}>
+              <Timer color="#a1a1aa" size={fs(3.5)} style={s({ marginRight: wp(1.5) })} />
+              <Text style={s(styles.timerLabel)}>Remaining: </Text>
+              <Text style={s([styles.timerValue, { color: statusAccent }])}>{formatTimeLeft(timeLeft)}</Text>
             </View>
           )}
 
-          <View style={styles.buttonGroupRow}>
+          <View style={s(styles.buttonGroupRow)}>
             {currentStatus === "AVAILABLE" ? (
               <>
-                <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(startLunch, "Failed to start lunch")} style={[styles.actionBtn, { backgroundColor: "#d97706" }]}>
-                  <Utensils color="#fff" size={14} /><Text style={styles.btnText}>Lunch</Text>
+                <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(startLunch, "Failed to start lunch")} style={s([styles.actionBtn, { backgroundColor: "#d97706" }])}>
+                  <Utensils color="#fff" size={fs(3.5)} /><Text style={s(styles.btnText)}>Lunch</Text>
                 </TouchableOpacity>
-                <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(startBreak, "Failed to start break")} style={[styles.actionBtn, { backgroundColor: "#8b5cf6" }]}>
-                  <Coffee color="#fff" size={14} /><Text style={styles.btnText}>Break</Text>
+                <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(startBreak, "Failed to start break")} style={s([styles.actionBtn, { backgroundColor: "#8b5cf6" }])}>
+                  <Coffee color="#fff" size={fs(3.5)} /><Text style={s(styles.btnText)}>Break</Text>
                 </TouchableOpacity>
               </>
             ) : currentStatus === "LUNCH" ? (
-              <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(endLunch, "Failed to end lunch")} style={[styles.actionBtn, { backgroundColor: "#16a34a" }]}>
-                <CheckCircle color="#fff" size={14} /><Text style={styles.btnText}>End Lunch</Text>
+              <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(endLunch, "Failed to end lunch")} style={s([styles.actionBtn, { backgroundColor: "#16a34a" }])}>
+                <CheckCircle color="#fff" size={fs(3.5)} /><Text style={s(styles.btnText)}>End Lunch</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(endBreak, "Failed to end break")} style={[styles.actionBtn, { backgroundColor: "#16a34a" }]}>
-                <CheckCircle color="#fff" size={14} /><Text style={styles.btnText}>End Break</Text>
+              <TouchableOpacity disabled={statusActionLoading} onPress={() => handleStatusChange(endBreak, "Failed to end break")} style={s([styles.actionBtn, { backgroundColor: "#16a34a" }])}>
+                <CheckCircle color="#fff" size={fs(3.5)} /><Text style={s(styles.btnText)}>End Break</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -473,68 +446,68 @@ const onboardingQuery = useQuery({
       </View>
 
       {/* 5. Onboarding Warning Banner */}
-      {!isOnboardingApproved && (
-        <View style={styles.onboardingBanner}>
-          <View style={styles.row}>
-            <AlertTriangle color="#d97706" size={24} style={{ marginRight: 12 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.onboardingTitle}>Complete Your Onboarding</Text>
-              <Text style={styles.onboardingSub}>
+      {onboardingQuery.data && !isOnboardingApproved && onboardingStatus !== "not_started" && (
+        <View style={s(styles.onboardingBanner)}>
+          <View style={s(styles.row)}>
+            <AlertTriangle color="#d97706" size={fs(6)} style={s({ marginRight: wp(3) })} />
+            <View style={s({ flex: 1 })}>
+              <Text style={s(styles.onboardingTitle)}>Complete Your Onboarding</Text>
+              <Text style={s(styles.onboardingSub)}>
                 {onboardingStatus === "submitted" 
                   ? "Your onboarding is pending approval." 
                   : "Please complete your onboarding to unlock access to all features."}
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.onboardingBtn} onPress={() => router.push("profile")}>
-            <Text style={styles.btnText}>Complete Onboarding</Text>
+          <TouchableOpacity style={s(styles.onboardingBtn)} onPress={() => router.push("/(tabs)/profile")}>
+            <Text style={s(styles.btnText)}>Complete Onboarding</Text> 
           </TouchableOpacity>
         </View>
       )}
 
       {/* 6. Grid Metrics Row */}
-      <View style={styles.gridRow}>
-        <Card style={styles.gridCard}><Text style={styles.gridCardTitle}>Current Earnings</Text><Text style={styles.gridCardValue}>${data?.earnings || 0}</Text></Card>
-        <Card style={styles.gridCard}><Text style={styles.gridCardTitle}>Hours Worked</Text><Text style={styles.gridCardValue}>{data?.hoursWorked || 0} hrs</Text></Card>
-        <Card style={styles.gridCard}><Text style={styles.gridCardTitle}>Pending Tasks</Text><Text style={styles.gridCardValue}>{data?.tasks?.pending || 0}</Text></Card>
+      <View style={s(styles.gridRow)}>
+        <Card style={styles.gridCard}><Text style={s(styles.gridCardTitle)}>Current Earnings</Text><Text style={s(styles.gridCardValue)}>${data?.earnings || 0}</Text></Card>
+        <Card style={styles.gridCard}><Text style={s(styles.gridCardTitle)}>Hours Worked</Text><Text style={s(styles.gridCardValue)}>{data?.hoursWorked || 0} hrs</Text></Card>
+        <Card style={styles.gridCard}><Text style={s(styles.gridCardTitle)}>Pending Tasks</Text><Text style={s(styles.gridCardValue)}>{data?.tasks?.pending || 0}</Text></Card>
       </View>
 
       {/* 7. My Team Section */}
       <Card style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
-        <View style={[styles.row, { justifyContent: "space-between" }]}>
-          <View style={styles.row}>
-            <UserCog color="#3b82f6" size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.sectionTitle}>My Team</Text>
+        <View style={s([styles.row, { justifyContent: "space-between" }])}>
+          <View style={s(styles.row)}>
+            <UserCog color="#3b82f6" size={fs(4.5)} style={s({ marginRight: wp(2) })} />
+            <Text style={s(styles.sectionTitle)}>My Team</Text>
           </View>
           {myTeamLead && (
-            <TouchableOpacity style={styles.row} onPress={() => setTeamExpanded(!teamExpanded)}>
-              {teamExpanded ? <ChevronUp color="#a1a1aa" size={16} /> : <ChevronDown color="#a1a1aa" size={16} />}
-              <Text style={styles.toggleText}>{teamExpanded ? "Hide" : "Show"}</Text>
+            <TouchableOpacity style={s(styles.row)} onPress={() => setTeamExpanded(!teamExpanded)}>
+              {teamExpanded ? <ChevronUp color="#a1a1aa" size={fs(4)} /> : <ChevronDown color="#a1a1aa" size={fs(4)} />}
+              <Text style={s(styles.toggleText)}>{teamExpanded ? "Hide" : "Show"}</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {teamLoading ? (
-          <ActivityIndicator size="small" color="#3b82f6" style={{ marginVertical: 12 }} />
+          <ActivityIndicator size="small" color="#3b82f6" style={s({ marginVertical: hp(1.5) })} />
         ) : !myTeamLead ? (
-          <Text style={styles.mutedText}>You are not assigned to any team yet.</Text>
+          <Text style={s(styles.mutedText)}>You are not assigned to any team yet.</Text>
         ) : (
-          <View style={{ marginTop: 12 }}>
-            <View style={styles.teamLeadBox}>
-              <UserCog color="#3b82f6" size={16} style={{ marginRight: 8 }} />
+          <View style={s({ marginTop: hp(1.5) })}>
+            <View style={s(styles.teamLeadBox)}>
+              <UserCog color="#3b82f6" size={fs(4)} style={s({ marginRight: wp(2) })} />
               <View>
-                <Text style={styles.tinyLabel}>Team Lead</Text>
-                <Text style={styles.teamMemberName}>{myTeamLead}</Text>
+                <Text style={s(styles.tinyLabel)}>Team Lead</Text>
+                <Text style={s(styles.teamMemberName)}>{myTeamLead}</Text>
               </View>
             </View>
 
             {teamExpanded && teammates.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.subLabel}>Team Members</Text>
-                <View style={styles.teammatesGrid}>
+              <View style={s({ marginTop: hp(1.5) })}>
+                <Text style={s(styles.subLabel)}>Team Members</Text>
+                <View style={s(styles.teammatesGrid)}>
                   {teammates.map((member, idx) => (
-                    <View key={idx} style={styles.teammatePill}>
-                      <Text style={styles.teammatePillText}>{member}</Text>
+                    <View key={idx} style={s(styles.teammatePill)}>
+                      <Text style={s(styles.teammatePillText)}>{member}</Text>
                     </View>
                   ))}
                 </View>
@@ -544,11 +517,11 @@ const onboardingQuery = useQuery({
         )}
       </Card>
 
-      {/* 8. Document Checklist Mapping Layout with profile link navigation */}
-      <View style={styles.marginVerticalBlock}>
+      {/* 8. Document Checklist Mapping Layout */}
+      <View style={s(styles.marginVerticalBlock)}>
         {(data?.alerts?.length ?? 0) === 0 ? (
-          <View style={[styles.documentBox, { backgroundColor: "#14532d20", borderColor: "#16a34a" }]}>
-            <Text style={{ color: "#4ade80", fontSize: 13 }}>All documents are up to date 🎉</Text>
+          <View style={s([styles.documentBox, { backgroundColor: "#14532d20", borderColor: "#16a34a" }])}>
+            <Text style={s({ color: "#4ade80", fontSize: fs(3.2) })}>All documents are up to date 🎉</Text>
           </View>
         ) : (
           data?.alerts.map((alert: string, i: number) => {
@@ -566,9 +539,9 @@ const onboardingQuery = useQuery({
             if (isPending) { docBg = "#78350f20"; docBorder = "#d97706"; statusText = "⏳ Pending"; }
 
             return (
-              <TouchableOpacity key={i} style={[styles.documentBox, { backgroundColor: docBg, borderColor: docBorder }]} onPress={() => router.push("/(tabs)/documents")}>
-                <Text style={styles.documentText}>{alert}</Text>
-                <Text style={styles.documentStatusText}>{statusText}</Text>
+              <TouchableOpacity key={i} style={s([styles.documentBox, { backgroundColor: docBg, borderColor: docBorder }])} onPress={() => router.push("/(tabs)/documents")}>
+                <Text style={s(styles.documentText)}>{alert}</Text>
+                <Text style={s(styles.documentStatusText)}>{statusText}</Text>
               </TouchableOpacity>
             );
           })
@@ -577,86 +550,86 @@ const onboardingQuery = useQuery({
 
       {/* 9. Task Progress Overview */}
       <Card>
-        <View style={[styles.row, { marginBottom: 16 }]}>
-          <ListTodo color="#a1a1aa" size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.sectionTitle}>Task Progress Overview</Text>
+        <View style={s([styles.row, { marginBottom: hp(2) }])}>
+          <ListTodo color="#a1a1aa" size={fs(4.5)} style={s({ marginRight: wp(2) })} />
+          <Text style={s(styles.sectionTitle)}>Task Progress Overview</Text>
         </View>
         
-        <View style={styles.chartsContainer}>
+        <View style={s(styles.chartsContainer)}>
           <CircularProgress value={stats.total} total={Math.max(stats.total, 1)} color="stroke-blue-500" icon={ListTodo} label="Total Tasks" />
           <CircularProgress value={stats.completed} total={Math.max(stats.total, 1)} color="stroke-green-500" icon={CheckCircle} label="Completed" />
           <CircularProgress value={stats.inProgress} total={Math.max(stats.total, 1)} color="stroke-yellow-500" icon={Clock} label="In Progress" />
           <CircularProgress value={stats.pending} total={Math.max(stats.total, 1)} color="stroke-orange-500" icon={AlertCircle} label="Pending" />
         </View>
 
-        <View style={styles.progressBarWrapper}>
-          <View style={[styles.row, { justifyContent: "space-between", marginBottom: 6 }]}>
-            <Text style={styles.progressLabel}>Overall Completion</Text>
-            <Text style={styles.progressPercentageText}>
+        <View style={s(styles.progressBarWrapper)}>
+          <View style={s([styles.row, { justifyContent: "space-between", marginBottom: hp(0.8) }])}>
+            <Text style={s(styles.progressLabel)}>Overall Completion</Text>
+            <Text style={s(styles.progressPercentageText)}>
               {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
             </Text>
           </View>
-          <View style={styles.progressBarTrack}>
-            <View style={[styles.progressBarFill, { width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }]} />
+          <View style={s(styles.progressBarTrack)}>
+            <View style={s([styles.progressBarFill, { width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }])} />
           </View>
-          <View style={[styles.row, { justifyContent: "space-between", marginTop: 6 }]}>
-            <Text style={styles.progressSubText}>{stats.completed} completed</Text>
-            <Text style={styles.progressSubText}>{stats.total - stats.completed} remaining</Text>
+          <View style={s([styles.row, { justifyContent: "space-between", marginTop: hp(0.8) }])}>
+            <Text style={s(styles.progressSubText)}>{stats.completed} completed</Text>
+            <Text style={s(styles.progressSubText)}>{stats.total - stats.completed} remaining</Text>
           </View>
         </View>
       </Card>
 
       {/* 10. Secondary Quick Views Grid */}
-      <View style={styles.gridRow}>
+      <View style={s(styles.gridRow)}>
         <Card style={styles.quickCard}>
-          <View style={styles.row}>
-            <Calendar color="#c084fc" size={20} />
-            <Text style={styles.quickValue}>{data?.scheduleCount || 0}</Text>
+          <View style={s(styles.row)}>
+            <Calendar color="#c084fc" size={fs(5)} />
+            <Text style={s(styles.quickValue)}>{data?.scheduleCount || 0}</Text>
           </View>
-          <Text style={styles.quickTitle}>Upcoming Events</Text>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/schedule")}><Text style={styles.quickLink}>View</Text></TouchableOpacity>
+          <Text style={s(styles.quickTitle)}>Upcoming Events</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/schedule")}><Text style={s(styles.quickLink)}>View</Text></TouchableOpacity>
         </Card>
 
         <Card style={styles.quickCard}>
-          <View style={styles.row}>
-            <MessageSquare color="#f472b6" size={20} />
-            <Text style={styles.quickValue}>{data?.unreadMessages || 0}</Text>
+          <View style={s(styles.row)}>
+            <MessageSquare color="#f472b6" size={fs(5)} />
+            <Text style={s(styles.quickValue)}>{data?.unreadMessages || 0}</Text>
           </View>
-          <Text style={styles.quickTitle}>Unread Messages</Text>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/messages")}><Text style={styles.quickLink}>View</Text></TouchableOpacity>
+          <Text style={s(styles.quickTitle)}>Unread Messages</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/messages")}><Text style={s(styles.quickLink)}>View</Text></TouchableOpacity>
         </Card>
 
         <Card style={styles.quickCard}>
-          <View style={styles.row}>
-            <Timer color="#22d3ee" size={20} />
-            <Text style={styles.quickValueStatus}>
+          <View style={s(styles.row)}>
+            <Timer color="#22d3ee" size={fs(5)} />
+            <Text style={s(styles.quickValueStatus)}>
               {data?.clock?.clockIn ? (data?.clock?.clockOut ? "Complete" : "Active") : "None"}
             </Text>
           </View>
-          <Text style={styles.quickTitle}>Today's Status</Text>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/clock")}><Text style={styles.quickLink}>Clock</Text></TouchableOpacity>
+          <Text style={s(styles.quickTitle)}>Today's Status</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/clock")}><Text style={s(styles.quickLink)}>Clock</Text></TouchableOpacity>
         </Card>
       </View>
 
       {/* 11. Recent Tasks Block */}
       <Card>
-        <View style={[styles.row, { justifyContent: "space-between", marginBottom: 12 }]}>
-          <Text style={styles.sectionTitle}>Recent Tasks</Text>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}><Text style={styles.quickLink}>View All</Text></TouchableOpacity>
+        <View style={s([styles.row, { justifyContent: "space-between", marginBottom: hp(1.5) }])}>
+          <Text style={s(styles.sectionTitle)}>Recent Tasks</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}><Text style={s(styles.quickLink)}>View All</Text></TouchableOpacity>
         </View> 
 
         {data?.recentTasks?.length === 0 ? (
-          <Text style={styles.mutedTextCenter}>No tasks assigned yet.</Text>
+          <Text style={s(styles.mutedTextCenter)}>No tasks assigned yet.</Text>
         ) : (
-          <View style={styles.taskListContainer}>
+          <View style={s(styles.taskListContainer)}>
             {data?.recentTasks?.map((task: any) => (
-              <View key={task.id} style={styles.taskListItem}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
-                  <Text style={styles.taskDue}>Due: {task.dueDate || "No due date"}</Text>
+              <View key={task.id} style={s(styles.taskListItem)}>
+                <View style={s({ flex: 1, paddingRight: wp(2) })}>
+                  <Text style={s(styles.taskTitle)} numberOfLines={1}>{task.title}</Text>
+                  <Text style={s(styles.taskDue)}>Due: {task.dueDate || "No due date"}</Text>
                 </View>
-                <View style={styles.row}>
-                  <Badge variant={task.status === "completed" ? "default" : "secondary"} style={{ marginRight: 4 }}>
+                <View style={s(styles.row)}>
+                  <Badge variant={task.status === "completed" ? "default" : "secondary"} style={s({ marginRight: wp(1) })}>
                     {task.status}
                   </Badge>
                   <Badge variant={task.priority === "high" ? "destructive" : "outline"}>
@@ -675,101 +648,479 @@ const onboardingQuery = useQuery({
 
 // Single structured central stylesheet
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#09090b" },
-  contentContainer: { padding: 16, paddingBottom: 40 },
-  center: { justifyContent: "center", alignItems: "center" },
-  row: { flexDirection: "row", alignItems: "center" },
-  loadingText: { color: "#a1a1aa", marginTop: 12, fontSize: 14 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#09090b" 
+  },
+  contentContainer: { 
+    padding: wp(4), 
+    paddingBottom: hp(5) 
+  },
+  center: { 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  row: { 
+    flexDirection: "row", 
+    alignItems: "center" 
+  },
+  loadingText: { 
+    color: "#a1a1aa", 
+    marginTop: hp(1.5), 
+    fontSize: fs(3.5) 
+  },
   
-  horizontalRow: { flexDirection: "row", marginBottom: 16 },
-  statCard: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, padding: 14, marginRight: 10, width: width * 0.38 },
-  statIconContainer: { width: 32, height: 32, borderRadius: 8, justifyContent: "center", alignItems: "center", marginBottom: 8 },
-  statTitle: { color: "#a1a1aa", fontSize: 10, fontWeight: "600", textTransform: "uppercase" },
-  statValue: { color: "#ffffff", fontSize: 16, fontWeight: "bold", marginTop: 2 },
+  horizontalRow: { 
+    flexDirection: "row", 
+    marginBottom: hp(2) 
+  },
+  statCard: { 
+    backgroundColor: "#18181b", 
+    borderColor: "#27272a", 
+    borderWidth: 1, 
+    borderRadius: wp(3), 
+    padding: wp(3.5), 
+    marginRight: wp(2.5), 
+    width: wp(38) 
+  },
+  statIconContainer: { 
+    width: wp(8), 
+    height: wp(8), 
+    borderRadius: wp(2), 
+    justifyContent: "center", 
+    alignItems: "center", 
+    marginBottom: hp(1) 
+  },
+  statTitle: { 
+    color: "#a1a1aa", 
+    fontSize: fs(2.5), 
+    fontWeight: "600", 
+    textTransform: "uppercase" 
+  },
+  statValue: { 
+    color: "#ffffff", 
+    fontSize: fs(4), 
+    fontWeight: "bold", 
+    marginTop: 2 
+  },
 
-  card: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
-  sectionTitle: { color: "#ffffff", fontSize: 15, fontWeight: "bold" },
-  mutedText: { color: "#71717a", fontSize: 13, marginTop: 8 },
-  mutedTextCenter: { color: "#71717a", fontSize: 13, textAlign: "center", paddingVertical: 16 },
-  toggleText: { color: "#a1a1aa", fontSize: 12, marginLeft: 4 },
+  card: { 
+    backgroundColor: "#18181b", 
+    borderColor: "#27272a", 
+    borderWidth: 1, 
+    borderRadius: wp(3), 
+    padding: wp(4), 
+    marginBottom: hp(2) 
+  },
+  sectionTitle: { 
+    color: "#ffffff", 
+    fontSize: fs(3.8), 
+    fontWeight: "bold" 
+  },
+  mutedText: { 
+    color: "#71717a", 
+    fontSize: fs(3.2), 
+    marginTop: hp(1) 
+  },
+  mutedTextCenter: { 
+    color: "#71717a", 
+    fontSize: fs(3.2), 
+    textAlign: "center", 
+    paddingVertical: hp(2) 
+  },
+  toggleText: { 
+    color: "#a1a1aa", 
+    fontSize: fs(3), 
+    marginLeft: wp(1) 
+  },
 
-  errorCard: { borderColor: "#7f1d1d", backgroundColor: "#7f1d1d15" },
-  errorTitle: { color: "#ef4444", fontWeight: "bold", fontSize: 14, marginLeft: 6 },
-  alertListContainer: { marginTop: 10, gap: 6 },
-  alertItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#7f1d1d25", padding: 8, borderRadius: 6 },
-  alertItemText: { color: "#fca5a5", fontSize: 12, flex: 1 },
+  badge: { 
+    paddingVertical: hp(0.3), 
+    paddingHorizontal: wp(1.8), 
+    borderRadius: wp(1) 
+  },
+  badgeText: { 
+    fontSize: fs(2.8), 
+    fontWeight: "500" 
+  },
 
-  welcomeBanner: { backgroundColor: "#111111", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  welcomeLeft: { flex: 1, paddingRight: 8 },
-  welcomeTitle: { color: "#ffffff", fontSize: 18, fontWeight: "bold" },
-  welcomeSub: { color: "#d0d0d0", fontSize: 12, marginTop: 2 },
-  clockBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#14532d50", borderColor: "#16a34a", borderWidth: 1, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  clockBadgeText: { color: "#4ade80", fontSize: 11, fontWeight: "600" },
-  shiftCompleteBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#78350f50", borderColor: "#d97706", borderWidth: 1, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  shiftCompleteText: { color: "#fbbf24", fontSize: 11, fontWeight: "600" },
+  errorCard: { 
+    borderColor: "#7f1d1d", 
+    backgroundColor: "#7f1d1d15" 
+  },
+  errorTitle: { 
+    color: "#ef4444", 
+    fontWeight: "bold", 
+    fontSize: fs(3.5), 
+    marginLeft: wp(1.5) 
+  },
+  alertListContainer: { 
+    marginTop: hp(1.2), 
+    gap: hp(0.8) 
+  },
+  alertItem: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#7f1d1d25", 
+    padding: wp(2), 
+    borderRadius: wp(1.5) 
+  },
+  alertItemText: { 
+    color: "#fca5a5", 
+    fontSize: fs(3), 
+    flex: 1 
+  },
 
-  statusWidget: { borderWidth: 2, borderRadius: 12, padding: 16, marginBottom: 16 },
-  statusWidgetHeader: { marginBottom: 12 },
-  statusIconBox: { backgroundColor: "#00000040", width: 44, height: 44, borderRadius: 10, justifyContent: "center", alignItems: "center", marginRight: 12 },
-  statusLabelText: { color: "#ffffff", fontSize: 15, fontWeight: "bold" },
-  statusDescText: { color: "#d1d5db", fontSize: 12, marginTop: 1 },
-  statusControlsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 },
-  timerBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#00000060", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8 },
-  timerLabel: { color: "#a1a1aa", fontSize: 12 },
-  timerValue: { fontSize: 14, fontWeight: "bold" },
-  buttonGroupRow: { flexDirection: "row", gap: 6 },
-  actionBtn: { flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, gap: 4 },
-  btnText: { color: "#ffffff", fontSize: 12, fontWeight: "bold" },
+  welcomeBanner: { 
+    backgroundColor: "#111111", 
+    borderColor: "#27272a", 
+    borderWidth: 1, 
+    borderRadius: wp(3), 
+    padding: wp(4), 
+    marginBottom: hp(2), 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center" 
+  },
+  welcomeLeft: { 
+    flex: 1, 
+    paddingRight: wp(2) 
+  },
+  welcomeTitle: { 
+    color: "#ffffff", 
+    fontSize: fs(4.5), 
+    fontWeight: "bold" 
+  },
+  welcomeSub: { 
+    color: "#d0d0d0", 
+    fontSize: fs(3), 
+    marginTop: 2 
+  },
+  clockBadge: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#14532d50", 
+    borderColor: "#16a34a", 
+    borderWidth: 1, 
+    paddingVertical: hp(0.5), 
+    paddingHorizontal: wp(2), 
+    borderRadius: wp(1.5) 
+  },
+  clockBadgeText: { 
+    color: "#4ade80", 
+    fontSize: fs(2.8), 
+    fontWeight: "600" 
+  },
+  shiftCompleteBadge: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#78350f50", 
+    borderColor: "#d97706", 
+    borderWidth: 1, 
+    paddingVertical: hp(0.5), 
+    paddingHorizontal: wp(2), 
+    borderRadius: wp(1.5) 
+  },
+  shiftCompleteText: { 
+    color: "#fbbf24", 
+    fontSize: fs(2.8), 
+    fontWeight: "600" 
+  },
 
-  onboardingBanner: { backgroundColor: "#78350f20", borderColor: "#d97706", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
-  onboardingTitle: { color: "#fef3c7", fontSize: 14, fontWeight: "bold" },
-  onboardingSub: { color: "#f59e0b", fontSize: 12, marginTop: 2 },
-  onboardingBtn: { backgroundColor: "#d97706", paddingVertical: 8, borderRadius: 8, alignItems: "center", marginTop: 12 },
+  statusWidget: { 
+    borderWidth: 2, 
+    borderRadius: wp(3), 
+    padding: wp(4), 
+    marginBottom: hp(2) 
+  },
+  statusWidgetHeader: { 
+    marginBottom: hp(1.5) 
+  },
+  statusIconBox: { 
+    backgroundColor: "#00000040", 
+    width: wp(11), 
+    height: wp(11), 
+    borderRadius: wp(2.5), 
+    justifyContent: "center", 
+    alignItems: "center", 
+    marginRight: wp(3) 
+  },
+  statusLabelText: { 
+    color: "#ffffff", 
+    fontSize: fs(3.8), 
+    fontWeight: "bold" 
+  },
+  statusDescText: { 
+    color: "#d1d5db", 
+    fontSize: fs(3), 
+    marginTop: 1 
+  },
+  statusControlsRow: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    flexWrap: "wrap", 
+    gap: wp(2) 
+  },
+  timerBox: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#00000060", 
+    paddingVertical: hp(0.8), 
+    paddingHorizontal: wp(2.5), 
+    borderRadius: wp(2) 
+  },
+  timerLabel: { 
+    color: "#a1a1aa", 
+    fontSize: fs(3) 
+  },
+  timerValue: { 
+    fontSize: fs(3.5), 
+    fontWeight: "bold" 
+  },
+  buttonGroupRow: { 
+    flexDirection: "row", 
+    gap: wp(1.5) 
+  },
+  actionBtn: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    paddingVertical: hp(0.8), 
+    paddingHorizontal: wp(3), 
+    borderRadius: wp(2), 
+    gap: wp(1) 
+  },
+  btnText: { 
+    color: "#ffffff", 
+    fontSize: fs(3), 
+    fontWeight: "bold" 
+  },
 
-  gridRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
-  gridCard: { flex: 1, backgroundColor: "#18181b", padding: 12, borderRadius: 12, marginBottom: 0 },
-  gridCardTitle: { color: "#a1a1aa", fontSize: 11 },
-  gridCardValue: { color: "#ffffff", fontSize: 16, fontWeight: "bold", marginTop: 4 },
+  onboardingBanner: { 
+    backgroundColor: "#78350f20", 
+    borderColor: "#d97706", 
+    borderWidth: 1, 
+    borderRadius: wp(3), 
+    padding: wp(4), 
+    marginBottom: hp(2) 
+  },
+  onboardingTitle: { 
+    color: "#fef3c7", 
+    fontSize: fs(3.5), 
+    fontWeight: "bold" 
+  },
+  onboardingSub: { 
+    color: "#f59e0b", 
+    fontSize: fs(3), 
+    marginTop: 2 
+  },
+  onboardingBtn: { 
+    backgroundColor: "#d97706", 
+    paddingVertical: hp(1), 
+    borderRadius: wp(2), 
+    alignItems: "center", 
+    marginTop: hp(1.5) 
+  },
 
-  teamLeadBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, padding: 10, borderRadius: 8 },
-  tinyLabel: { color: "#a1a1aa", fontSize: 10 },
-  teamMemberName: { color: "#ffffff", fontSize: 13, fontWeight: "500" },
-  subLabel: { color: "#a1a1aa", fontSize: 12, marginBottom: 6 },
-  teammatesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  teammatePill: { backgroundColor: "#27272a", paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  teammatePillText: { color: "#ffffff", fontSize: 12 },
+  gridRow: { 
+    flexDirection: "row", 
+    gap: wp(2.5), 
+    marginBottom: hp(2) 
+  },
+  gridCard: { 
+    flex: 1, 
+    backgroundColor: "#18181b", 
+    padding: wp(3), 
+    borderRadius: wp(3), 
+    marginBottom: 0 
+  },
+  gridCardTitle: { 
+    color: "#a1a1aa", 
+    fontSize: fs(2.8) 
+  },
+  gridCardValue: { 
+    color: "#ffffff", 
+    fontSize: fs(4), 
+    fontWeight: "bold", 
+    marginTop: hp(0.5) 
+  },
 
-  marginVerticalBlock: { marginBottom: 16, gap: 6 },
-  documentBox: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderWidth: 1, borderRadius: 8 },
-  documentText: { color: "#ffffff", fontSize: 13, fontWeight: "500", flex: 1, paddingRight: 8 },
-  documentStatusText: { fontSize: 11, color: "#a1a1aa" },
+  teamLeadBox: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#18181b", 
+    borderColor: "#27272a", 
+    borderWidth: 1, 
+    padding: wp(2.5), 
+    borderRadius: wp(2) 
+  },
+  tinyLabel: { 
+    color: "#a1a1aa", 
+    fontSize: fs(2.5) 
+  },
+  teamMemberName: { 
+    color: "#ffffff", 
+    fontSize: fs(3.2), 
+    fontWeight: "500" 
+  },
+  subLabel: { 
+    color: "#a1a1aa", 
+    fontSize: fs(3), 
+    marginBottom: hp(0.8) 
+  },
+  teammatesGrid: { 
+    flexDirection: "row", 
+    flexWrap: "wrap", 
+    gap: wp(1.5) 
+  },
+  teammatePill: { 
+    backgroundColor: "#27272a", 
+    paddingVertical: hp(0.5), 
+    paddingHorizontal: wp(2), 
+    borderRadius: wp(1.5) 
+  },
+  teammatePillText: { 
+    color: "#e4e4e7", 
+    fontSize: fs(3) 
+  },
 
-  chartsContainer: { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
-  circleWidget: { alignItems: "center", width: "22%", minWidth: 70 },
-  circleWrapper: { width: 80, height: 80, justifyContent: "center", alignItems: "center" },
-  circleIconContainer: { position: "absolute", justifyContent: "center", alignItems: "center" },
-  circleValue: { color: "#ffffff", fontSize: 16, fontWeight: "bold", marginTop: 4 },
-  circleLabel: { color: "#a1a1aa", fontSize: 10, textAlign: "center" },
-  circlePercentage: { color: "#71717a", fontSize: 9, marginTop: 1 },
+  marginVerticalBlock: { 
+    marginVertical: hp(1), 
+    gap: hp(1) 
+  },
+  documentBox: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    borderWidth: 1, 
+    borderRadius: wp(2), 
+    padding: wp(3) 
+  },
+  documentText: { 
+    color: "#ffffff", 
+    fontSize: fs(3.2), 
+    flex: 1, 
+    paddingRight: wp(2) 
+  },
+  documentStatusText: { 
+    fontSize: fs(2.8), 
+    fontWeight: "600" 
+  },
 
-  progressBarWrapper: { marginTop: 16 },
-  progressLabel: { color: "#ffffff", fontSize: 12, fontWeight: "500" },
-  progressPercentageText: { color: "#a1a1aa", fontSize: 12 },
-  progressBarTrack: { width: "100%", backgroundColor: "#27272a", height: 8, borderRadius: 4, overflow: "hidden" },
-  progressBarFill: { backgroundColor: "#22c55e", height: 8, borderRadius: 4 },
-  progressSubText: { color: "#71717a", fontSize: 11 },
+  circleWidget: { 
+    alignItems: "center", 
+    flex: 1 
+  },
+  circleWrapper: { 
+    width: wp(20), 
+    height: wp(20), 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  circleIconContainer: { 
+    position: "absolute" 
+  },
+  circleValue: { 
+    color: "#ffffff", 
+    fontSize: fs(4), 
+    fontWeight: "bold", 
+    marginTop: hp(0.8) 
+  },
+  circleLabel: { 
+    color: "#a1a1aa", 
+    fontSize: fs(2.8), 
+    textAlign: "center", 
+    marginTop: 2 
+  },
+  circlePercentage: { 
+    color: "#71717a", 
+    fontSize: fs(2.5), 
+    marginTop: 1 
+  },
+  chartsContainer: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    marginBottom: hp(2.5) 
+  },
 
-  quickCard: { flex: 1, marginBottom: 0, padding: 12, justifyContent: "space-between" },
-  quickValue: { color: "#ffffff", fontSize: 18, fontWeight: "bold", marginLeft: "auto" },
-  quickValueStatus: { color: "#ffffff", fontSize: 13, fontWeight: "bold", marginLeft: "auto" },
-  quickTitle: { color: "#a1a1aa", fontSize: 11, marginTop: 4 },
-  quickLink: { color: "#3b82f6", fontSize: 12, fontWeight: "500", marginTop: 6 },
+  progressBarWrapper: { 
+    marginTop: hp(0.5) 
+  },
+  progressLabel: { 
+    color: "#a1a1aa", 
+    fontSize: fs(3) 
+  },
+  progressPercentageText: { 
+    color: "#ffffff", 
+    fontSize: fs(3), 
+    fontWeight: "bold" 
+  },
+  progressBarTrack: { 
+    height: hp(0.8), 
+    backgroundColor: "#27272a", 
+    borderRadius: wp(1), 
+    overflow: "hidden" 
+  },
+  progressBarFill: { 
+    height: "100%", 
+    backgroundColor: "#3b82f6", 
+    borderRadius: wp(1) 
+  },
+  progressSubText: { 
+    color: "#71717a", 
+    fontSize: fs(2.8) 
+  },
 
-  taskListContainer: { gap: 8 },
-  taskListItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: "#27272a30", borderColor: "#27272a", borderWidth: 1, borderRadius: 8 },
-  taskTitle: { color: "#ffffff", fontSize: 13, fontWeight: "500" },
-  taskDue: { color: "#a1a1aa", fontSize: 11, marginTop: 2 },
+  quickCard: { 
+    flex: 1, 
+    marginBottom: 0, 
+    padding: wp(3) 
+  },
+  quickValue: { 
+    color: "#ffffff", 
+    fontSize: fs(5), 
+    fontWeight: "bold", 
+    marginLeft: "auto" 
+  },
+  quickValueStatus: { 
+    color: "#4ade80", 
+    fontSize: fs(3.2), 
+    fontWeight: "600", 
+    marginLeft: "auto" 
+  },
+  quickTitle: { 
+    color: "#a1a1aa", 
+    fontSize: fs(2.8), 
+    marginTop: hp(1) 
+  },
+  quickLink: { 
+    color: "#3b82f6", 
+    fontSize: fs(3), 
+    fontWeight: "600", 
+    marginTop: hp(0.5) 
+  },
 
-  badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  badgeText: { fontSize: 10, fontWeight: "600" }
+  taskListContainer: { 
+    gap: hp(1) 
+  },
+  taskListItem: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    backgroundColor: "#27272a30", 
+    padding: wp(2.5), 
+    borderRadius: wp(2), 
+    borderColor: "#27272a", 
+    borderWidth: 1 
+  },
+  taskTitle: { 
+    color: "#ffffff", 
+    fontSize: fs(3.2), 
+    fontWeight: "500" 
+  },
+  taskDue: { 
+    color: "#71717a", 
+    fontSize: fs(2.8), 
+    marginTop: 2 
+  }
 });

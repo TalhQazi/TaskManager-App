@@ -38,11 +38,14 @@ import {
   Settings,
   Clock10,
   Settings2,
+  Brain,
+  ClipboardCheck,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { s, wp, hp, fs } from '@/util/styles';
 
-const SIDEBAR_WIDTH = 280;
+const SIDEBAR_WIDTH = Math.min(320, wp(75));
 
 interface MenuItem {
   icon: React.ComponentType<{ color: string; size: number }>;
@@ -53,30 +56,26 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { icon: Megaphone, label: 'Announcements', route: '/announcements' },
   { icon: Clock, label: 'Attendance', route: '/(tabs)/clock' },
-  { label: 'Bug Reports',icon: Bug, route: '/(tabs)/bug'},
   { label: 'Company Information', icon: FileText, route: '/(tabs)/company-information'},
   { label: 'Daily Itinerary', route: '/(tabs)/itinerary', icon: MapPin },
-  
   { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
   { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
+  { label: 'EOD Reports', route: '/(tabs)/eod-reports', icon: ClipboardCheck },
   { icon: Calendar1, label: 'Event', route: '/(tabs)/event' },
   { icon: Image, label: 'Images', route: '/(tabs)/images' },
-  { label: 'Leave Requests', route: '/(tabs)/leaverequest', icon: Calendar },
-  { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' },
-  { label: 'My Notes', icon: Book, route: '/(tabs)/my-notes'},
-
+  { label: 'Leave Requests', route: '/(tabs)/leaverequest', icon: Calendar }, 
+  
+  { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' }, 
   { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
-  { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' },
+  { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' }, 
   { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
+ { label: 'Personal Notes', route: '/(tabs)/knowledgehub', icon: Book },
   { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
-  { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shoppinglists' },
+  { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shopping-lists' },
   { label: 'Theme Engine', route: '/(tabs)/theme-engine', icon: Settings },
   { label: 'Time Logs', route: '/(tabs)/time-logs', icon: Clock10 },
   { icon: Car, label: 'Travel Calendar', route: '/(tabs)/travelcalender' },
-{ icon: Settings2, label: 'Setting', route: '/(tabs)/home' }
-  /*{ icon: Calendar, label: 'Schedule', route: '/schedule' },
-  { icon: User, label: 'Profile', route: '/(tabs)/profile' },*/
-  
+  { icon: Settings2, label: 'Setting', route: '/(tabs)/setting' }
 ];
 
 interface SidebarProps {
@@ -92,7 +91,7 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  const effectiveWidth = Math.min(SIDEBAR_WIDTH, Math.max(240, Math.floor(width * 0.82)));
+  const effectiveWidth = Math.min(320, Math.max(240, Math.floor(width * 0.82)));
   const slideAnim = useRef(new Animated.Value(isLargeScreen ? 0 : -effectiveWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
@@ -169,102 +168,97 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
 
   const sidebarBody = (
     <View
-      style={[
+      style={s([
         styles.sidebar,
         {
           width: effectiveWidth,
-          paddingTop: insets.top + 16,
-          paddingBottom: insets.bottom + 16,
+          paddingTop: insets.top + hp(2),
+          paddingBottom: insets.bottom + hp(2),
         },
-      ]}
+      ])}
     >
-      {/* Close Button - Only on mobile drawer */}
       {!isLargeScreen && (
         <TouchableOpacity
-          style={styles.closeButton}
+          style={s(styles.closeButton)}
           onPress={closeSidebar}
           activeOpacity={0.7}
         >
-          <View style={styles.closeButtonBg}>
-            <X color="#f4f4f5" size={18} />
+          <View style={s(styles.closeButtonBg)}>
+            <X color="#f4f4f5" size={fs(4.5)} />
           </View>
         </TouchableOpacity>
       )}
 
-      {/* Logo Section */}
-      <View style={styles.logoSection}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>TaskManager</Text>
+      <View style={s(styles.logoSection)}>
+        <View style={s(styles.logoContainer)}>
+          <Text style={s(styles.logoText)}>TaskManager</Text>
         </View>
-        <Text style={styles.logoSubtitle}>Employee Portal</Text>
+        <Text style={s(styles.logoSubtitle)}>Employee Portal</Text>
       </View>
 
-      {/* User Card */}
-      <View style={styles.userCard}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>
+      <View style={s(styles.userCard)}>
+        <View style={s(styles.avatarContainer)}>
+          <Text style={s(styles.avatarText)}>
             {user?.fullName?.charAt(0)?.toUpperCase() ?? 'E'}
           </Text>
         </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
+        <View style={s(styles.userInfo)}>
+          <Text style={s(styles.userName)} numberOfLines={1}>
             {user?.fullName ?? 'Employee'}
           </Text>
-          <Text style={styles.userRole} numberOfLines={1}>
+          <Text style={s(styles.userRole)} numberOfLines={1}>
             {user?.jobTitle ?? 'Staff Member'}
           </Text>
         </View>
-        <View style={styles.statusIndicator}>
-          <View style={styles.statusDot} />
+        <View style={s(styles.statusIndicator)}>
+          <View style={s(styles.statusDot)} />
         </View>
       </View>
 
-      {/* Navigation Menu */}
-      <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.menuHeader}>Main Menu</Text>
+      <ScrollView style={s(styles.menuContainer)} showsVerticalScrollIndicator={false}>
+        <Text style={s(styles.menuHeader)}>Main Menu</Text>
         
-        {MENU_ITEMS.map((item,index) => {
+        {MENU_ITEMS.map((item, index) => {
           const isActive = isActiveRoute(item.route);
           const itemIconColor = isActive ? "#ffd27a" : "#a1a1aa";
 
           return (
             <TouchableOpacity
               key={index}
-              style={[
+              style={s([
                 styles.menuItem,
                 isActive && styles.menuItemActive,
-              ]}
+              ])}
               onPress={() => handleNavigate(item.route)}
               activeOpacity={0.8}
             >
-              <View style={styles.itemInnerLeftGroup}>
-                <item.icon color={itemIconColor} size={20} />
-                <Text style={[
+              <View style={s(styles.itemInnerLeftGroup)}>
+                <item.icon color={itemIconColor} size={fs(4.8)} />
+                <Text style={s([
                   styles.menuLabel,
                   isActive && styles.menuLabelActive,
-                ]}>
+                ])}>
                   {item.label}
                 </Text>
               </View>
               {isActive && (
-                <ChevronRight color="#ffd27a" size={16} />
+                <ChevronRight color="#ffd27a" size={fs(4)} />
               )}
             </TouchableOpacity>
           );
         })}
       </ScrollView>
 
-      {/* Bottom Actions */}
-      <View style={styles.bottomSection}>
-        <View style={styles.divider} />
+      <View style={s(styles.bottomSection)}>
+        <View style={s(styles.divider)} />
         
         <TouchableOpacity
-          style={styles.bottomItem}
+          style={s(styles.bottomItem)}
           onPress={handleLogout}
           activeOpacity={0.8}
         >
-          <LogOut color="#ef4444" size={20} />
-          <Text style={styles.logoutLabel}>Sign Out</Text>
+          <LogOut color="#ef4444" size={fs(4.8)} />
+          <Text style={s(styles.logoutLabel)}>Sign Out</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -282,8 +276,7 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
       onRequestClose={closeSidebar}
       statusBarTranslucent
     >
-      <View style={styles.modalContainer}>
-        {/* Backdrop */}
+      <View style={s(styles.modalContainer)}>
         <TouchableWithoutFeedback onPress={closeSidebar}>
           <Animated.View 
             style={[
@@ -294,7 +287,6 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
           />
         </TouchableWithoutFeedback>
 
-        {/* Sliding Sidebar Panel */}
         <Animated.View
           style={[
             styles.drawerPanel,
@@ -336,14 +328,14 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: 20,
-    right: 16,
+    top: hp(2.2),
+    right: wp(4),
     zIndex: 10001,
   },
   closeButtonBg: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(1.8),
     backgroundColor: '#18181b',
     borderWidth: 1,
     borderColor: '#27272a',
@@ -351,26 +343,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 14,
+    paddingHorizontal: wp(5),
+    paddingBottom: hp(1.8),
     borderBottomWidth: 1,
     borderBottomColor: '#27272a',
-    marginBottom: 20,
+    marginBottom: hp(2.5),
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: wp(3),
   },
   logoText: {
-    fontSize: 16,
+    fontSize: fs(4.2),
     fontWeight: '800',
     color: '#f4f4f5',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   logoSubtitle: {
-    fontSize: 12,
+    fontSize: fs(3),
     fontWeight: '500',
     color: '#71717a',
     marginTop: 2,
@@ -378,27 +370,27 @@ const styles = StyleSheet.create({
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 14,
-    marginBottom: 24,
-    padding: 12,
+    marginHorizontal: wp(3.5),
+    marginBottom: hp(2.8),
+    padding: wp(3),
     backgroundColor: '#133767',
-    borderWidth: .1,
+    borderWidth: 0.5,
     borderColor: '#ffffffd7',
-    borderRadius: 6,
-    gap: 12,
+    borderRadius: wp(2),
+    gap: wp(3),
   },
   avatarContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth:1,
-    borderColor:'#ffffff',
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
+    borderWidth: 1,
+    borderColor: '#ffffff',
     backgroundColor: '#133767',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 16,
+    fontSize: fs(4),
     fontWeight: '700',
     color: '#f4f4f5',
   },
@@ -406,58 +398,58 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userName: {
-    fontSize: 14,
+    fontSize: fs(3.5),
     fontWeight: '700',
     color: '#f4f4f5',
     marginBottom: 2,
   },
   userRole: {
-    fontSize: 11,
+    fontSize: fs(2.8),
     fontWeight: '500',
     color: '#71717a',
   },
   statusIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: wp(6),
+    height: wp(6),
+    borderRadius: wp(3),
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: wp(2.2),
+    height: wp(2.2),
+    borderRadius: wp(1.1),
     backgroundColor: '#10b981',
   },
   menuContainer: {
     flex: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: wp(3.5),
   },
   menuHeader: {
-    fontSize: 11,
+    fontSize: fs(2.8),
     fontWeight: '700',
     color: '#71717a',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 12,
-    paddingHorizontal: 4,
+    marginBottom: hp(1.5),
+    paddingHorizontal: wp(1),
   },
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginBottom: 4,
+    paddingVertical: hp(1.3),
+    paddingHorizontal: wp(3),
+    borderRadius: wp(1.8),
+    marginBottom: hp(0.5),
     borderWidth: 1,
     borderColor: 'transparent',
   },
   itemInnerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: wp(3),
     flex: 1,
   },
   menuItemActive: {
@@ -466,7 +458,7 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     color: '#a1a1aa',
-    fontSize: 13,
+    fontSize: fs(3.3),
     fontWeight: '600',
   },
   menuLabelActive: {
@@ -474,25 +466,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bottomSection: {
-    paddingHorizontal: 14,
-    paddingTop: 8,
+    paddingHorizontal: wp(3.5),
+    paddingTop: hp(1),
   },
   divider: {
     height: 1,
     backgroundColor: '#27272a',
-    marginBottom: 12,
+    marginBottom: hp(1.5),
   },
   bottomItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 6,
-    gap: 12,
-    marginBottom: 8,
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(1.3),
+    borderRadius: wp(1.8),
+    gap: wp(3),
+    marginBottom: hp(1),
   },
   logoutLabel: {
-    fontSize: 13,
+    fontSize: fs(3.3),
     fontWeight: '600',
     color: '#ef4444',
   },

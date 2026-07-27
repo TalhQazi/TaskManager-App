@@ -6,15 +6,13 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   SafeAreaView
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Polygon, Polyline, Circle } from 'react-native-svg';
 import { apiFetch } from '@/lib/admin/apiClient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, wp, hp, fs } from '@/util/styles';
 
-const { width } = Dimensions.get('window');
-
-// Converted styling classes to hex/rgba configurations for native style compilation
 const STAT_CARD_CONFIG = [
   { key: 'contacts',     label: 'Total Contacts',  icon: '👥', color: '#38bdf8', border: 'rgba(14, 165, 233, 0.2)', bg: 'rgba(14, 165, 233, 0.1)' },
   { key: 'companies',    label: 'Companies',        icon: '🏢', color: '#818cf8', border: 'rgba(99, 102, 241, 0.2)',  bg: 'rgba(99, 102, 241, 0.1)' },
@@ -36,7 +34,7 @@ const STAGE_CONFIG: Record<string, { barColors: string[]; text: string }> = {
 const TYPE_CONFIG: Record<string, { icon: string; bg: string; text: string; border: string }> = {
   deal:          { icon: '💼', bg: 'rgba(14, 165, 233, 0.1)',     text: '#38bdf8', border: 'rgba(14, 165, 233, 0.2)' },
   task:          { icon: '✅', bg: 'rgba(16, 185, 129, 0.1)', text: '#34d399', border: 'rgba(16, 185, 129, 0.2)' },
-  communication: { icon: 'rgba(139, 92, 246, 0.1)', bg: 'rgba(139, 92, 246, 0.1)',  text: '#a78bfa', border: 'rgba(139, 92, 246, 0.2)' },
+  communication: { icon: '💬', bg: 'rgba(139, 92, 246, 0.1)',  text: '#a78bfa', border: 'rgba(139, 92, 246, 0.2)' },
 };
 
 const PRIORITY_CONFIG: Record<string, { dot: string; text: string; bg: string; border: string }> = {
@@ -53,7 +51,6 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 };
 
-// Pure Native Frame Animation Implementation for numerical increments
 function CountUp({ target, duration = 1000, style }: { target: number; duration?: number; style?: any }) {
   const [count, setCount] = useState(0);
 
@@ -65,7 +62,7 @@ function CountUp({ target, duration = 1000, style }: { target: number; duration?
     const tick = (timestamp: number) => {
       if (!startTimestamp) startTimestamp = timestamp;
       const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // Cubic Out Easing
+      const eased = 1 - Math.pow(1 - progress, 3);
       setCount(Math.round(eased * target));
       
       if (progress < 1) {
@@ -80,7 +77,490 @@ function CountUp({ target, duration = 1000, style }: { target: number; duration?
   return <Text style={style}>{count.toLocaleString()}</Text>;
 }
 
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? '#0f1117' : '#F8FAFC'),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#171717' : '#FFFFFF'),
+    cardBgSub:       isDark ? 'rgba(30, 41, 59, 0.4)' : '#F1F5F9',
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? '#ffffff' : '#0F172A'),
+    textSecondary:   isDark ? '#94a3b8' : '#475569',
+    textMuted:       isDark ? '#64748b' : '#94A3B8',
+    textDark:        isDark ? '#737373' : '#64748B',
+    border:          isDark ? '#262626' : '#E2E8F0',
+    borderLight:     isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)',
+    primary:         uiTheme.customColors?.primary || '#0ea5e9',
+    accentBg:        'rgba(56, 189, 248, 0.15)',
+    accentBorder:    'rgba(56, 189, 248, 0.3)',
+    statusLive:      '#10b981',
+    statusSync:      '#f59e0b',
+    barFillDefault:  isDark ? '#404040' : '#CBD5E1',
+    barTrack:        isDark ? '#262626' : '#E2E8F0',
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    rootContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    topAccentBar: {
+      height: hp(0.4),
+      backgroundColor: colors.primary,
+      width: '100%',
+    },
+    scrollLayout: {
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(2.5),
+    },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: hp(2.5),
+    },
+    headerTitleGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(3),
+    },
+    headerIconContainer: {
+      width: wp(10.5),
+      height: wp(10.5),
+      borderRadius: wp(2.5),
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerIconText: {
+      fontSize: fs(5),
+    },
+    headerMainTitle: {
+      color: colors.text,
+      fontSize: fs(5.5),
+      fontWeight: '900',
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+      marginTop: hp(0.1),
+    },
+    statusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.borderLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: wp(2.5),
+      paddingVertical: hp(0.75),
+      borderRadius: wp(2),
+    },
+    statusDot: {
+      width: wp(1.5),
+      height: wp(1.5),
+      borderRadius: wp(0.75),
+      marginRight: wp(1.5),
+    },
+    statusBadgeText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+      fontWeight: '600',
+    },
+    errorContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.3)',
+      borderRadius: wp(3),
+      padding: wp(3),
+      marginBottom: hp(2),
+      gap: wp(2.5),
+    },
+    errorIcon: {
+      color: '#f87171',
+      fontSize: fs(4),
+    },
+    errorText: {
+      color: '#fca5a5',
+      fontSize: fs(3.2),
+      flex: 1,
+    },
+    loaderContainer: {
+      paddingVertical: hp(5),
+      alignItems: 'center',
+      gap: hp(1.5),
+    },
+    loaderText: {
+      color: colors.textMuted,
+      fontSize: fs(3.2),
+    },
+    statsFlexGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      gap: wp(3),
+      marginBottom: hp(2.5),
+    },
+    statCardItem: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderRadius: wp(4),
+      padding: wp(4),
+    },
+    statCardItemHalf: {
+      width: (wp(100) - wp(8) - wp(3)) / 2.2,
+    },
+    statCardItemWide: {
+      width: '100%',
+    },
+    statCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: hp(1.5),
+    },
+    statIconFrame: {
+      width: wp(9),
+      height: wp(9),
+      borderRadius: wp(2.5),
+      borderWidth: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    statIcon: {
+      fontSize: fs(4),
+    },
+    pulseDot: {
+      width: wp(1.2),
+      height: wp(1.2),
+      borderRadius: wp(0.6),
+      backgroundColor: '#10b981',
+    },
+    statValueText: {
+      fontSize: fs(6),
+      fontWeight: '800',
+    },
+    statLabelText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.5),
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop: hp(0.5),
+    },
+    chartBlockCard: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(4),
+      padding: wp(4),
+      marginBottom: hp(2.5),
+    },
+    chartHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: hp(2),
+    },
+    blockCardTitle: {
+      color: colors.text,
+      fontSize: fs(4),
+      fontWeight: '700',
+    },
+    blockCardSubtitle: {
+      color: colors.textDark,
+      fontSize: fs(3),
+      marginTop: hp(0.25),
+    },
+    countPillBadge: {
+      backgroundColor: colors.borderLight,
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+    },
+    countPillText: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+      fontWeight: '500',
+    },
+    emptyChartState: {
+      height: hp(15),
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    emptyStateText: {
+      color: colors.textDark,
+      fontSize: fs(3.2),
+    },
+    barsContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      height: hp(16),
+      paddingTop: hp(1.2),
+    },
+    barColumnWrapper: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    barValueLabel: {
+      fontSize: fs(2.5),
+      fontWeight: '700',
+      color: colors.textDark,
+      marginBottom: hp(0.5),
+    },
+    primaryHighlightText: {
+      color: '#38bdf8',
+    },
+    barTrackContainer: {
+      height: hp(10),
+      width: wp(3.5),
+      backgroundColor: colors.barTrack,
+      borderRadius: wp(1),
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    barFilling: {
+      width: '100%',
+      borderRadius: wp(1),
+    },
+    barAxisLabel: {
+      fontSize: fs(2.2),
+      color: colors.textDark,
+      marginTop: hp(0.75),
+      textTransform: 'uppercase',
+    },
+    stagesBlockSpace: {
+      gap: hp(2),
+      marginTop: hp(1.8),
+    },
+    stageRowsContainer: {
+      gap: hp(1.2),
+    },
+    stageHorizontalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(2.5),
+    },
+    stageLabelWidth: {
+      width: wp(18),
+    },
+    stageNameText: {
+      fontSize: fs(3),
+      fontWeight: '600',
+    },
+    stageProgressTrack: {
+      flex: 1,
+      height: hp(2.5),
+      backgroundColor: colors.barTrack,
+      borderRadius: wp(1.5),
+      overflow: 'hidden',
+    },
+    stageProgressFill: {
+      height: '100%',
+      borderRadius: wp(1.5),
+      justifyContent: 'center',
+      alignItems: 'flex-end',
+      paddingRight: wp(1.5),
+    },
+    stageCountInsideBar: {
+      color: '#ffffff',
+      fontSize: fs(2.2),
+      fontWeight: '700',
+    },
+    stagePercentWidth: {
+      width: wp(8),
+      alignItems: 'flex-end',
+    },
+    stagePercentText: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+      fontWeight: '700',
+    },
+    svgTrendContainer: {
+      backgroundColor: colors.borderLight,
+      borderRadius: wp(3),
+      padding: wp(2.5),
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    svgLabelTitle: {
+      fontSize: fs(2.2),
+      fontWeight: '700',
+      color: colors.textDark,
+      letterSpacing: 0.5,
+      marginBottom: hp(0.75),
+    },
+    svgLineGraph: {
+      width: '100%',
+      height: hp(7.5),
+    },
+    tabPanelCardContainer: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: wp(4),
+      overflow: 'hidden',
+      marginBottom: hp(2.5),
+    },
+    tabsHeaderTrack: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    tabButtonElement: {
+      flex: 1,
+      paddingVertical: hp(1.8),
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+    },
+    activeTabButtonElement: {
+      backgroundColor: colors.borderLight,
+      borderBottomWidth: 2,
+      borderBottomColor: colors.primary,
+    },
+    tabButtonLabelText: {
+      color: colors.textDark,
+      fontSize: fs(3.2),
+      fontWeight: '600',
+    },
+    activeTabButtonLabelText: {
+      color: colors.text,
+    },
+    tabbedPanelBodyContent: {
+      padding: wp(3),
+    },
+    emptyPanelBlock: {
+      paddingVertical: hp(4),
+      alignItems: 'center',
+    },
+    activityItemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: wp(3),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingVertical: hp(1.2),
+    },
+    activityIconBox: {
+      width: wp(8.5),
+      height: wp(8.5),
+      borderRadius: wp(2),
+      borderWidth: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    activityIconSymbolText: {
+      fontSize: fs(3.5),
+    },
+    activityContentMainDetails: {
+      flex: 1,
+    },
+    activityDescriptionPrimaryText: {
+      color: colors.text,
+      fontSize: fs(3.2),
+      lineHeight: fs(4.5),
+    },
+    activityMetadataSubLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: hp(0.4),
+    },
+    activityUserTextLabel: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+    },
+    metaSplitDot: {
+      color: colors.textDark,
+      marginHorizontal: wp(1),
+    },
+    activityTimeTextLabel: {
+      color: colors.textSecondary,
+      fontSize: fs(2.8),
+    },
+    followupItemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: hp(1.2),
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: wp(3),
+    },
+    calendarDateBlockBox: {
+      width: wp(10),
+      height: wp(10),
+      borderRadius: wp(2),
+      backgroundColor: colors.barTrack,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    calendarMonthAbbrText: {
+      fontSize: fs(2),
+      fontWeight: '700',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+    },
+    calendarDayNumberText: {
+      fontSize: fs(3.8),
+      fontWeight: '900',
+      color: colors.text,
+      lineHeight: fs(4),
+      marginTop: hp(0.1),
+    },
+    followupContentGroup: {
+      flex: 1,
+    },
+    followupContactNameText: {
+      color: colors.text,
+      fontSize: fs(3.5),
+      fontWeight: '600',
+    },
+    followupTaskDetailsSubtitle: {
+      color: colors.textDark,
+      fontSize: fs(3),
+      marginTop: hp(0.25),
+    },
+    priorityPillLabel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.5),
+      borderRadius: wp(1.5),
+      borderWidth: 1,
+      gap: wp(1.2),
+    },
+    priorityStatusDotIndicator: {
+      width: wp(1.2),
+      height: wp(1.2),
+      borderRadius: wp(0.6),
+    },
+    priorityPillLabelText: {
+      fontSize: fs(2.5),
+      fontWeight: '700',
+    },
+    footerNoteContainer: {
+      paddingVertical: hp(1.2),
+      alignItems: 'center',
+    },
+    footerTrackingText: {
+      color: colors.textDark,
+      fontSize: fs(2.8),
+    },
+  });
+}
+
 export default function CRMDashboard() {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,113 +584,107 @@ export default function CRMDashboard() {
   const maxDeals = Math.max(...monthlyDeals.map((d: any) => d.deals || 0), 1);
 
   return (
-    <SafeAreaView style={styles.rootContainer}>
-      {/* Top Accent Indicator */}
-      <View style={styles.topAccentBar} />
+    <SafeAreaView style={s(styles.rootContainer)}>
+      <View style={s(styles.topAccentBar)} />
 
-      <ScrollView contentContainerStyle={styles.scrollLayout} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={s(styles.scrollLayout)} showsVerticalScrollIndicator={false}>
         
-        {/* ── Header ── */}
-        <View style={styles.headerRow}>
-          <View style={styles.headerTitleGroup}>
-            <View style={styles.headerIconContainer}>
-              <Text style={styles.headerIconText}>📊</Text>
+        <View style={s(styles.headerRow)}>
+          <View style={s(styles.headerTitleGroup)}>
+            <View style={s(styles.headerIconContainer)}>
+              <Text style={s(styles.headerIconText)}>📊</Text>
             </View>
             <View>
-              <Text style={styles.headerMainTitle}>CRM Dashboard</Text>
-              <Text style={styles.headerSubtitle}>Pipeline health & follow-ups summary</Text>
+              <Text style={s(styles.headerMainTitle)}>CRM Dashboard</Text>
+              <Text style={s(styles.headerSubtitle)}>Pipeline health & follow-ups summary</Text>
             </View>
           </View>
           
-          <View style={styles.statusBadge}>
-            <View style={[styles.statusDot, { backgroundColor: loading ? '#f59e0b' : '#10b981' }]} />
-            <Text style={styles.statusBadgeText}>
+          <View style={s(styles.statusBadge)}>
+            <View style={s([styles.statusDot, { backgroundColor: loading ? colors.statusSync : colors.statusLive }])} />
+            <Text style={s(styles.statusBadgeText)}>
               {loading ? 'Syncing…' : 'Live'}
             </Text>
           </View>
         </View>
 
-        {/* ── Error Notification ── */}
         {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorIcon}>⚠</Text>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={s(styles.errorContainer)}>
+            <Text style={s(styles.errorIcon)}>⚠</Text>
+            <Text style={s(styles.errorText)}>{error}</Text>
           </View>
         )}
 
-        {/* ── Loading Skeleton Indicator ── */}
         {loading && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#38bdf8" />
-            <Text style={styles.loaderText}>Loading dashboard intelligence...</Text>
+          <View style={s(styles.loaderContainer)}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={s(styles.loaderText)}>Loading dashboard intelligence...</Text>
           </View>
         )}
 
         {!loading && data && (
           <>
-            {/* ── Stat Cards Block (Grid Equivalent) ── */}
-            <View style={styles.statsFlexGrid}>
+            <View style={s(styles.statsFlexGrid)}>
               {STAT_CARD_CONFIG.map((card) => {
                 const raw = metrics[card.key] ?? 0;
                 const isCurrency = card.key === 'pipelineValue' || card.key === 'revenue';
                 return (
                   <View
                     key={card.key}
-                    style={[
+                    style={s([
                       styles.statCardItem,
                       { borderColor: card.border },
                       card.wide ? styles.statCardItemWide : styles.statCardItemHalf
-                    ]}
+                    ])}
                   >
-                    <View style={styles.statCardHeader}>
-                      <View style={[styles.statIconFrame, { backgroundColor: card.bg, borderColor: card.border }]}>
-                        <Text style={styles.statIcon}>{card.icon}</Text>
+                    <View style={s(styles.statCardHeader)}>
+                      <View style={s([styles.statIconFrame, { backgroundColor: card.bg, borderColor: card.border }])}>
+                        <Text style={s(styles.statIcon)}>{card.icon}</Text>
                       </View>
-                      <View style={styles.pulseDot} />
+                      <View style={s(styles.pulseDot)} />
                     </View>
                     
                     {isCurrency ? (
-                      <Text style={[styles.statValueText, { color: card.color }]}>
+                      <Text style={s([styles.statValueText, { color: card.color }])}>
                         {formatCurrency(raw)}
                       </Text>
                     ) : (
-                      <CountUp target={raw} style={[styles.statValueText, { color: card.color }]} />
+                      <CountUp target={raw} style={s([styles.statValueText, { color: card.color }])} />
                     )}
                     
-                    <Text style={styles.statLabelText}>{card.label}</Text>
+                    <Text style={s(styles.statLabelText)}>{card.label}</Text>
                   </View>
                 );
               })}
             </View>
 
-            {/* ── Monthly Deals Bar Chart Container ── */}
-            <View style={styles.chartBlockCard}>
-              <View style={styles.chartHeaderRow}>
+            <View style={s(styles.chartBlockCard)}>
+              <View style={s(styles.chartHeaderRow)}>
                 <View>
-                  <Text style={styles.blockCardTitle}>Monthly Deals</Text>
-                  <Text style={styles.blockCardSubtitle}>Closed & expected deal volume</Text>
+                  <Text style={s(styles.blockCardTitle)}>Monthly Deals</Text>
+                  <Text style={s(styles.blockCardSubtitle)}>Closed & expected deal volume</Text>
                 </View>
-                <View style={styles.countPillBadge}>
-                  <Text style={styles.countPillText}>{monthlyDeals.length} Months</Text>
+                <View style={s(styles.countPillBadge)}>
+                  <Text style={s(styles.countPillText)}>{monthlyDeals.length} Months</Text>
                 </View>
               </View>
 
               {monthlyDeals.length === 0 ? (
-                <View style={styles.emptyChartState}><Text style={styles.emptyStateText}>No chart telemetry available</Text></View>
+                <View style={s(styles.emptyChartState)}><Text style={s(styles.emptyStateText)}>No chart telemetry available</Text></View>
               ) : (
-                <View style={styles.barsContainer}>
+                <View style={s(styles.barsContainer)}>
                   {monthlyDeals.map((item: any, i: number) => {
                     const pct = Math.max((item.deals || 0) / maxDeals * 100, 4);
                     const isMax = item.deals === maxDeals;
                     return (
-                      <View key={i} style={styles.barColumnWrapper}>
-                        <Text style={[styles.barValueLabel, isMax && styles.primaryHighlightText]}>
+                      <View key={i} style={s(styles.barColumnWrapper)}>
+                        <Text style={s([styles.barValueLabel, isMax && styles.primaryHighlightText])}>
                           {item.deals || 0}
                         </Text>
-                        <View style={styles.barTrackContainer}>
-                          <View style={[styles.barFilling, { height: `${pct}%`, backgroundColor: isMax ? '#0ea5e9' : '#404040' }]} />
+                        <View style={s(styles.barTrackContainer)}>
+                          <View style={s([styles.barFilling, { height: `${pct}%`, backgroundColor: isMax ? colors.primary : colors.barFillDefault }])} />
                         </View>
-                        <Text style={styles.barAxisLabel}>{item.month}</Text>
+                        <Text style={s(styles.barAxisLabel)}>{item.month}</Text>
                       </View>
                     );
                   })}
@@ -218,43 +692,41 @@ export default function CRMDashboard() {
               )}
             </View>
 
-            {/* ── Conversion Stages Card (React Native SVG Graph Integration) ── */}
-            <View style={styles.chartBlockCard}>
-              <Text style={styles.blockCardTitle}>Conversion Stages</Text>
-              <Text style={styles.blockCardSubtitle}>Stage-by-stage pipeline distribution</Text>
+            <View style={s(styles.chartBlockCard)}>
+              <Text style={s(styles.blockCardTitle)}>Conversion Stages</Text>
+              <Text style={s(styles.blockCardSubtitle)}>Stage-by-stage pipeline distribution</Text>
 
               {conversionStages.length === 0 ? (
-                <View style={styles.emptyChartState}><Text style={styles.emptyStateText}>No conversion distribution data</Text></View>
+                <View style={s(styles.emptyChartState)}><Text style={s(styles.emptyStateText)}>No conversion distribution data</Text></View>
               ) : (
-                <View style={styles.stagesBlockSpace}>
-                  <View style={styles.stageRowsContainer}>
+                <View style={s(styles.stagesBlockSpace)}>
+                  <View style={s(styles.stageRowsContainer)}>
                     {conversionStages.map((stage: any) => {
-                      const cfg = STAGE_CONFIG[stage.stage] || { barColors: ['#404040', '#525252'], text: '#94a3b8' };
+                      const cfg = STAGE_CONFIG[stage.stage] || { barColors: [colors.barFillDefault, colors.barFillDefault], text: colors.textSecondary };
                       return (
-                        <View key={stage.stage} style={styles.stageHorizontalRow}>
-                          <View style={styles.stageLabelWidth}>
-                            <Text style={[styles.stageNameText, { color: cfg.text }]}>{stage.stage}</Text>
+                        <View key={stage.stage} style={s(styles.stageHorizontalRow)}>
+                          <View style={s(styles.stageLabelWidth)}>
+                            <Text style={s([styles.stageNameText, { color: cfg.text }])}>{stage.stage}</Text>
                           </View>
                           
-                          <View style={styles.stageProgressTrack}>
-                            <View style={[styles.stageProgressFill, { width: `${Math.max(stage.percent, 5)}%`, backgroundColor: cfg.barColors[0] }]}>
-                              <Text style={styles.stageCountInsideBar}>{stage.count}</Text>
+                          <View style={s(styles.stageProgressTrack)}>
+                            <View style={s([styles.stageProgressFill, { width: `${Math.max(stage.percent, 5)}%`, backgroundColor: cfg.barColors[0] }])}>
+                              <Text style={s(styles.stageCountInsideBar)}>{stage.count}</Text>
                             </View>
                           </View>
                           
-                          <View style={styles.stagePercentWidth}>
-                            <Text style={styles.stagePercentText}>{stage.percent}%</Text>
+                          <View style={s(styles.stagePercentWidth)}>
+                            <Text style={s(styles.stagePercentText)}>{stage.percent}%</Text>
                           </View>
                         </View>
                       );
                     })}
                   </View>
 
-                  {/* SVG Trend Graph conversion running natively using react-native-svg lines */}
                   {conversionStages.length > 1 && (
-                    <View style={styles.svgTrendContainer}>
-                      <Text style={styles.svgLabelTitle}>TELEMETRY TREND</Text>
-                      <Svg viewBox="0 0 500 80" style={styles.svgLineGraph}>
+                    <View style={s(styles.svgTrendContainer)}>
+                      <Text style={s(styles.svgLabelTitle)}>TELEMETRY TREND</Text>
+                      <Svg viewBox="0 0 500 80" style={s(styles.svgLineGraph)}>
                         <Defs>
                           <LinearGradient id="trendGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                             <Stop offset="0%" stopColor="#38bdf8" stopOpacity={0.3} />
@@ -262,7 +734,6 @@ export default function CRMDashboard() {
                           </LinearGradient>
                         </Defs>
                         
-                        {/* Area Polygon */}
                         <Polygon
                           points={`0,80 ${conversionStages.map((s: any, i: number) => {
                             const x = (i / (conversionStages.length - 1)) * 500;
@@ -272,7 +743,6 @@ export default function CRMDashboard() {
                           fill="url(#trendGrad)"
                         />
                         
-                        {/* Stroke Line */}
                         <Polyline
                           points={conversionStages.map((s: any, i: number) => {
                             const x = (i / (conversionStages.length - 1)) * 500;
@@ -284,7 +754,6 @@ export default function CRMDashboard() {
                           strokeWidth="3"
                         />
                         
-                        {/* Node Dots */}
                         {conversionStages.map((s: any, i: number) => {
                           const x = (i / (conversionStages.length - 1)) * 500;
                           const y = 80 - (s.percent / 100) * 80;
@@ -299,47 +768,45 @@ export default function CRMDashboard() {
               )}
             </View>
 
-            {/* ── Tabbed View Section (Recent Activity / Follow-ups) ── */}
-            <View style={styles.tabPanelCardContainer}>
-              <View style={styles.tabsHeaderTrack}>
+            <View style={s(styles.tabPanelCardContainer)}>
+              <View style={s(styles.tabsHeaderTrack)}>
                 <TouchableOpacity
                   onPress={() => setActivePanel('activity')}
-                  style={[styles.tabButtonElement, activePanel === 'activity' && styles.activeTabButtonElement]}
+                  style={s([styles.tabButtonElement, activePanel === 'activity' && styles.activeTabButtonElement])}
                 >
-                  <Text style={[styles.tabButtonLabelText, activePanel === 'activity' && styles.activeTabButtonLabelText]}>
+                  <Text style={s([styles.tabButtonLabelText, activePanel === 'activity' && styles.activeTabButtonLabelText])}>
                     Recent Activity ({recentActivities.length})
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => setActivePanel('followups')}
-                  style={[styles.tabButtonElement, activePanel === 'followups' && styles.activeTabButtonElement]}
+                  style={s([styles.tabButtonElement, activePanel === 'followups' && styles.activeTabButtonElement])}
                 >
-                  <Text style={[styles.tabButtonLabelText, activePanel === 'followups' && styles.activeTabButtonLabelText]}>
+                  <Text style={s([styles.tabButtonLabelText, activePanel === 'followups' && styles.activeTabButtonLabelText])}>
                     Follow-ups ({upcomingFollowups.length})
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Panel Renderer Content */}
-              <View style={styles.tabbedPanelBodyContent}>
+              <View style={s(styles.tabbedPanelBodyContent)}>
                 {activePanel === 'activity' ? (
                   recentActivities.length === 0 ? (
-                    <View style={styles.emptyPanelBlock}><Text style={styles.emptyStateText}>No recent activity items</Text></View>
+                    <View style={s(styles.emptyPanelBlock)}><Text style={s(styles.emptyStateText)}>No recent activity items</Text></View>
                   ) : (
                     recentActivities.map((item: any) => {
                       const cfg = TYPE_CONFIG[item.type] || TYPE_CONFIG.communication;
                       return (
-                        <View key={item.id} style={styles.activityItemRow}>
-                          <View style={[styles.activityIconBox, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-                            <Text style={styles.activityIconSymbolText}>{cfg.icon}</Text>
+                        <View key={item.id} style={s(styles.activityItemRow)}>
+                          <View style={s([styles.activityIconBox, { backgroundColor: cfg.bg, borderColor: cfg.border }])}>
+                            <Text style={s(styles.activityIconSymbolText)}>{cfg.icon}</Text>
                           </View>
-                          <View style={styles.activityContentMainDetails}>
-                            <Text style={styles.activityDescriptionPrimaryText}>{item.text}</Text>
-                            <View style={styles.activityMetadataSubLine}>
-                              <Text style={styles.activityUserTextLabel}>{item.user}</Text>
-                              {item.time && <Text style={styles.metaSplitDot}>·</Text>}
-                              {item.time && <Text style={styles.activityTimeTextLabel}>{item.time}</Text>}
+                          <View style={s(styles.activityContentMainDetails)}>
+                            <Text style={s(styles.activityDescriptionPrimaryText)}>{item.text}</Text>
+                            <View style={s(styles.activityMetadataSubLine)}>
+                              <Text style={s(styles.activityUserTextLabel)}>{item.user}</Text>
+                              {item.time && <Text style={s(styles.metaSplitDot)}>·</Text>}
+                              {item.time && <Text style={s(styles.activityTimeTextLabel)}>{item.time}</Text>}
                             </View>
                           </View>
                         </View>
@@ -348,26 +815,26 @@ export default function CRMDashboard() {
                   )
                 ) : (
                   upcomingFollowups.length === 0 ? (
-                    <View style={styles.emptyPanelBlock}><Text style={styles.emptyStateText}>No upcoming tasks scheduled</Text></View>
+                    <View style={s(styles.emptyPanelBlock)}><Text style={s(styles.emptyStateText)}>No upcoming tasks scheduled</Text></View>
                   ) : (
                     upcomingFollowups.map((item: any) => {
                       const pCfg = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.Low;
                       const [month, day] = item.date ? item.date.split(' ') : ['', ''];
                       return (
-                        <View key={item.id} style={styles.followupItemRow}>
-                          <View style={styles.calendarDateBlockBox}>
-                            <Text style={styles.calendarMonthAbbrText}>{month}</Text>
-                            <Text style={styles.calendarDayNumberText}>{day}</Text>
+                        <View key={item.id} style={s(styles.followupItemRow)}>
+                          <View style={s(styles.calendarDateBlockBox)}>
+                            <Text style={s(styles.calendarMonthAbbrText)}>{month}</Text>
+                            <Text style={s(styles.calendarDayNumberText)}>{day}</Text>
                           </View>
                           
-                          <View style={styles.followupContentGroup}>
-                            <Text style={styles.followupContactNameText}>{item.contact}</Text>
-                            {item.task && <Text style={styles.followupTaskDetailsSubtitle}>{item.task}</Text>}
+                          <View style={s(styles.followupContentGroup)}>
+                            <Text style={s(styles.followupContactNameText)}>{item.contact}</Text>
+                            {item.task && <Text style={s(styles.followupTaskDetailsSubtitle)}>{item.task}</Text>}
                           </View>
 
-                          <View style={[styles.priorityPillLabel, { backgroundColor: pCfg.bg, borderColor: pCfg.border }]}>
-                            <View style={[styles.priorityStatusDotIndicator, { backgroundColor: pCfg.dot }]} />
-                            <Text style={[styles.priorityPillLabelText, { color: pCfg.text }]}>{item.priority}</Text>
+                          <View style={s([styles.priorityPillLabel, { backgroundColor: pCfg.bg, borderColor: pCfg.border }])}>
+                            <View style={s([styles.priorityStatusDotIndicator, { backgroundColor: pCfg.dot }])} />
+                            <Text style={s([styles.priorityPillLabelText, { color: pCfg.text }])}>{item.priority}</Text>
                           </View>
                         </View>
                       );
@@ -377,9 +844,8 @@ export default function CRMDashboard() {
               </View>
             </View>
 
-            {/* ── Footer Metadata View Legibility Block ── */}
-            <View style={styles.footerNoteContainer}>
-              <Text style={styles.footerTrackingText}>CRM Dashboard · Data updates dynamically on layout load</Text>
+            <View style={s(styles.footerNoteContainer)}>
+              <Text style={s(styles.footerTrackingText)}>CRM Dashboard · Data updates dynamically on layout load</Text>
             </View>
           </>
         )}
@@ -387,459 +853,3 @@ export default function CRMDashboard() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  rootContainer: {
-    flex: 1,
-    backgroundColor: '#0f1117',
-  },
-  topAccentBar: {
-    height: 3,
-    backgroundColor: '#38bdf8',
-    width: '100%',
-  },
-  scrollLayout: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  headerTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerIconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerIconText: {
-    fontSize: 20,
-  },
-  headerMainTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginTop: 1,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusBadgeText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    gap: 10,
-  },
-  errorIcon: {
-    color: '#f87171',
-    fontSize: 16,
-  },
-  errorText: {
-    color: '#fca5a5',
-    fontSize: 13,
-    flex: 1,
-  },
-  loaderContainer: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loaderText: {
-    color: '#64748b',
-    fontSize: 13,
-  },
-  statsFlexGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCardItem: {
-    backgroundColor: 'rgba(30, 41, 59, 0.4)',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-  },
-  statCardItemHalf: {
-    width: (width - 44) / 2,
-  },
-  statCardItemWide: {
-    width: '100%',
-  },
-  statCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statIconFrame: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statIcon: {
-    fontSize: 16,
-  },
-  pulseDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#10b981',
-  },
-  statValueText: {
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  statLabelText: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 4,
-  },
-  chartBlockCard: {
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-  },
-  chartHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  blockCardTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  blockCardSubtitle: {
-    color: '#737373',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  countPillBadge: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  countPillText: {
-    color: '#a3a3a3',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  emptyChartState: {
-    height: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    color: '#525252',
-    fontSize: 13,
-  },
-  barsContainer: {
-    flexDirection: 'row',
-    alignItems: 'end',
-    justifyContent: 'space-between',
-    height: 130,
-    paddingTop: 10,
-  },
-  barColumnWrapper: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  barValueLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#525252',
-    marginBottom: 4,
-  },
-  primaryHighlightText: {
-    color: '#38bdf8',
-  },
-  barTrackContainer: {
-    height: 80,
-    width: 14,
-    backgroundColor: '#262626',
-    borderRadius: 4,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  barFilling: {
-    width: '100%',
-    borderRadius: 4,
-  },
-  barAxisLabel: {
-    fontSize: 9,
-    color: '#737373',
-    marginTop: 6,
-    textTransform: 'uppercase',
-  },
-  stagesBlockSpace: {
-    gap: 16,
-    marginTop: 14,
-  },
-  stageRowsContainer: {
-    gap: 10,
-  },
-  stageHorizontalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  stageLabelWidth: {
-    width: 75,
-  },
-  stageNameText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  stageProgressTrack: {
-    flex: 1,
-    height: 20,
-    backgroundColor: '#262626',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  stageProgressFill: {
-    height: '100%',
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingRight: 6,
-  },
-  stageCountInsideBar: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  stagePercentWidth: {
-    width: 32,
-    alignItems: 'flex-end',
-  },
-  stagePercentText: {
-    color: '#737373',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  svgTrendContainer: {
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#262626',
-  },
-  svgLabelTitle: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#404040',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  svgLineGraph: {
-    width: '100%',
-    height: 60,
-  },
-  tabPanelCardContainer: {
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  tabsHeaderTrack: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderColor: '#262626',
-  },
-  tabButtonElement: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  activeTabButtonElement: {
-    backgroundColor: 'rgba(56, 189, 248, 0.04)',
-    borderBottomWidth: 2,
-    borderBottomColor: '#0ea5e9',
-  },
-  tabButtonLabelText: {
-    color: '#737373',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  activeTabButtonLabelText: {
-    color: '#ffffff',
-  },
-  tabbedPanelBodyContent: {
-    padding: 12,
-  },
-  emptyPanelBlock: {
-    paddingVertical: 30,
-    alignItems: 'center',
-  },
-  activityItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingall: 10,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#262626',
-    paddingVertical: 10,
-  },
-  activityIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  activityIconSymbolText: {
-    fontSize: 14,
-  },
-  activityContentMainDetails: {
-    flex: 1,
-  },
-  activityDescriptionPrimaryText: {
-    color: '#e5e5e5',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  activityMetadataSubLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-  },
-  activityUserTextLabel: {
-    color: '#737373',
-    fontSize: 11,
-  },
-  metaSplitDot: {
-    color: '#404040',
-    marginHorizontal: 4,
-  },
-  activityTimeTextLabel: {
-    color: '#525252',
-    fontSize: 11,
-  },
-  followupItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#262626',
-    gap: 12,
-  },
-  calendarDateBlockBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#262626',
-    borderWidth: 1,
-    borderColor: '#404040',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  calendarMonthAbbrText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#a3a3a3',
-    textTransform: 'uppercase',
-  },
-  calendarDayNumberText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#ffffff',
-    lineHeight: 16,
-    marginTop: 1,
-  },
-  followupContentGroup: {
-    flex: 1,
-  },
-  followupContactNameText: {
-    color: '#e5e5e5',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  followupTaskDetailsSubtitle: {
-    color: '#737373',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  priorityPillLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    gap: 5,
-  },
-  priorityStatusDotIndicator: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  priorityPillLabelText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  footerNoteContainer: {
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  footerTrackingText: {
-    color: '#404040',
-    fontSize: 11,
-  },
-});

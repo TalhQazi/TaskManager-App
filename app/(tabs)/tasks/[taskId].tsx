@@ -1,4 +1,4 @@
-import React, { useState, useCallback ,useRef, useEffect} from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Platform,Image, FlatList,
+  Platform,
+  Image,
+  FlatList,
 } from 'react-native';
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -40,6 +42,7 @@ import * as Sharing from 'expo-sharing';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { s, wp, hp, fs } from '@/util/styles';
 
 const STATUS_OPTIONS: { key: TaskStatus; label: string; color: string }[] = [
   { key: 'pending', label: 'Pending', color: '#F59E0B' },
@@ -61,284 +64,262 @@ export default function TaskDetailScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  useEffect(() => {
+    if (!taskId) return;
 
- useEffect(() => {
-  if (!taskId) return;
+    socketRef.current = io(SOCKET_URL, { transports: ['websocket'] });
+    const socket = socketRef.current;
 
-  socketRef.current = io(SOCKET_URL, { transports: ['websocket'] });
-  const socket = socketRef.current;
-
-  socket.on('connect', () => {
-    setIsSocketConnected(true);
-    socket.emit('joinTask', taskId);
-  });
-
-  socket.on('newComment', (newComment) => {
-   
-    queryClient.setQueryData(['task-comments', taskId], (oldData: any) => {
-      return oldData ? [...oldData, newComment] : [newComment];
-    });
-  });
-
-  return () => {
-    socket.emit('leaveTask', taskId);
-    socket.disconnect();
-  };
-}, [taskId, queryClient]);
-
-const renderImage = ({ item }: { item: string }) => (
-  <Image source={{ uri: item }} style={styles.image} />
-);
-
-const handleUploadPhoto = async () => {
-  try {
-   setUploading(true);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Allow access to photos");
-      return;
-    }
-
-  
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'], 
-      quality: 0.7,
-      allowsMultipleSelection: false,
+    socket.on('connect', () => {
+      setIsSocketConnected(true);
+      socket.emit('joinTask', taskId);
     });
 
-    if (result.canceled) return;
-
-    const image = result.assets[0];
-
-   
-    const token = await AsyncStorage.getItem('auth_token');
-
-    if (!token) {
-      Alert.alert("Error", "User not authenticated");
-      return;
-    }
-
-    
-    const formData = new FormData();
-
-    formData.append("files", {
-      uri: Platform.OS === 'android' ? image.uri : image.uri.replace('file://', ''),
-      name: image.fileName || `photo_${Date.now()}.jpg`,
-      type: image.mimeType || 'image/jpeg',
-    } as any);
-
-    formData.append("title", "Task Photo");
-    formData.append("description", "Photo Evidence");
-
-    console.log("UPLOAD URL:", `${API_BASE_URL}/tasks/upload`);
-
-   
-    const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-       
-      },
-      body: formData,
-    });
-
-    const text = await res.text();
-    console.log("UPLOAD RESPONSE:", text);
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error("Invalid server response");
-    }
-
-    if (!res.ok) {
-      throw new Error(data?.error?.message || "Upload failed");
-    }
-
-    if (data?.item?.attachment?.url) {
-    let imageUrl = data.item.attachment.url;
-
-    
-    if (!imageUrl.startsWith("data:image")) {
-      imageUrl = `data:image/jpeg;base64,${imageUrl}`;
-    }
-
-    setImages(prev => [...prev, imageUrl]);
-  }
-    setUploading(false);
-    Alert.alert("Success", "Photo uploaded successfully");
-
-  } catch (err: any) {
-    setUploading(false);
-    console.error("UPLOAD ERROR:", err);
-    Alert.alert("Error", err.message || "Upload failed");
-  }
-};
-
-const handleUploadDocument = async () => {
-  try {
-    setUploading(true)
-    const result = await DocumentPicker.getDocumentAsync({
-      type: "*/*", 
-      copyToCacheDirectory: true,
-    });
-
-    if (result.canceled) return;
-
-    const file = result.assets[0];
-
-    const token = await AsyncStorage.getItem('auth_token');
-
-    const formData = new FormData();
-
-    formData.append("files", {
-      uri: file.uri,
-      name: file.name,
-      type: file.mimeType || "application/octet-stream",
-    } as any);
-
-    formData.append("title", "Task File");
-    formData.append("description", "Task Attachment");
-
-    const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    const data = await res.json();
-
-    if (data?.item?.attachment?.url) {
-   
-    }
-    setUploading(false);
-    Alert.alert("Success", "File uploaded");
-  } catch (e) {
-    console.log(e);
-    setUploading(false);
-    Alert.alert("Error", "Upload failed");
-  }
-};
-
-const getFileType = (base64: string) => {
-  if (base64.includes("application/pdf")) return "pdf";
-  if (base64.includes("image")) return "image";
-  if (base64.includes("wordprocessingml")) return "doc";
-  return "file";
-};
-
-
-
-
-
-
-const openBase64File = async (base64Data: string, type: string) => {
-  try {
-    let mimeType = "*/*";
-    let extension = "file";
-
-    if (type === "pdf") {
-      mimeType = "application/pdf";
-      extension = "pdf";
-    } else if (type === "doc") {
-      mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-      extension = "docx";
-    } else if (type === "image") {
-      mimeType = "image/jpeg";
-      extension = "jpg";
-    }
-
-   
-    const fileName = `file_${Date.now()}.${extension}`;
-    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-
-    const base64 = base64Data.includes(",")
-      ? base64Data.split(",")[1]
-      : base64Data;
-
-    if (!base64) {
-      Alert.alert("Error", "Invalid file data");
-      return;
-    }
-
-    await FileSystem.writeAsStringAsync(fileUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    if (Platform.OS === "android") {
-      const contentUri = await FileSystem.getContentUriAsync(fileUri);
-
-      await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-        data: contentUri,
-        flags: 1, 
-        type: mimeType,
+    socket.on('newComment', (newComment) => {
+      queryClient.setQueryData(['task-comments', taskId], (oldData: any) => {
+        return oldData ? [...oldData, newComment] : [newComment];
       });
-    } else {
-     
-      await Sharing.shareAsync(fileUri, { mimeType });
-    }
-  } catch (e) {
-    console.error("❌ Open File Error:", e);
-    Alert.alert("Error", "No application found to open this file type.");
-  }
-};
-
-const openTaskFile = async (base64Data: string, type: string) => {
-  try {
-    setUploading(true); 
-    
-    let mimeType = "application/octet-stream";
-    let extension = "file";
-
-    
-    if (type === "pdf") {
-      mimeType = "application/pdf";
-      extension = "pdf";
-    } else if (type === "image") {
-      mimeType = "image/jpeg";
-      extension = "jpg";
-    } else if (type === "doc") {
-      mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-      extension = "docx";
-    }
-
-   
-    const fileName = `Task_${Date.now()}.${extension}`;
-    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-    const cleanBase64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
-
-    await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
-      encoding: FileSystem.EncodingType.Base64,
     });
 
-   
-    if (Platform.OS === 'android') {
-     
-      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+    return () => {
+      socket.emit('leaveTask', taskId);
+      socket.disconnect();
+    };
+  }, [taskId, queryClient]);
 
+  const renderImage = ({ item }: { item: string }) => (
+    <Image source={{ uri: item }} style={s(styles.image)} />
+  );
+
+  const handleUploadPhoto = async () => {
+    try {
+      setUploading(true);
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Allow access to photos");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], 
+        quality: 0.7,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled) return;
+
+      const image = result.assets[0];
+      const token = await AsyncStorage.getItem('auth_token');
+
+      if (!token) {
+        Alert.alert("Error", "User not authenticated");
+        return;
+      }
+
+      const formData = new FormData();
+
+      formData.append("files", {
+        uri: Platform.OS === 'android' ? image.uri : image.uri.replace('file://', ''),
+        name: image.fileName || `photo_${Date.now()}.jpg`,
+        type: image.mimeType || 'image/jpeg',
+      } as any);
+
+      formData.append("title", "Task Photo");
+      formData.append("description", "Photo Evidence");
+
+      console.log("UPLOAD URL:", `${API_BASE_URL}/tasks/upload`);
+
+      const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const text = await res.text();
+      console.log("UPLOAD RESPONSE:", text);
+
+      let data;
       try {
-        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid server response");
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error?.message || "Upload failed");
+      }
+
+      if (data?.item?.attachment?.url) {
+        let imageUrl = data.item.attachment.url;
+
+        if (!imageUrl.startsWith("data:image")) {
+          imageUrl = `data:image/jpeg;base64,${imageUrl}`;
+        }
+
+        setImages(prev => [...prev, imageUrl]);
+      }
+      setUploading(false);
+      Alert.alert("Success", "Photo uploaded successfully");
+
+    } catch (err: any) {
+      setUploading(false);
+      console.error("UPLOAD ERROR:", err);
+      Alert.alert("Error", err.message || "Upload failed");
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    try {
+      setUploading(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*", 
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const file = result.assets[0];
+      const token = await AsyncStorage.getItem('auth_token');
+
+      const formData = new FormData();
+
+      formData.append("files", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || "application/octet-stream",
+      } as any);
+
+      formData.append("title", "Task File");
+      formData.append("description", "Task Attachment");
+
+      const res = await fetch(`${API_BASE_URL}/tasks/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (data?.item?.attachment?.url) {
+        //Attachment loaded
+      }
+      setUploading(false);
+      Alert.alert("Success", "File uploaded");
+    } catch (e) {
+      console.log(e);
+      setUploading(false);
+      Alert.alert("Error", "Upload failed");
+    }
+  };
+
+  const getFileType = (base64: string) => {
+    if (base64.includes("application/pdf")) return "pdf";
+    if (base64.includes("image")) return "image";
+    if (base64.includes("wordprocessingml")) return "doc";
+    return "file";
+  };
+
+  const openBase64File = async (base64Data: string, type: string) => {
+    try {
+      let mimeType = "*/*";
+      let extension = "file";
+
+      if (type === "pdf") {
+        mimeType = "application/pdf";
+        extension = "pdf";
+      } else if (type === "doc") {
+        mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        extension = "docx";
+      } else if (type === "image") {
+        mimeType = "image/jpeg";
+        extension = "jpg";
+      }
+
+      const fileName = `file_${Date.now()}.${extension}`;
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+      const base64 = base64Data.includes(",")
+        ? base64Data.split(",")[1]
+        : base64Data;
+
+      if (!base64) {
+        Alert.alert("Error", "Invalid file data");
+        return;
+      }
+
+      await FileSystem.writeAsStringAsync(fileUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      if (Platform.OS === "android") {
+        const contentUri = await FileSystem.getContentUriAsync(fileUri);
+
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
           data: contentUri,
           flags: 1, 
           type: mimeType,
         });
-      } catch (e) {
+      } else {
         await Sharing.shareAsync(fileUri, { mimeType });
       }
-    } else {
-     
-      await Sharing.shareAsync(fileUri, { mimeType, UTI: type === 'pdf' ? 'com.adobe.pdf' : undefined });
+    } catch (e) {
+      console.error("❌ Open File Error:", e);
+      Alert.alert("Error", "No application found to open this file type.");
     }
-  } catch (error: any) {
-    console.log("Error", "Could not open file: " + error.message);
-    Alert.alert("Error", "Could not open file: " + error.message);
-  } finally {
-    setUploading(false);
-  }
-};
+  };
+
+  const openTaskFile = async (base64Data: string, type: string) => {
+    try {
+      setUploading(true); 
+      
+      let mimeType = "application/octet-stream";
+      let extension = "file";
+
+      if (type === "pdf") {
+        mimeType = "application/pdf";
+        extension = "pdf";
+      } else if (type === "image") {
+        mimeType = "image/jpeg";
+        extension = "jpg";
+      } else if (type === "doc") {
+        mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        extension = "docx";
+      }
+
+      const fileName = `Task_${Date.now()}.${extension}`;
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      const cleanBase64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+
+      await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(fileUri);
+
+        try {
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1, 
+            type: mimeType,
+          });
+        } catch (e) {
+          await Sharing.shareAsync(fileUri, { mimeType });
+        }
+      } else {
+        await Sharing.shareAsync(fileUri, { mimeType, UTI: type === 'pdf' ? 'com.adobe.pdf' : undefined });
+      }
+    } catch (error: any) {
+      console.log("Error", "Could not open file: " + error.message);
+      Alert.alert("Error", "Could not open file: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const { data: task, isLoading, error } = useQuery<Task>({
     queryKey: ['task', String(taskId || '')],
@@ -368,9 +349,8 @@ const openTaskFile = async (base64Data: string, type: string) => {
           assignedDate: String(t.createdAt ?? ''),
           dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '',
           notes: Array.isArray(t.notes) ? t.notes : [],
-           attachments: Array.isArray(t.attachments) ? t.attachments : [],
+          attachments: Array.isArray(t.attachments) ? t.attachments : [],
 
-        
           images: Array.isArray(t.attachments)
             ? t.attachments.map((item: any) => {
                 let img = item.url || "";
@@ -393,23 +373,14 @@ const openTaskFile = async (base64Data: string, type: string) => {
 
   const attachmentsArray = Array.isArray(task?.attachments) ? task.attachments : [];
 
- 
-/*   const imageAttachments = attachmentsArray
-  .map((a: any) => a.url)
-  .filter((url: string) => url?.startsWith("data:image"));
-
-const documentAttachments = attachmentsArray
-  .map((a: any) => a.url)
-  .filter((url: string) => !url?.startsWith("data:image"));*/
-
   const { data: comments, isLoading: commentsLoading } = useQuery({
-  queryKey: ['task-comments', taskId],
-  enabled: !!taskId,
-  queryFn: async () => {
-    const res = await apiRequest<{ items: any[] }>(`/tasks/${taskId}/comments`);
-    return res.data?.items || [];
-  },
-});
+    queryKey: ['task-comments', taskId],
+    enabled: !!taskId,
+    queryFn: async () => {
+      const res = await apiRequest<{ items: any[] }>(`/tasks/${taskId}/comments`);
+      return res.data?.items || [];
+    },
+  });
 
   const statusMutation = useMutation({
     mutationFn: async (newStatus: TaskStatus) => {
@@ -433,24 +404,8 @@ const documentAttachments = attachmentsArray
     },
   });
 
-  const _noteMutation = useMutation({
-    mutationFn: async (note: string) => {
-      try {
-        return { note };
-      } catch {
-        console.log('[Task] Note added (demo mode):', note);
-        return { note };
-      }
-    },
-    onSuccess: () => {
-      setNewNote('');
-      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
-    },
-  });
-
   const noteMutation = useMutation({
     mutationFn: async (note: string) => {
-     
       return await apiRequest(`/tasks/${taskId}/comments`, {
         method: 'POST',
         body: JSON.stringify({
@@ -460,14 +415,13 @@ const documentAttachments = attachmentsArray
     },
     onSuccess: () => {
       setNewNote('');
-       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
     },
     onError: (err) => {
       Alert.alert('Error', 'Failed to send note.');
       console.error(err);
     }
   });
-
 
   const handleStatusChange = useCallback(
     (newStatus: TaskStatus) => {
@@ -490,7 +444,7 @@ const documentAttachments = attachmentsArray
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={s(styles.loadingContainer)}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
@@ -498,145 +452,145 @@ const documentAttachments = attachmentsArray
 
   if (!taskId) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Invalid task id</Text>
+      <View style={s(styles.loadingContainer)}>
+        <Text style={s(styles.errorText)}>Invalid task id</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.loadingContainer}>
-        <AlertCircle color={Colors.error} size={48} style={{ marginBottom: 16 }} />
-        <Text style={styles.errorText}>
+      <View style={s(styles.loadingContainer)}>
+        <AlertCircle color={Colors.error} size={fs(10)} style={s({ marginBottom: hp(2) })} />
+        <Text style={s(styles.errorText)}>
           {error instanceof Error ? error.message : 'Failed to load task'}
         </Text>
         <TouchableOpacity 
-          style={styles.retryButton}
+          style={s(styles.retryButton)}
           onPress={() => queryClient.invalidateQueries({ queryKey: ['task', String(taskId)] })}
         >
-          <Text style={styles.retryButtonText}>Retry</Text>
+          <Text style={s(styles.retryButtonText)}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={s(styles.container)}>
       {/* Back Button Header */}
-      <View style={styles.header}>
+      <View style={s(styles.header)}>
         <TouchableOpacity 
-          style={styles.backButton} 
+          style={s(styles.backButton)} 
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <ChevronLeft color={Colors.text} size={24} />
+          <ChevronLeft color={Colors.text} size={fs(5.5)} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Task Details</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={s(styles.headerTitle)}>Task Details</Text>
+        <View style={s(styles.headerSpacer)} />
       </View>
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
+        style={s(styles.scrollView)}
+        contentContainerStyle={s(styles.contentContainer)}
         showsVerticalScrollIndicator={false}
       >
         {/* Task Title & Meta */}
-        <View style={styles.topSection}>
-          <View style={styles.metaRow}>
+        <View style={s(styles.topSection)}>
+          <View style={s(styles.metaRow)}>
             <StatusBadge status={task?.status} size="medium" />
             <PriorityIndicator priority={task?.priority} />
           </View>
-          <Text style={styles.title}>{task?.title}</Text>
-          <Text style={styles.description}>{task?.description}</Text>
+          <Text style={s(styles.title)}>{task?.title}</Text>
+          <Text style={s(styles.description)}>{task?.description}</Text>
         </View>
 
         {/* Task Details Card */}
-        <View style={styles.detailsCard}>
+        <View style={s(styles.detailsCard)}>
           {/* Location */}
-          <View style={styles.detailRow}>
-            <MapPin color={Colors.textTertiary} size={16} />
-            <Text style={styles.detailLabel}>Location</Text>
-            <Text style={styles.detailValue}>{task?.location || task?.category || 'Not specified'}</Text>
+          <View style={s(styles.detailRow)}>
+            <MapPin color={Colors.textTertiary} size={fs(3.8)} />
+            <Text style={s(styles.detailLabel)}>Location</Text>
+            <Text style={s(styles.detailValue)}>{task?.location || task?.category || 'Not specified'}</Text>
           </View>
-          <View style={styles.detailDivider} />
+          <View style={s(styles.detailDivider)} />
 
           {/* Assigned Date */}
-          <View style={styles.detailRow}>
-            <CalendarDays color={Colors.textTertiary} size={16} />
-            <Text style={styles.detailLabel}>Assigned</Text>
-            <Text style={styles.detailValue}>
+          <View style={s(styles.detailRow)}>
+            <CalendarDays color={Colors.textTertiary} size={fs(3.8)} />
+            <Text style={s(styles.detailLabel)}>Assigned</Text>
+            <Text style={s(styles.detailValue)}>
               {task?.assignedDate ? new Date(task.assignedDate).toLocaleDateString() : 'N/A'}
             </Text>
           </View>
-          <View style={styles.detailDivider} />
+          <View style={s(styles.detailDivider)} />
 
           {/* Due Date */}
-          <View style={styles.detailRow}>
-            <Clock color={Colors.textTertiary} size={16} />
-            <Text style={styles.detailLabel}>Due Date</Text>
-            <Text style={styles.detailValue}>{task?.dueDate || 'No due date'}</Text>
+          <View style={s(styles.detailRow)}>
+            <Clock color={Colors.textTertiary} size={fs(3.8)} />
+            <Text style={s(styles.detailLabel)}>Due Date</Text>
+            <Text style={s(styles.detailValue)}>{task?.dueDate || 'No due date'}</Text>
           </View>
-          <View style={styles.detailDivider} />
+          <View style={s(styles.detailDivider)} />
 
           {/* Assignees */}
-          <View style={styles.assigneesRow}>
-            <User color={Colors.textTertiary} size={16} />
-            <Text style={styles.detailLabel}>Assignees</Text>
+          <View style={s(styles.assigneesRow)}>
+            <User color={Colors.textTertiary} size={fs(3.8)} />
+            <Text style={s(styles.detailLabel)}>Assignees</Text>
           </View>
-          <View style={styles.assigneesList}>
+          <View style={s(styles.assigneesList)}>
             {task?.assignees && task.assignees.length > 0 ? (
               task.assignees.map((assignee, idx) => (
-                <View key={idx} style={styles.assigneeChip}>
-                  <Text style={styles.assigneeText}>{assignee}</Text>
+                <View key={idx} style={s(styles.assigneeChip)}>
+                  <Text style={s(styles.assigneeText)}>{assignee}</Text>
                 </View>
               ))
             ) : (
-              <Text style={styles.noAssigneesText}>No assignees</Text>
+              <Text style={s(styles.noAssigneesText)}>No assignees</Text>
             )}
           </View>
         </View>
 
         {/* Status Update Section */}
-        <View style={styles.statusSection}>
-          <Text style={styles.sectionTitle}>Task Status</Text>
+        <View style={s(styles.statusSection)}>
+          <Text style={s(styles.sectionTitle)}>Task Status</Text>
           
           {/* Current Status Display */}
           <TouchableOpacity 
-            style={styles.currentStatusBtn}
+            style={s(styles.currentStatusBtn)}
             onPress={() => setShowStatusDropdown(!showStatusDropdown)}
           >
-            <View style={[styles.statusDot, { backgroundColor: 
+            <View style={s([styles.statusDot, { backgroundColor: 
               task?.status === 'completed' ? '#22C55E' : 
               task?.status === 'in_progress' ? '#3B82F6' : '#F59E0B'
-            }]} />
-            <Text style={styles.currentStatusText}>
+            }])} />
+            <Text style={s(styles.currentStatusText)}>
               {task?.status?.replace('_', ' ')?.toUpperCase()}
             </Text>
           </TouchableOpacity>
 
           {/* Status Options Dropdown */}
           {showStatusDropdown && (
-            <View style={styles.statusDropdown}>
+            <View style={s(styles.statusDropdown)}>
               {STATUS_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option.key}
-                  style={[
+                  style={s([
                     styles.statusOption,
                     task?.status === option.key && styles.statusOptionActive
-                  ]}
+                  ])}
                   onPress={() => handleStatusChange(option.key)}
                   disabled={statusMutation.isPending || task?.status === option.key}
                 >
-                  <View style={[styles.statusDot, { backgroundColor: option.color }]} />
-                  <Text style={[
+                  <View style={s([styles.statusDot, { backgroundColor: option.color }])} />
+                  <Text style={s([
                     styles.statusOptionText,
                     task?.status === option.key && styles.statusOptionTextActive
-                  ]}>
+                  ])}>
                     {option.label}
                   </Text>
                   {task?.status === option.key && (
-                    <CheckCircle2 color={option.color} size={16} style={styles.statusCheck} />
+                    <CheckCircle2 color={option.color} size={fs(3.8)} style={s(styles.statusCheck)} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -644,81 +598,68 @@ const documentAttachments = attachmentsArray
           )}
 
           {/* Quick Action Buttons */}
-          <View style={styles.quickActions}>
+          <View style={s(styles.quickActions)}>
             {task?.status === 'pending' && (
               <TouchableOpacity
-                style={[styles.actionBtn, styles.startBtn]}
+                style={s([styles.actionBtn, styles.startBtn])}
                 onPress={() => handleStatusChange('in_progress')}
                 disabled={statusMutation.isPending}
               >
-                <Loader color="#FFFFFF" size={18} />
-                <Text style={styles.actionBtnText}>Start Task</Text>
+                <Loader color="#FFFFFF" size={fs(4.2)} />
+                <Text style={s(styles.actionBtnText)}>Start Task</Text>
               </TouchableOpacity>
             )}
             {task?.status === 'in_progress' && (
               <TouchableOpacity
-                style={[styles.actionBtn, styles.completeBtn]}
+                style={s([styles.actionBtn, styles.completeBtn])}
                 onPress={() => handleStatusChange('completed')}
                 disabled={statusMutation.isPending}
               >
-                <CheckCircle2 color="#FFFFFF" size={18} />
-                <Text style={styles.actionBtnText}>Mark Complete</Text>
+                <CheckCircle2 color="#FFFFFF" size={fs(4.2)} />
+                <Text style={s(styles.actionBtnText)}>Mark Complete</Text>
               </TouchableOpacity>
             )}
             {task?.status === 'completed' && (
-              <View style={styles.completedBanner}>
-                <CheckCircle2 color={Colors.success} size={20} />
-                <Text style={styles.completedText}>Task Completed</Text>
+              <View style={s(styles.completedBanner)}>
+                <CheckCircle2 color={Colors.success} size={fs(4.8)} />
+                <Text style={s(styles.completedText)}>Task Completed</Text>
               </View>
             )}
           </View>
         </View>
 
         {/* Notes Section */}
-        <View style={styles.notesSection}>
-         {/* <View style={styles.notesTitleRow}>
-            <MessageSquare color={Colors.primary} size={18} />
-            <Text style={styles.sectionTitle}>Notes ({task.notes.length})</Text>
+        <View style={s(styles.notesSection)}>
+          <View style={s(styles.notesSection)}>
+            <View style={s(styles.notesTitleRow)}>
+              <MessageSquare color={Colors.primary} size={fs(4.2)} />
+              <Text style={s(styles.sectionTitle)}>
+                Comments ({comments?.length || 0})
+              </Text>
+            </View>
+
+            {commentsLoading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : comments?.length === 0 ? (
+              <Text style={s(styles.noAssigneesText)}>No comments yet.</Text>
+            ) : (
+              comments?.map((comment: any) => (
+                <View key={comment.id || comment._id} style={s(styles.commentContainer)}>
+                  <View style={s(styles.commentHeader)}>
+                    <Text style={s(styles.commentAuthor)}>{comment.authorUsername}</Text>
+                    <Text style={s(styles.commentDate)}>
+                      {new Date(comment.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={s(styles.noteText)}>{comment.message}</Text> 
+                </View>
+              ))
+            )}
           </View>
 
-          task.notes.map((note, idx) => (
-            <View key={idx} style={styles.noteItem}>
-              <View style={styles.noteBullet} />
-              <Text style={styles.noteText}>{note}</Text>
-            </View>
-          ))*/}
-          <View style={styles.notesSection}>
-  <View style={styles.notesTitleRow}>
-    <MessageSquare color={Colors.primary} size={18} />
-    <Text style={styles.sectionTitle}>
-      Comments ({comments?.length || 0})
-    </Text>
-  </View>
-
-  {commentsLoading ? (
-    <ActivityIndicator size="small" color={Colors.primary} />
-  ) : comments?.length === 0 ? (
-    <Text style={styles.noAssigneesText}>No comments yet.</Text>
-  ) : (
-    comments?.map((comment: any) => (
-      <View key={comment.id || comment._id} style={styles.commentContainer}>
-        <View style={styles.commentHeader}>
-          <Text style={styles.commentAuthor}>{comment.authorUsername}</Text>
-          <Text style={styles.commentDate}>
-            {new Date(comment.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-        <Text style={styles.noteText}>{comment.message}</Text> 
-      </View>
-    ))
-  )}
-
- 
-</View>
-
-          <View style={styles.noteInputRow}>
+          <View style={s(styles.noteInputRow)}>
             <TextInput
-              style={styles.noteInput}
+              style={s(styles.noteInput)}
               placeholder="Add a note..."
               placeholderTextColor={Colors.textTertiary}
               value={newNote}
@@ -727,59 +668,59 @@ const documentAttachments = attachmentsArray
               testID="task-note-input"
             />
             <TouchableOpacity
-              style={[styles.noteSendBtn, !newNote.trim() && styles.noteSendBtnDisabled]}
+              style={s([styles.noteSendBtn, !newNote.trim() && styles.noteSendBtnDisabled])}
               onPress={handleAddNote}
               disabled={!newNote.trim() || noteMutation.isPending}
             >
-              <Send color={newNote.trim() ? Colors.primary : Colors.textTertiary} size={18} />
+              <Send color={newNote.trim() ? Colors.primary : Colors.textTertiary} size={fs(4.2)} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 10 }}>
-     <View style={styles.gallery}>
-  {attachmentsArray.map((item: any, index: number) => {
-  const url = item.url;
-  const fileType = getFileType(url);
+          <ScrollView contentContainerStyle={s({ padding: wp(2.5) })}>
+            <View style={s(styles.gallery)}>
+              {attachmentsArray.map((item: any, index: number) => {
+                const url = item.url;
+                const fileType = getFileType(url);
 
-  return (
-    <TouchableOpacity
-      key={index}
-      style={styles.fileButton}
-      activeOpacity={0.7}
-   
-    onPress={() => openTaskFile(url, fileType)}
-    >
-      <MaterialIcons name="insert-drive-file" size={18} color="#333" />
-
-      <Text style={styles.fileButtonText}>
-        File {index + 1}
-      </Text>
-    </TouchableOpacity>
-  );
-})}
-  </View>
-
-</ScrollView>
-          
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={s(styles.fileButton)}
+                    activeOpacity={0.7}
+                    onPress={() => openTaskFile(url, fileType)}
+                  >
+                    <MaterialIcons name="insert-drive-file" size={fs(4.2)} color="#333" />
+                    <Text style={s(styles.fileButtonText)}>
+                      File {index + 1}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
 
         {/* Photo Upload */}
-        <TouchableOpacity style={styles.uploadBtn} activeOpacity={0.7} onPress={handleUploadDocument} 
-        disabled={uploading}>
-         {uploading ? (
-    <>
-      <ActivityIndicator size="small" color={Colors.secondary} />
-      <Text style={styles.uploadBtnText}>Uploading...</Text>
-    </>
-  ) : (
-    <>
-      <Camera color={Colors.secondary} size={20} />
-      <Text style={styles.uploadBtnText}>Upload Photo Evidence</Text>
-    </>
-  )}
+        <TouchableOpacity 
+          style={s(styles.uploadBtn)} 
+          activeOpacity={0.7} 
+          onPress={handleUploadDocument} 
+          disabled={uploading}
+        >
+          {uploading ? (
+            <>
+              <ActivityIndicator size="small" color={Colors.secondary} />
+              <Text style={s(styles.uploadBtnText)}>Uploading...</Text>
+            </>
+          ) : (
+            <>
+              <Camera color={Colors.secondary} size={fs(4.8)} />
+              <Text style={s(styles.uploadBtnText)}>Upload Photo Evidence</Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
+        <View style={s({ height: hp(5) })} />
       </ScrollView>
     </View>
   );
@@ -787,67 +728,66 @@ const documentAttachments = attachmentsArray
 
 const styles = StyleSheet.create({
   fileButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  backgroundColor: '#f2f2f2',
-  borderRadius: 8,
-  marginVertical: 6,marginHorizontal: 4,
-  
-},
-
-fileButtonText: {
-  marginLeft: 8,
-  fontSize: 15,
-  color: '#333',
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: hp(1.2),
+    paddingHorizontal: wp(3.5),
+    backgroundColor: '#f2f2f2',
+    borderRadius: wp(2),
+    marginVertical: hp(0.8),
+    marginHorizontal: wp(1),
+  },
+  fileButtonText: {
+    marginLeft: wp(2),
+    fontSize: fs(3.5),
+    color: '#333',
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-   gallery: {
+  gallery: {
     flexDirection: 'row',
     flexWrap: 'wrap', 
-    marginTop: 10,
+    marginTop: hp(1.2),
   },
   image: {
     width: '30%',      
     aspectRatio: 1,    
     margin: '1.5%',
-    borderRadius: 8,
+    borderRadius: wp(2),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingHorizontal: wp(4),
+    paddingTop: hp(1.5),
+    paddingBottom: hp(1),
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(3),
     backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: fs(4.5),
     fontWeight: '700' as const,
     color: Colors.text,
   },
   headerSpacer: {
-    width: 40,
+    width: wp(10),
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingHorizontal: wp(5),
+    paddingTop: hp(1),
+    paddingBottom: hp(3),
   },
   loadingContainer: {
     flex: 1,
@@ -856,48 +796,48 @@ fileButtonText: {
     backgroundColor: Colors.background,
   },
   errorText: {
-    fontSize: 16,
+    fontSize: fs(3.8),
     color: Colors.error || '#EF4444',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: hp(2),
   },
   retryButton: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: wp(6),
+    paddingVertical: hp(1.5),
+    borderRadius: wp(3),
   },
   retryButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: fs(3.2),
     fontWeight: '600' as const,
   },
   topSection: {
-    marginBottom: 16,
+    marginBottom: hp(2),
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: wp(2),
+    marginBottom: hp(1.5),
   },
   title: {
-    fontSize: 22,
+    fontSize: fs(5),
     fontWeight: '700' as const,
     color: Colors.text,
-    lineHeight: 28,
-    marginBottom: 8,
+    lineHeight: fs(6.5),
+    marginBottom: hp(1),
   },
   description: {
-    fontSize: 14,
+    fontSize: fs(3.2),
     color: Colors.textSecondary,
-    lineHeight: 20,
+    lineHeight: fs(4.5),
   },
   detailsCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: wp(3.5),
+    padding: wp(4),
+    marginBottom: hp(2),
     shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
@@ -907,21 +847,21 @@ fileButtonText: {
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: wp(2),
   },
   assigneesRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: wp(2),
+    marginBottom: hp(1),
   },
   detailLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: fs(3),
     color: Colors.textSecondary,
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: fs(3.2),
     fontWeight: '600' as const,
     color: Colors.text,
     flexShrink: 1,
@@ -930,71 +870,71 @@ fileButtonText: {
   detailDivider: {
     height: 1,
     backgroundColor: Colors.borderLight,
-    marginVertical: 12,
+    marginVertical: hp(1.5),
   },
   assigneesList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    paddingLeft: 24,
+    gap: wp(2),
+    paddingLeft: wp(6),
   },
   assigneeChip: {
     backgroundColor: Colors.infoLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: wp(2.5),
+    paddingVertical: hp(0.5),
+    borderRadius: wp(3),
   },
   assigneeText: {
-    fontSize: 12,
+    fontSize: fs(2.8),
     color: Colors.secondary,
     fontWeight: '500' as const,
   },
   noAssigneesText: {
-    fontSize: 13,
+    fontSize: fs(3),
     color: Colors.textTertiary,
     fontStyle: 'italic',
   },
   statusSection: {
-    marginBottom: 20,
+    marginBottom: hp(2.5),
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: fs(3.5),
     fontWeight: '700' as const,
     color: Colors.text,
-    marginBottom: 12,
+    marginBottom: hp(1.5),
   },
   currentStatusBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: wp(2),
     backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1.5),
+    borderRadius: wp(3),
+    marginBottom: hp(1.5),
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: wp(2.5),
+    height: wp(2.5),
+    borderRadius: wp(1.25),
   },
   currentStatusText: {
-    fontSize: 14,
+    fontSize: fs(3.2),
     fontWeight: '600' as const,
     color: Colors.text,
   },
   statusDropdown: {
     backgroundColor: Colors.surface,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: wp(3),
+    marginBottom: hp(1.5),
     overflow: 'hidden',
   },
   statusOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: wp(2.5),
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1.5),
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
@@ -1003,7 +943,7 @@ fileButtonText: {
   },
   statusOptionText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: fs(3.2),
     fontWeight: '500' as const,
     color: Colors.text,
   },
@@ -1015,15 +955,15 @@ fileButtonText: {
     marginLeft: 'auto',
   },
   quickActions: {
-    marginTop: 8,
+    marginTop: hp(1),
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
+    gap: wp(2),
+    paddingVertical: hp(1.8),
+    borderRadius: wp(3),
   },
   startBtn: {
     backgroundColor: Colors.secondary,
@@ -1032,7 +972,7 @@ fileButtonText: {
     backgroundColor: Colors.success,
   },
   actionBtnText: {
-    fontSize: 15,
+    fontSize: fs(3.5),
     fontWeight: '600' as const,
     color: '#FFFFFF',
   },
@@ -1040,67 +980,67 @@ fileButtonText: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: wp(2),
     backgroundColor: Colors.successLight,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: wp(3),
+    paddingVertical: hp(1.8),
   },
   completedText: {
-    fontSize: 15,
+    fontSize: fs(3.5),
     fontWeight: '600' as const,
     color: Colors.success,
   },
   notesSection: {
-    marginBottom: 20,
+    marginBottom: hp(2.5),
   },
   notesTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+    gap: wp(2),
+    marginBottom: hp(1.2),
   },
   noteItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 8,
-    paddingLeft: 4,
+    gap: wp(2.5),
+    marginBottom: hp(1),
+    paddingLeft: wp(1),
   },
   noteBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: wp(1.5),
+    height: wp(1.5),
+    borderRadius: wp(0.75),
     backgroundColor: Colors.secondary,
-    marginTop: 6,
+    marginTop: hp(0.8),
   },
   noteText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: fs(3.2),
     color: Colors.text,
-    lineHeight: 20,
+    lineHeight: fs(4.5),
   },
   noteInputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
-    marginTop: 8,
+    gap: wp(2),
+    marginTop: hp(1),
   },
   noteInput: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 14,
+    borderRadius: wp(3),
+    padding: wp(3),
+    fontSize: fs(3.2),
     color: Colors.text,
-    minHeight: 44,
-    maxHeight: 100,
+    minHeight: hp(5.5),
+    maxHeight: hp(12),
     borderWidth: 1,
     borderColor: Colors.border,
   },
   noteSendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: wp(11),
+    height: wp(11),
+    borderRadius: wp(3),
     backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1114,41 +1054,39 @@ fileButtonText: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: wp(2),
     backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: wp(3),
+    paddingVertical: hp(1.8),
     borderWidth: 1.5,
     borderColor: Colors.secondary,
     borderStyle: 'dashed',
   },
   uploadBtnText: {
-    fontSize: 14,
+    fontSize: fs(3.2),
     fontWeight: '600' as const,
     color: Colors.secondary,
   },
-
-
   commentContainer: {
-  backgroundColor: Colors.surface,
-  padding: 12,
-  borderRadius: 10,
-  marginBottom: 10,
-  borderWidth: 1,
-  borderColor: Colors.borderLight,
-},
-commentHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  marginBottom: 4,
-},
-commentAuthor: {
-  fontSize: 13,
-  fontWeight: '700',
-  color: Colors.primary,
-},
-commentDate: {
-  fontSize: 11,
-  color: Colors.textTertiary,
-},
+    backgroundColor: Colors.surface,
+    padding: wp(3),
+    borderRadius: wp(2.5),
+    marginBottom: hp(1.2),
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: hp(0.5),
+  },
+  commentAuthor: {
+    fontSize: fs(3),
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  commentDate: {
+    fontSize: fs(2.5),
+    color: Colors.textTertiary,
+  },
 });

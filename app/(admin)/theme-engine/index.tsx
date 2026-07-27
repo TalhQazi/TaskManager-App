@@ -1,151 +1,256 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
-  Text,
   View,
+  Text,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Modal,
-  SafeAreaView,
-  Dimensions,
   TextInput,
-  Alert
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Alert,
 } from "react-native";
-import { Palette, RefreshCw, ChevronRight, X } from "lucide-react-native";
+import { Palette, RefreshCw, Check, ChevronDown } from "lucide-react-native";
+import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 
-const { height } = Dimensions.get("window");
+export const THEME_DEFAULTS: Record<string, string> = {
+  "dark-minimal": "#f8fafc",
+  "neon-tech": "#e0f7fa",
+  "metallic-elite": "#d4af37",
+  "executive-black": "#f3f4f6",
+  "high-contrast": "#ffffff",
+  "energy-mode": "#ffedd5",
+  "crystal-white": "#000000",
+};
 
-interface ConfigurationOption {
-  id: string;
-  name: string;
-}
+export const THEME_PRESETS: Record<string, {
+  primary: string;
+  secondary: string;
+  accent: string;
+  headerBg: string;
+  sidebarBg: string;
+  dashboardBg: string;
+  cardBg: string;
+  sidebarIcon: string;
+  dashboardIcon: string;
+  sidebarText: string;
+  glowIntensity: number;
+}> = {
+  "dark-minimal": {
+    primary: "#133767", secondary: "#3b82f6", accent: "#8b5cf6",
+    headerBg: "#133767", sidebarBg: "#020617", dashboardBg: "#0f172a",
+    cardBg: "rgba(30, 41, 59, 0.7)", sidebarIcon: "#ffffff", dashboardIcon: "#3b82f6", sidebarText: "#ffffff",
+    glowIntensity: 50,
+  },
+  "neon-tech": {
+    primary: "#00f5ff", secondary: "#00c6ff", accent: "#8b5cf6",
+    headerBg: "#030014", sidebarBg: "#06061a", dashboardBg: "#030014",
+    cardBg: "rgba(0, 245, 255, 0.03)", sidebarIcon: "#e0f7fa", dashboardIcon: "#00f5ff", sidebarText: "#e0f7fa",
+    glowIntensity: 60,
+  },
+  "metallic-elite": {
+    primary: "#d4af37", secondary: "#c0a030", accent: "#e8c84e",
+    headerBg: "#1a1a1a", sidebarBg: "rgba(17, 17, 17, 0.8)", dashboardBg: "#1a1a1a",
+    cardBg: "#2a2a2a", 
+    sidebarIcon: "#d4af37", dashboardIcon: "#d4af37", sidebarText: "#d4af37",
+    glowIntensity: 55,
+  },
+  "executive-black": {
+    primary: "#f3f4f6", secondary: "#d1d5db", accent: "#9ca3af",
+    headerBg: "#0a0a0a", sidebarBg: "#050505", dashboardBg: "#0a0a0a",
+    cardBg: "rgba(20, 20, 20, 0.8)", sidebarIcon: "#f3f4f6", dashboardIcon: "#f3f4f6", sidebarText: "#f3f4f6",
+    glowIntensity: 40,
+  },
+  "high-contrast": {
+    primary: "#ffffff", secondary: "#ffffff", accent: "#ffff00",
+    headerBg: "#000000", sidebarBg: "#000000", dashboardBg: "#000000",
+    cardBg: "#000000", sidebarIcon: "#ffffff", dashboardIcon: "#ffffff", sidebarText: "#ffffff",
+    glowIntensity: 80,
+  },
+  "energy-mode": {
+    primary: "#ffedd5", secondary: "#fdba74", accent: "#fb923c",
+    headerBg: "#1a0f00", sidebarBg: "#0a0500", dashboardBg: "#1a0f00",
+    cardBg: "rgba(255, 150, 0, 0.1)", sidebarIcon: "#ffedd5", dashboardIcon: "#ffedd5", sidebarText: "#ffedd5",
+    glowIntensity: 50,
+  },
+  "crystal-white": {
+    primary: "#133767", secondary: "#3b82f6", accent: "#8b5cf6",
+    headerBg: "#f8fafc", sidebarBg: "#ffffff", dashboardBg: "#f8fafc",
+    cardBg: "#ffffff", sidebarIcon: "#000000", dashboardIcon: "#133767", sidebarText: "#000000",
+    glowIntensity: 30,
+  },
+};
+
+const THEMES = [
+  { id: "dark-minimal", name: "Dark Minimal" },
+  { id: "neon-tech", name: "Neon Tech" },
+  { id: "metallic-elite", name: "Metallic Elite" },
+  { id: "executive-black", name: "Executive Black" },
+  { id: "high-contrast", name: "High Contrast" },
+  { id: "energy-mode", name: "Energy Mode" },
+  { id: "crystal-white", name: "Crystal White" },
+];
+
+const CARD_STYLES = [
+  { id: "glass", name: "Glassmorphism" },
+  { id: "metallic", name: "Metallic" },
+  { id: "neon", name: "Neon Glow" },
+  { id: "flat", name: "Flat Default" },
+];
+
+// Flat color catalog for robust distribution within a wrapped grid engine
+const COLOR_PICKER_SPECTRUM = [
+  "#ffffff", "#cbd5e1", "#64748b", "#334155", "#000000",
+  "#fee2e2", "#f87171", "#ef4444", "#dc2626", "#991b1b",
+  "#ffedd5", "#fb923c", "#f97316", "#ea580c", "#9a3412",
+  "#fef9c3", "#fde047", "#eab308", "#ca8a04", "#854d0e",
+  "#dcfce7", "#4ade80", "#22c55e", "#16a34a", "#166534",
+  "#e0f2fe", "#38bdf8", "#0ea5e9", "#0284c7", "#075985",
+  "#dbeafe", "#60a5fa", "#3b82f6", "#2563eb", "#1e40af",
+  "#f3e8ff", "#c084fc", "#a855f7", "#9333ea", "#6b21a8",
+  "#fae8ff", "#e879f9", "#d946ef", "#c026d3", "#86198f"
+];
 
 export default function ThemeEngine() {
-  const { uiTheme, updateTheme, resetTheme, saveToBackend } = useTheme();
+  const { uiTheme, updateTheme } = useTheme();
 
-  const themes: ConfigurationOption[] = [
-    { id: "dark-minimal", name: "Dark Minimal" },
-    { id: "neon-tech", name: "Neon Tech" },
-    { id: "metallic-elite", name: "Metallic Elite" },
-    { id: "executive-black", name: "Executive Black" },
-    { id: "high-contrast", name: "High Contrast" },
-    { id: "energy-mode", name: "Energy Mode" },
-    { id: "crystal-white", name: "Crystal White" },
-  ];
-
-  const themeDefaults: Record<string, string> = {
-    "dark-minimal": "#f8fafc",
-    "neon-tech": "#e0f7fa",
-    "metallic-elite": "#ffd27a",
-    "executive-black": "#f3f4f6",
-    "high-contrast": "#ffffff",
-    "energy-mode": "#ffedd5",
-    "crystal-white": "#000000",
-  };
-
-  const cardStyles: ConfigurationOption[] = [
-    { id: "glass", name: "Glassmorphism" },
-    { id: "metallic", name: "Metallic" },
-    { id: "neon", name: "Neon Glow" },
-    { id: "flat", name: "Flat Default" },
-  ];
-
-  const discreteSpectrumGrid: string[][] = [
-    ["#ffffff", "#f8fafc", "#f1f5f9", "#e2e8f0", "#cbd5e1", "#94a3b8", "#64748b", "#475569", "#334155", "#0f172a"],
-    ["#fef2f2", "#fee2e2", "#fecaca", "#fca5a5", "#f87171", "#ef4444", "#dc2626", "#b91c1c", "#991b1b", "#7f1d1d"],
-    ["#fff7ed", "#ffedd5", "#fed7aa", "#fdbb2d", "#fb923c", "#f97316", "#ea580c", "#c2410c", "#9a3412", "#7c2d12"],
-    ["#fef3c7", "#fde68a", "#fcd34d", "#f59e0b", "#d97706", "#b45309", "#92400e", "#78350f", "#451a03", "#3c1502"],
-    ["#ecfdf5", "#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857", "#065f46", "#064e3b"],
-    ["#e0f7fa", "#e0f2fe", "#bae6fd", "#7dd3fc", "#38bdf8", "#0ea5e9", "#0284c7", "#0369a1", "#075985", "#0c4a6e"],
-    ["#f5f3ff", "#e0e7ff", "#c7d2fe", "#a5b4fc", "#818cf8", "#6366f1", "#4f46e5", "#4338ca", "#3730a3", "#1e1b4b"],
-    ["#faf5ff", "#f3e8ff", "#e9d5ff", "#d8b4fe", "#c084fc", "#a855f7", "#9333ea", "#7e22ce", "#6b21a8", "#581c87"]
-  ];
-
-  const [activeTheme, setActiveTheme] = useState<string>(uiTheme.theme);
-  const [activeCardStyle, setActiveCardStyle] = useState<string>(uiTheme.cardStyle);
-  const [customTextColor, setCustomTextColor] = useState<string>(
-    uiTheme.customColors?.textColor || themeDefaults[uiTheme.theme] || "#ffffff"
+  const [activeTheme, setActiveTheme] = useState(uiTheme.theme || "dark-minimal");
+  const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle || "glass");
+  const [customTextColor, setCustomTextColor] = useState(
+    uiTheme.customColors?.textColor || THEME_DEFAULTS[uiTheme.theme] || "#ffffff"
   );
-  
-  const [loading, setLoading] = useState<boolean>(false);
-  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
-  const [isPickerVisible, setIsPickerVisible] = useState<boolean>(false);
-  const [modalHexInput, setModalHexInput] = useState<string>(customTextColor);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
-  const isLightTheme = useMemo(() => uiTheme.theme.includes("crystal") || uiTheme.panelColors.dashboardTextColor === "#000000", [uiTheme]);
+  
+  const isLightTheme = useMemo(() => {
+    return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
+  }, [uiTheme]);
+
+  const textColor = useMemo(() => {
+    return uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
+  }, [uiTheme, isLightTheme]);
 
   useEffect(() => {
-    setActiveTheme(uiTheme.theme);
-    setActiveCardStyle(uiTheme.cardStyle);
-    setCustomTextColor(uiTheme.customColors?.textColor || themeDefaults[uiTheme.theme] || "#ffffff");
+    const fetchPersistedPreferences = async () => {
+      try {
+        const res = await apiFetch<{ item: any }>("/api/ui-preferences");
+        if (res?.item) {
+          const theme = res.item.theme || "dark-minimal";
+          const cardStyle = res.item.cardStyle || "glass";
+          const textColorVal = res.item.customColors?.textColor || THEME_DEFAULTS[theme] || "#ffffff";
+          const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
+
+          setActiveTheme(theme as any);
+          setActiveCardStyle(cardStyle as any);
+          setCustomTextColor(textColorVal);
+
+          updateTheme({
+            theme,
+            cardStyle,
+            customColors: { 
+              ...uiTheme.customColors,
+              primary: preset.primary, 
+              secondary: preset.secondary,
+              accent: preset.accent, 
+              textColor: textColorVal 
+            },
+            panelColors: {
+              ...uiTheme.panelColors,
+              dashboardBackground: preset.dashboardBg,
+              dashboardCardBackground: preset.cardBg,
+              dashboardTextColor: textColorVal
+            }
+          } as any);
+        }
+      } catch (err) {
+        console.error("Failed to recover configuration parameters from server store:", err);
+      }
+    };
+
+    fetchPersistedPreferences();
+  }, []);
+
+  useEffect(() => {
+    setActiveTheme(uiTheme.theme as any);
+    setActiveCardStyle(uiTheme.cardStyle as any);
+    setCustomTextColor(uiTheme.customColors?.textColor || THEME_DEFAULTS[uiTheme.theme] || "#ffffff");
   }, [uiTheme.theme, uiTheme.cardStyle, uiTheme.customColors?.textColor]);
 
   const handlePreviewTheme = (themeId: string) => {
-    const defaultColor = themeDefaults[themeId] || "#ffffff";
-    setActiveTheme(themeId);
+    const preset = THEME_PRESETS[themeId] || THEME_PRESETS["dark-minimal"];
+    const defaultColor = THEME_DEFAULTS[themeId] || "#ffffff";
+    
+    setActiveTheme(themeId as any);
     setCustomTextColor(defaultColor);
     setSaveSuccess(false);
+
     updateTheme({
-      theme: themeId as any,
-      customColors: { textColor: defaultColor },
-    });
+      theme: themeId,
+      customColors: { 
+        ...uiTheme.customColors, 
+        primary: preset.primary,
+        secondary: preset.secondary,
+        accent: preset.accent,
+        textColor: defaultColor 
+      },
+      panelColors: {
+        ...uiTheme.panelColors,
+        dashboardBackground: preset.dashboardBg,
+        dashboardCardBackground: preset.cardBg,
+        dashboardTextColor: defaultColor
+      }
+    } as any);
   };
 
   const handlePreviewCardStyle = (styleId: string) => {
-    setActiveCardStyle(styleId);
+    setActiveCardStyle(styleId as any);
     setSaveSuccess(false);
-    updateTheme({ cardStyle: styleId as any });
+    updateTheme({ cardStyle: styleId } as any);
   };
 
   const handleTextColorChange = (color: string) => {
-    setCustomTextColor(color);
+    const formattedColor = color.startsWith("#") ? color : `#${color}`;
+    setCustomTextColor(formattedColor);
     setSaveSuccess(false);
-    updateTheme({ customColors: { textColor: color } });
-  };
-
-  const openColorPickerDialog = () => {
-    setModalHexInput(customTextColor);
-    setIsPickerVisible(true);
-  };
-
-  const applySelectedPickerColor = () => {
-    let sanitizedHex = modalHexInput.trim();
-    if (!sanitizedHex.startsWith("#")) {
-      sanitizedHex = "#" + sanitizedHex;
-    }
-    
-    const validHexRule = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-    if (!validHexRule.test(sanitizedHex)) {
-      Alert.alert("Invalid Color", "Please specify a format matching standard hex criteria.");
-      return;
-    }
-
-    handleTextColorChange(sanitizedHex);
-    setIsPickerVisible(false);
+    updateTheme({ 
+      customColors: { ...uiTheme.customColors, textColor: formattedColor },
+      panelColors: { ...uiTheme.panelColors, dashboardTextColor: formattedColor }
+    } as any);
   };
 
   const saveSettings = async () => {
     setLoading(true);
     setSaveSuccess(false);
     try {
-      const consolidatedState = {
-        ...uiTheme,
-        theme: activeTheme as any,
-        cardStyle: activeCardStyle as any,
-        customColors: {
-          ...uiTheme.customColors,
-          textColor: customTextColor,
-        },
-      };
-      await saveToBackend(consolidatedState);
+      const preset = THEME_PRESETS[activeTheme] || THEME_PRESETS["dark-minimal"];
+      await apiFetch("/api/ui-preferences", {
+        method: "PUT",
+        body: JSON.stringify({
+          theme: activeTheme,
+          cardStyle: activeCardStyle,
+          customColors: {
+            primary: preset.primary,
+            secondary: preset.secondary,
+            accent: preset.accent,
+            textColor: customTextColor,
+          },
+          panelColors: {
+            dashboardBackground: preset.dashboardBg,
+            dashboardCardBackground: preset.cardBg,
+            dashboardTextColor: customTextColor,
+          }
+        }),
+      });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       console.error(e);
-      Alert.alert("Error", "Could not sync UI preference parameters to cloud service storage infrastructure.");
+      Alert.alert("Execution Anomaly", "Could not synchronize theme configurations to core data architecture.");
     } finally {
       setLoading(false);
     }
@@ -155,505 +260,420 @@ export default function ThemeEngine() {
     setLoading(true);
     setSaveSuccess(false);
     try {
-      await resetTheme();
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      const res = await apiFetch<{ item: any }>("/api/ui-preferences/reset", { method: "POST" });
+      const theme = res.item?.theme || "dark-minimal";
+      const cardStyle = res.item?.cardStyle || "glass";
+      const textColorVal = res.item?.customColors?.textColor || "#ffffff";
+      const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
+
+      setActiveTheme(theme as any);
+      setActiveCardStyle(cardStyle as any);
+      setCustomTextColor(textColorVal);
+
+      updateTheme({
+        theme,
+        cardStyle,
+        customColors: { 
+          primary: preset.primary, 
+          secondary: preset.secondary,
+          accent: preset.accent, 
+          textColor: textColorVal 
+        },
+        panelColors: {
+          dashboardBackground: preset.dashboardBg,
+          dashboardCardBackground: preset.cardBg,
+          dashboardTextColor: textColorVal
+        }
+      } as any);
+      Alert.alert("System Restored", "Baseline interface configurations successfully established.");
     } catch (e) {
       console.error(e);
-      Alert.alert("Reset Error", "Could not restore core interface system configuration properties.");
+      Alert.alert("Reset Failure", "Failed to clear remote interface preferences.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollCanvas} showsVerticalScrollIndicator={false}>
-        
-        <View style={styles.headerBlock}>
-          <View style={styles.titleRow}>
-            <View style={styles.iconBox}>
-              <Palette size={24} color={uiTheme.customColors.primary} />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>Theme Engine</Text>
-              <Text style={styles.headerSubtitle}>Customize the interface exactly the way you want it.</Text>
-            </View>
+    <SafeAreaView style={styles.container} key={uiTheme?.theme || 'default'}>
+      <StatusBar 
+        barStyle={isLightTheme ? "dark-content" : "light-content"} 
+        backgroundColor={uiTheme.panelColors?.dashboardBackground || "#09090b"} 
+      />
+      
+      <View style={styles.header}>
+        <View style={styles.iconContainer}>
+          <Palette size={22} color={uiTheme.customColors?.primary || "#ffd27a"} />
+        </View>
+        <View>
+          <Text style={styles.title}>Theme Engine</Text>
+          <Text style={styles.subtitle}>Customize the interface exactly the way you want it.</Text>
+        </View>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionHeading}>PRESET THEMES</Text>
+          <View style={styles.themesGrid}>
+            {THEMES.map((t) => {
+              const isActive = activeTheme === t.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.themeBtn, isActive ? styles.themeBtnActive : styles.inactiveButton]}
+                  onPress={() => handlePreviewTheme(t.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.themeBtnText, isActive ? styles.themeBtnTextActive : styles.inactiveButtonText]}>
+                    {t.name}
+                  </Text>
+                  {isActive && <Check size={14} color={isLightTheme ? "#ffffff" : "#09090b"} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
-        <View style={styles.gridColumnsContainer}>
-          
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionHeading}>Preset Themes</Text>
-            <View style={styles.gridContainer}>
-              {themes.map((t) => {
-                const isActive = activeTheme === t.id;
-                return (
-                  <TouchableOpacity
-                    key={t.id}
-                    style={[styles.themeButton, isActive ? styles.activeButton : styles.inactiveButton]}
-                    onPress={() => handlePreviewTheme(t.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.buttonText, isActive ? styles.activeButtonText : styles.inactiveButtonText]}>
-                      {t.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionHeading}>CARD STYLE ENGINE</Text>
+          <View style={styles.verticalListContainer}>
+            {CARD_STYLES.map((sItem) => {
+              const isActive = activeCardStyle === sItem.id;
+              return (
+                <TouchableOpacity
+                  key={sItem.id}
+                  style={[styles.styleListItem, isActive ? styles.styleListItemActive : styles.inactiveButton]}
+                  onPress={() => handlePreviewCardStyle(sItem.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.styleListText, isActive ? styles.styleListTextActive : styles.inactiveButtonText]}>
+                    {sItem.name}
+                  </Text>
+                  {isActive && <Check size={16} color={isLightTheme ? "#ffffff" : "#09090b"} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionHeading}>Card Style Engine</Text>
-            <View style={styles.listContainer}>
-              {cardStyles.map((sItem) => {
-                const isActive = activeCardStyle === sItem.id;
-                return (
-                  <TouchableOpacity
-                    key={sItem.id}
-                    style={[styles.cardStyleButton, isActive ? styles.activeButton : styles.inactiveButton]}
-                    onPress={() => handlePreviewCardStyle(sItem.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.buttonText, isActive ? styles.activeButtonText : styles.inactiveButtonText]}>
-                      {sItem.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={[styles.sectionHeading, styles.spacingTop]}>Global Text Color</Text>
-            <View style={styles.pickerAnchorRow}>
-              <TouchableOpacity 
-                style={styles.colorPickerTriggerButton} 
-                activeOpacity={0.8}
-                onPress={openColorPickerDialog}
-              >
-                <View style={[styles.colorPreviewWellBlock, { backgroundColor: customTextColor }]} />
-                <View style={styles.colorPreviewLabelBlock}>
-                  <Text style={styles.activeColorTextDisplay}>{customTextColor.toUpperCase()}</Text>
-                  <Text style={styles.activeColorLabelHint}>Select the default text color for the admin panel</Text>
-                </View>
-                <ChevronRight size={16} color={uiTheme.panelColors.dashboardTextColor} style={{ opacity: 0.4 }} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-        </View>
-
-        <View style={styles.actionBarRow}>
-          <TouchableOpacity 
-            style={styles.restoreButton} 
-            onPress={resetToDefault}
-            disabled={loading}
-          >
-            <RefreshCw size={14} color="#ef4444" style={styles.restoreIconMargin} />
-            <Text style={styles.restoreButtonText}>Restore Defaults</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.actionRightFlexBox}>
-            
+          <Text style={[styles.sectionHeading, { marginTop: 24 }]}>GLOBAL TEXT COLOR</Text>
+          <View style={styles.colorPickerWrapper}>
             <TouchableOpacity 
-              style={[styles.saveButton, { backgroundColor: uiTheme.customColors.primary }]} 
-              onPress={saveSettings}
-              disabled={loading}
+              style={styles.colorConfigInputRow} 
+              onPress={() => setShowColorPicker(!showColorPicker)}
+              activeOpacity={0.8}
             >
-              {loading ? (
-                <ActivityIndicator size="small" color={isLightTheme ? "#ffffff" : "#09090b"} />
-              ) : (
-                <Text style={styles.saveButtonText}>Save Preferences</Text>
-              )}
+              <View style={[styles.colorPreviewBlock, { backgroundColor: customTextColor || "#ffffff" }]} />
+              <TextInput
+                style={styles.textHexInput}
+                value={customTextColor.replace("#", "")}
+                onChangeText={handleTextColorChange}
+                placeholder="FFFFFF"
+                placeholderTextColor={isLightTheme ? "#94a3b8" : "#71717a"}
+                autoCapitalize="characters"
+                maxLength={6}
+                editable={false}
+                pointerEvents="none"
+              />
+              <ChevronDown size={16} color={textColor} style={{ opacity: 0.5 }} />
             </TouchableOpacity>
-            {saveSuccess && (
-              <Text style={styles.successNotificationMessage}>Settings saved!</Text>
-            )}
-          </View>
-        </View>
-
-      </ScrollView>
-
-      <Modal animationType="fade" transparent={true} visible={isPickerVisible} onRequestClose={() => setIsPickerVisible(false)}>
-        <TouchableOpacity style={styles.modalBlurOverlay} activeOpacity={1} onPress={() => setIsPickerVisible(false)}>
-          <View style={styles.modalContentCard}>
             
-            <View style={styles.modalCardHeaderTopRow}>
-              <Text style={styles.modalCardTitleHeading}>Select Text Color</Text>
-              <TouchableOpacity onPress={() => setIsPickerVisible(false)} style={styles.closeModalCrossButton}>
-                <X size={18} color={uiTheme.panelColors.dashboardTextColor} style={{ opacity: 0.5 }} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={[styles.pickerActiveDisplayBanner, { backgroundColor: modalHexInput }]}>
-              <Text style={[styles.pickerActiveDisplayTextContrast, {
-                color: modalHexInput.toLowerCase() === "#ffffff" || modalHexInput.toLowerCase() === "#f8fafc" ? "#000000" : "#ffffff"
-              }]}>
-                Typography Preview Text
+            {showColorPicker && (
+              <View style={styles.spectrumPickerDropdownContainer}>
+                {COLOR_PICKER_SPECTRUM.map((color) => {
+                  const isSelected = customTextColor.toLowerCase() === color.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.spectrumSwatch, 
+                        { backgroundColor: color }, 
+                        isSelected && styles.activeSwatchBorder
+                      ]}
+                      onPress={() => {
+                        handleTextColorChange(color);
+                        setShowColorPicker(false);
+                      }}
+                      activeOpacity={0.7}
+                    />
+                  );
+                })}
+              </View>
+            )}
+            
+            <View style={[styles.previewSimulationBlock, { backgroundColor: uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b") }]}>
+              <Text style={[styles.previewSimulationText, { color: customTextColor }]}>
+                Typography Realtime Contrast Text
               </Text>
             </View>
-
-            <View style={styles.spectrumGridCanvasBox}>
-              {discreteSpectrumGrid.map((row, rIndex) => (
-                <View key={rIndex} style={styles.spectrumFlexGridRow}>
-                  {row.map((colorCell) => {
-                    const isCellTargeted = modalHexInput.toLowerCase() === colorCell.toLowerCase();
-                    return (
-                      <TouchableOpacity
-                        key={colorCell}
-                        style={[
-                          styles.spectrumColorNodeTile, 
-                          { backgroundColor: colorCell }, 
-                          isCellTargeted && { borderColor: uiTheme.customColors.primary, borderWidth: 2 }
-                        ]}
-                        onPress={() => setModalHexInput(colorCell)}
-                        activeOpacity={0.7}
-                      />
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.manualHexInputFieldWrapperBlock}>
-              <Text style={styles.manualInputFieldNameLabel}>Custom HEX Code</Text>
-              <TextInput
-                style={styles.manualInputHexText}
-                value={modalHexInput}
-                onChangeText={setModalHexInput}
-                placeholder="#FFFFFF"
-                placeholderTextColor="rgba(148,163,184,0.4)"
-                autoCapitalize="characters"
-                maxLength={7}
-              />
-            </View>
-
-            <View style={styles.modalCardActionsFooterRow}>
-              <TouchableOpacity style={styles.modalCancelButtonAction} onPress={() => setIsPickerVisible(false)}>
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmitButtonAction, { backgroundColor: uiTheme.customColors.primary }]} onPress={applySelectedPickerColor}>
-                <Text style={styles.modalSubmitButtonText}>Apply Color</Text>
-              </TouchableOpacity>
-            </View>
-
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+      </ScrollView>
 
+      <View style={styles.actionBar}>
+        <TouchableOpacity 
+          style={styles.restoreBtn} 
+          onPress={resetToDefault} 
+          disabled={loading}
+          activeOpacity={0.7}
+        >
+          <RefreshCw size={14} color="#ef4444" style={loading ? { transform: [{ rotate: "45deg" }] } : {}} />
+          <Text style={styles.restoreBtnText}>Restore Defaults</Text>
+        </TouchableOpacity>
+
+        <View style={styles.saveActionContainer}>
+          {saveSuccess && (
+            <Text style={styles.saveSuccessToast}>Saved!</Text>
+          )}
+          <TouchableOpacity 
+            style={[styles.saveBtn, { backgroundColor: uiTheme.customColors?.primary || "#ffd27a" }]} 
+            onPress={saveSettings} 
+            disabled={loading}
+            activeOpacity={0.7}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={isLightTheme ? "#ffffff" : "#09090b"} />
+            ) : (
+              <Text style={[styles.saveBtnText, { color: isLightTheme ? "#ffffff" : "#09090b" }]}>Save Preferences</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const getThemedStyles = (uiTheme: any) => {
-  const isLightTheme = uiTheme.theme.includes("crystal") || uiTheme.panelColors.dashboardTextColor === "#000000";
+  const isLightTheme = uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   const structuralBorderColor = isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
   const surfaceAlphaColor = isLightTheme ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)";
+  
+  const bg = uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b");
+  const cardBg = uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#f8fafc" : "#141417");
+  const textColor = uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
 
   return StyleSheet.create({
-    safeArea: {
+    container: {
       flex: 1,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
+      backgroundColor: bg,
     },
-    scrollCanvas: {
-      paddingHorizontal: 16,
-      paddingBottom: 40,
-    },
-    headerBlock: {
-      paddingVertical: 24,
-    },
-    titleRow: {
+    header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 14,
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderColor: structuralBorderColor,
     },
-    iconBox: {
-      backgroundColor: isLightTheme ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)",
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: "center",
-      alignItems: "center",
+    iconContainer: {
+      padding: 10,
+      borderRadius: 99,
+      backgroundColor: isLightTheme ? "rgba(0,0,0,0.04)" : "rgba(255, 255, 255, 0.06)",
     },
-    headerTitle: {
-      fontSize: 24,
+    title: {
+      fontSize: 20,
       fontWeight: "800",
+      color: textColor,
       letterSpacing: -0.5,
-      color: uiTheme.panelColors.dashboardTextColor,
     },
-    headerSubtitle: {
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
+    subtitle: {
+      fontSize: 12,
+      color: textColor,
       opacity: 0.6,
       marginTop: 2,
     },
-    gridColumnsContainer: {
-      gap: 16,
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 120,
     },
-    sectionContainer: {
-      borderRadius: 14,
+    sectionCard: {
+      backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
+      borderRadius: 16,
       padding: 16,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      marginBottom: 16,
     },
     sectionHeading: {
       fontSize: 11,
-      fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontWeight: "900",
+      color: textColor,
       opacity: 0.5,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
+      letterSpacing: 1,
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
-      paddingBottom: 8,
-      marginBottom: 14,
+      borderColor: structuralBorderColor,
+      paddingBottom: 6,
+      marginBottom: 12,
     },
-    spacingTop: {
-      marginTop: 24,
-    },
-    gridContainer: {
+    themesGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 10,
     },
-    listContainer: {
-      gap: 10,
-    },
-    themeButton: {
+    themeBtn: {
       width: "48%",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderWidth: 1,
+      borderRadius: 10,
       paddingVertical: 14,
       paddingHorizontal: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-    },
-    cardStyleButton: {
-      width: "100%",
-      paddingVertical: 14,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      borderWidth: 1,
     },
     inactiveButton: {
       backgroundColor: surfaceAlphaColor,
       borderColor: structuralBorderColor,
     },
-    activeButton: {
-      backgroundColor: uiTheme.customColors.primary,
-      borderColor: uiTheme.customColors.primary,
+    themeBtnActive: {
+      backgroundColor: uiTheme.customColors?.primary || "#ffd27a",
+      borderColor: uiTheme.customColors?.primary || "#ffd27a",
     },
-    buttonText: {
+    themeBtnText: {
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "500",
     },
     inactiveButtonText: {
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: textColor,
     },
-    activeButtonText: {
+    themeBtnTextActive: {
       color: isLightTheme ? "#ffffff" : "#09090b",
-      fontWeight: "700",
-    },
-    pickerAnchorRow: {
-      width: "100%",
-    },
-    colorPickerTriggerButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: surfaceAlphaColor,
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 10,
-      padding: 10,
-    },
-    colorPreviewWellBlock: {
-      width: 40,
-      height: 40,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
-      marginRight: 12,
-    },
-    colorPreviewLabelBlock: {
-      flex: 1,
-    },
-    activeColorTextDisplay: {
-      fontSize: 14,
       fontWeight: "800",
-      color: uiTheme.panelColors.dashboardTextColor,
     },
-    activeColorLabelHint: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.5,
-      marginTop: 2,
+    verticalListContainer: {
+      gap: 8,
     },
-    actionBarRow: {
+    styleListItem: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      borderRadius: 14,
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      padding: 12,
-      marginTop: 24,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      padding: 14,
+      borderRadius: 10,
     },
-    restoreButton: {
+    styleListItemActive: {
+      backgroundColor: uiTheme.customColors?.primary || "#ffd27a",
+      borderColor: uiTheme.customColors?.primary || "#ffd27a",
+    },
+    styleListText: {
+      fontSize: 13,
+      fontWeight: "500",
+    },
+    styleListTextActive: {
+      color: isLightTheme ? "#ffffff" : "#09090b",
+      fontWeight: "800",
+    },
+    colorPickerWrapper: {
+      gap: 12,
+    },
+    colorConfigInputRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 12,
+      gap: 12,
+      backgroundColor: surfaceAlphaColor,
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
+      padding: 10,
+      borderRadius: 10,
+    },
+    colorPreviewBlock: {
+      width: 32,
+      height: 32,
       borderRadius: 6,
-      backgroundColor: "rgba(239, 68, 68, 0.08)",
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
     },
-    restoreIconMargin: {
-      marginRight: 6,
+    textHexInput: {
+      flex: 1,
+      color: textColor,
+      fontSize: 14,
+      fontWeight: "700",
+      paddingVertical: 4,
     },
-    restoreButtonText: {
-      fontSize: 12,
-      fontWeight: "600",
+    spectrumPickerDropdownContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      padding: 12,
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
+      borderRadius: 10,
+      justifyContent: "flex-start",
+      marginTop: 2,
+    },
+    spectrumSwatch: {
+      width: 33,
+      height: 33,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
+    },
+    activeSwatchBorder: {
+      borderColor: uiTheme.customColors?.primary || "#ffd27a",
+      borderWidth: 2,
+      transform: [{ scale: 1.1 }],
+    },
+    previewSimulationBlock: {
+      width: "100%",
+      padding: 14,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: structuralBorderColor,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 4,
+    },
+    previewSimulationText: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    actionBar: {
+      position: "absolute", 
+      bottom: 30,
+      left: 0,
+      right: 0,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: cardBg,
+      borderTopWidth: 1,
+      borderColor: structuralBorderColor,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    restoreBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 10,
+    },
+    restoreBtnText: {
       color: "#ef4444",
+      fontSize: 13,
+      fontWeight: "600",
     },
-    actionRightFlexBox: {
-    //  flexDirection: "row",
+    saveActionContainer: {
+      flexDirection: "row",
       alignItems: "center",
       gap: 12,
     },
-    successNotificationMessage: {
-      fontSize: 12,
-      color: "#22c55e",
-      fontWeight: "600",
-    },
-    saveButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      borderRadius: 6,
-      justifyContent: "center",
-      alignItems: "center",
-      minWidth: 130,
-    },
-    saveButtonText: {
-      color: isLightTheme ? "#ffffff" : "#09090b",
+    saveSuccessToast: {
+      color: "#10b981",
       fontSize: 12,
       fontWeight: "700",
     },
-    modalBlurOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.6)",
-      justifyContent: "flex-end",
-    },
-    modalContentCard: {
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      width: "100%",
-      maxHeight: height * 0.85,
-      padding: 20,
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
-    },
-    modalCardHeaderTopRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
-      paddingBottom: 12,
-    },
-    modalCardTitleHeading: {
-      fontSize: 16,
-      fontWeight: "800",
-      color: uiTheme.panelColors.dashboardTextColor,
-    },
-    closeModalCrossButton: {
-      padding: 4,
-    },
-    pickerActiveDisplayBanner: {
-      width: "100%",
-      height: 48,
+    saveBtn: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
       borderRadius: 10,
-      justifyContent: "center",
+      minWidth: 130,
       alignItems: "center",
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
+      justifyContent: "center",
     },
-    pickerActiveDisplayTextContrast: {
+    saveBtnText: {
       fontSize: 13,
-      fontWeight: "700",
-    },
-    spectrumGridCanvasBox: {
-      width: "100%",
-      gap: 6,
-      marginBottom: 18,
-    },
-    spectrumFlexGridRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      width: "100%",
-    },
-    spectrumColorNodeTile: {
-      width: "8.5%",
-      aspectRatio: 1,
-      borderRadius: 4,
-      borderWidth: 0.5,
-      borderColor: structuralBorderColor,
-    },
-    manualHexInputFieldWrapperBlock: {
-      marginBottom: 14,
-    },
-    manualInputFieldNameLabel: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.7,
-      marginBottom: 6,
-    },
-    manualInputHexText: {
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 8,
-      height: 40,
-      paddingHorizontal: 12,
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
-      backgroundColor: surfaceAlphaColor,
-      fontWeight: "700",
-    },
-    modalCardActionsFooterRow: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 10,
-      marginTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: structuralBorderColor,
-      paddingTop: 14,
-    },
-    modalCancelButtonAction: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: structuralBorderColor,
-      backgroundColor: surfaceAlphaColor,
-    },
-    modalCancelButtonText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.8,
-    },
-    modalSubmitButtonAction: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 6,
-    },
-    modalSubmitButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: isLightTheme ? "#ffffff" : "#09090b",
+      fontWeight: "800",
     },
   });
 };

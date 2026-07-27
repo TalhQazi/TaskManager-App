@@ -11,7 +11,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
@@ -26,6 +28,10 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
+
+const { width } = Dimensions.get("window");
 
 interface ProfileData {
   id: string;
@@ -79,7 +85,365 @@ interface OnboardingData {
   };
 }
 
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
+    panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
+    textSecondary:   isDark ? "#a1a1aa" : "#475569",
+    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
+    primary:         uiTheme.customColors?.primary                || "#ffd27a",
+    success:         "#16C784",
+    warning:         "#F59E0B",
+    danger:          "#EF4444",
+    tabBg:           isDark ? "#18181b" : "#f4f4f5",
+    tabActive:       isDark ? "#27272a" : "#e4e4e7",
+    inputBg:         isDark ? "#09090b" : "#ffffff",
+    disabledBg:      isDark ? "#18181b" : "#f4f4f5",
+    disabledText:    isDark ? "#71717a" : "#94a3b8",
+    avatarFallback:  isDark ? "#27272a" : "#e4e4e7",
+    cancelBg:        isDark ? "#1c1917" : "#f5f5f4",
+    bannerBg:        "rgba(255, 210, 122, 0.05)",
+    bannerBorder:    "rgba(255, 210, 122, 0.2)",
+    badgeActiveBg:   "rgba(255, 210, 122, 0.1)",
+    badgeActiveBdr:  "rgba(255, 210, 122, 0.3)"
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: 8,
+      color: colors.textSecondary,
+      fontSize: 14,
+    },
+    scrollContainer: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    titleHeading: {
+      fontSize: 26,
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: 0.5,
+      marginBottom: 20,
+    },
+    tabContainer: {
+      flexDirection: "row",
+      backgroundColor: colors.tabBg,
+      padding: 4,
+      borderRadius: 8,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: "center",
+      borderRadius: 6,
+    },
+    activeTabButton: {
+      backgroundColor: colors.tabActive,
+    },
+    tabText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    activeTabText: {
+      color: colors.primary,
+      fontWeight: "700",
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 20,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      paddingBottom: 12,
+      marginBottom: 16,
+    },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    cardSubTitle: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    cardContent: {
+      marginTop: 4,
+    },
+    outlineButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: colors.background,
+    },
+    outlineButtonText: {
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    headerActionsRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    actionCancelBtn: {
+      padding: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      backgroundColor: colors.cancelBg,
+    },
+    actionSaveBtn: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: colors.primary,
+    },
+    avatarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 24,
+    },
+    avatarWrapper: {
+      position: "relative",
+      width: 68,
+      height: 68,
+    },
+    avatarImage: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    avatarFallback: {
+      backgroundColor: colors.avatarFallback,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarFallbackText: {
+      color: colors.primary,
+      fontSize: 22,
+      fontWeight: "800",
+    },
+    cameraBadge: {
+      position: "absolute",
+      bottom: -2,
+      right: -2,
+      backgroundColor: colors.primary,
+      padding: 6,
+      borderRadius: 99,
+      borderWidth: 2,
+      borderColor: colors.cardBg,
+    },
+    profileMetaContainer: {
+      marginLeft: 16,
+      flex: 1,
+    },
+    profileName: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    profileEmail: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 1,
+    },
+    departmentText: {
+      fontSize: 11,
+      color: colors.primary,
+      fontWeight: "600",
+      marginTop: 2,
+    },
+    badgeRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 6,
+    },
+    badge: {
+      backgroundColor: colors.avatarFallback,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 4,
+    },
+    badgeText: {
+      fontSize: 10,
+      color: colors.text,
+      fontWeight: "600",
+    },
+    activeStatusBadge: {
+      backgroundColor: colors.badgeActiveBg,
+      borderWidth: 0.5,
+      borderColor: colors.badgeActiveBdr,
+    },
+    activeStatusText: {
+      fontSize: 10,
+      color: colors.primary,
+      fontWeight: "700",
+      textTransform: "capitalize",
+    },
+    formGroup: {
+      marginBottom: 16,
+    },
+    label: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: colors.text,
+      fontSize: 13,
+    },
+    disabledInput: {
+      backgroundColor: colors.disabledBg,
+      color: colors.disabledText,
+    },
+    statusBox: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: colors.disabledBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 20,
+    },
+    statusLayoutRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    statusText: {
+      fontSize: 12,
+      color: colors.text,
+      fontWeight: "600",
+      marginLeft: 6,
+    },
+    statusProgressText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    sectionHeading: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: colors.primary,
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+      marginTop: 12,
+      marginBottom: 12,
+      borderBottomWidth: 0.5,
+      borderColor: colors.border,
+      paddingBottom: 4,
+    },
+    pickerSelector: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+    },
+    pickerText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "600",
+      textTransform: "capitalize",
+    },
+    pickerPlaceholder: {
+      color: colors.disabledText,
+      fontSize: 13,
+    },
+    fileUploadBtn: {
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: "dashed",
+      borderRadius: 6,
+      padding: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    uploadBtnText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    submitButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 6,
+      paddingVertical: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 20,
+    },
+    submitButtonText: {
+      color: colors.inputBg,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    approvedBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.bannerBg,
+      borderWidth: 1,
+      borderColor: colors.bannerBorder,
+      borderRadius: 8,
+      padding: 16,
+    },
+    approvedText: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.text,
+      fontWeight: "600",
+      lineHeight: 18,
+    },
+  });
+}
+
 export default function Profile() {
+  const { uiTheme } = useTheme();
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"personal" | "onboarding">("personal");
   const [tokenReady, setTokenReady] = useState(false);
@@ -90,8 +454,6 @@ export default function Profile() {
   const [submittingOnboarding, setSubmittingOnboarding] = useState(false);
   const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({});
   const [secondaryIdType, setSecondaryIdType] = useState("");
-  
-  // Track network image errors locally
   const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   const [onboardingForm, setOnboardingForm] = useState({
@@ -112,7 +474,6 @@ export default function Profile() {
     routingNumber: "",
   });
 
-  // Initialize session verification proxy engine
   useEffect(() => {
     (async () => {
       await initToken();
@@ -120,7 +481,6 @@ export default function Profile() {
     })();
   }, []);
 
-  // 1. Fetch profile core data
   const { data: primaryProfileRes, isLoading: loadingProfile } = useQuery({
     queryKey: ["profileMe"],
     queryFn: () => apiFetch<{ item: ProfileData }>("/api/employees/me"),
@@ -128,7 +488,6 @@ export default function Profile() {
 
   const baseProfile = primaryProfileRes?.item;
 
-  // 2. Fetch extended chat/live profile data
   const { data: conversationProfile, isLoading: loadingConvProfile } = useQuery({
     queryKey: ["conversationProfile", baseProfile?.email],
     queryFn: async () => {
@@ -139,13 +498,11 @@ export default function Profile() {
     enabled: !!baseProfile?.email,
   });
 
-  // 3. Fetch User Settings (Avatar Customization Engine Data Source)
   const { data: userSettingsRes, isLoading: loadingSettings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => apiFetch<{ item: any }>("/api/settings"),
   });
 
-  // 4. Fetch Onboarding Data
   const { data: onboardingRes, isLoading: loadingOnboarding } = useQuery({
     queryKey: ["onboardingMe"],
     queryFn: () => apiFetch<{ item: OnboardingData }>("/api/onboarding/me"),
@@ -153,7 +510,6 @@ export default function Profile() {
 
   const onboardingData = onboardingRes?.item;
 
-  // --- COMPREHENSIVE AVATAR RESOLUTION PIPELINE ---
   const avatarRaw =
     userSettingsRes?.item?.avatarDataUrl ||
     userSettingsRes?.item?.avatarUrl ||
@@ -168,14 +524,12 @@ export default function Profile() {
       : `https://task.se7eninc.com${avatarRaw}`;
   }, [avatarRaw]);
 
-  // Route URL queries through internal authentication reverse proxy to avoid AWS 403 blocks
   const resolvedAvatarUri = useMemo(() => {
     if (!avatarUrl) return null;
-    if (avatarUrl.startsWith("data:")) return avatarUrl; // Render base64 image data explicitly
+    if (avatarUrl.startsWith("data:")) return avatarUrl;
     return tokenReady ? toProxiedUrl(avatarUrl) : null;
   }, [avatarUrl, tokenReady]);
 
-  // Fallback Initials Calculation Matrix
   const initials = useMemo(() => {
     return (baseProfile?.name || baseProfile?.email || "M")
       .split(" ")
@@ -186,7 +540,6 @@ export default function Profile() {
       .toUpperCase();
   }, [baseProfile?.name, baseProfile?.email]);
 
-  // Reset local rendering context errors if a brand new target URI arrives
   useEffect(() => {
     setAvatarLoadError(false);
   }, [resolvedAvatarUri]);
@@ -422,605 +775,298 @@ export default function Profile() {
 
   if (loadingProfile || loadingConvProfile || loadingSettings) {
     return (
-      <View style={[styles.centered, { backgroundColor: "#09090b" }]}>
-        <ActivityIndicator size="large" color="#ffd27a" />
-        <Text style={{ marginTop: 8, color: "#a1a1aa" }}>Loading Profile...</Text>
+      <View style={s(styles.centered)}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={s(styles.loadingText)}>Loading Profile...</Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1, backgroundColor: "#09090b" }} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.titleHeading}>Profile</Text>
+    <SafeAreaView style={s(styles.container)} edges={["top", "left", "right"]}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Text style={s(styles.titleHeading)}>Profile</Text>
 
-        <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === "personal" && styles.activeTabButton]} 
-            onPress={() => setActiveTab("personal")}
-          >
-            <Text style={[styles.tabText, activeTab === "personal" && styles.activeTabText]}>Personal Info</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === "onboarding" && styles.activeTabButton]} 
-            onPress={() => setActiveTab("onboarding")}
-          >
-            <Text style={[styles.tabText, activeTab === "onboarding" && styles.activeTabText]}>Onboarding</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={s(styles.tabContainer)}>
+            <TouchableOpacity 
+              style={s([styles.tabButton, activeTab === "personal" && styles.activeTabButton])} 
+              onPress={() => setActiveTab("personal")}
+            >
+              <Text style={s([styles.tabText, activeTab === "personal" && styles.activeTabText])}>Personal Info</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={s([styles.tabButton, activeTab === "onboarding" && styles.activeTabButton])} 
+              onPress={() => setActiveTab("onboarding")}
+            >
+              <Text style={s([styles.tabText, activeTab === "onboarding" && styles.activeTabText])}>Onboarding</Text>
+            </TouchableOpacity>
+          </View>
 
-        {activeTab === "personal" ? (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Identity & Core Settings</Text>
-              {!isEditing ? (
-                <TouchableOpacity style={styles.outlineButton} onPress={() => setIsEditing(true)}>
-                  <Edit2 size={12} color="#ffd27a" style={{ marginRight: 4 }} />
-                  <Text style={styles.outlineButtonText}>Edit</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <TouchableOpacity style={styles.actionCancelBtn} onPress={handleCancelEdit}>
-                    <X size={14} color="#f4f4f5" />
+          {activeTab === "personal" ? (
+            <View style={s(styles.card)}>
+              <View style={s(styles.cardHeader)}>
+                <Text style={s(styles.cardTitle)}>Identity & Core Settings</Text>
+                {!isEditing ? (
+                  <TouchableOpacity style={s(styles.outlineButton)} onPress={() => setIsEditing(true)}>
+                    <Edit2 size={12} color={colors.primary} style={{ marginRight: 4 }} />
+                    <Text style={s(styles.outlineButtonText)}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionSaveBtn} onPress={handleSaveProfile} disabled={saving}>
-                    <Save size={14} color="#09090b" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
+                ) : (
+                  <View style={s(styles.headerActionsRow)}>
+                    <TouchableOpacity style={s(styles.actionCancelBtn)} onPress={handleCancelEdit}>
+                      <X size={14} color={colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s(styles.actionSaveBtn)} onPress={handleSaveProfile} disabled={saving}>
+                      <Save size={14} color={colors.inputBg} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
 
-            <View style={styles.cardContent}>
-              <View style={styles.avatarRow}>
-                <View style={styles.avatarWrapper}>
-                  {resolvedAvatarUri && !avatarLoadError ? (
-                    <Image 
-                      source={{ 
-                        uri: resolvedAvatarUri,
-                        headers: {
-                          Accept: "image/*"
-                        }
-                      }} 
-                      style={styles.avatarImage} 
-                      onError={(e) => {
-                        console.warn("Avatar loading encountered an issue:", e.nativeEvent.error);
-                        setAvatarLoadError(true);
-                      }}
-                    />
-                  ) : (
-                    <View style={[styles.avatarImage, styles.avatarFallback]}>
-                      <Text style={styles.avatarFallbackText}>{initials}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.cameraBadge} onPress={handleImageUpload} disabled={uploadingImage}>
-                    <Camera size={12} color="#09090b" />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ marginLeft: 16, flex: 1 }}>
-                  <Text style={styles.profileName}>{baseProfile?.name}</Text>
-                  <Text style={styles.profileEmail}>{baseProfile?.email}</Text>
-                  {conversationProfile?.department && (
-                    <Text style={styles.departmentText}>Dept: {conversationProfile.department}</Text>
-                  )}
-                  <View style={styles.badgeRow}>
-                    <View style={styles.badge}><Text style={styles.badgeText}>{baseProfile?.role || "Staff"}</Text></View>
-                    {conversationProfile?.current_status && (
-                      <View style={[styles.badge, styles.activeStatusBadge]}>
-                        <Text style={styles.activeStatusText}>{conversationProfile.current_status}</Text>
+              <View style={s(styles.cardContent)}>
+                <View style={s(styles.avatarRow)}>
+                  <View style={s(styles.avatarWrapper)}>
+                    {resolvedAvatarUri && !avatarLoadError ? (
+                      <Image 
+                        source={{ 
+                          uri: resolvedAvatarUri,
+                          headers: { Accept: "image/*" }
+                        }} 
+                        style={s(styles.avatarImage)} 
+                        onError={() => setAvatarLoadError(true)}
+                      />
+                    ) : (
+                      <View style={s([styles.avatarImage, styles.avatarFallback])}>
+                        <Text style={s(styles.avatarFallbackText)}>{initials}</Text>
                       </View>
                     )}
+                    <TouchableOpacity style={s(styles.cameraBadge)} onPress={handleImageUpload} disabled={uploadingImage}>
+                      <Camera size={12} color={colors.inputBg} />
+                    </TouchableOpacity>
                   </View>
+                  <View style={s(styles.profileMetaContainer)}>
+                    <Text style={s(styles.profileName)} numberOfLines={1}>{baseProfile?.name}</Text>
+                    <Text style={s(styles.profileEmail)} numberOfLines={1}>{baseProfile?.email}</Text>
+                    {conversationProfile?.department && (
+                      <Text style={s(styles.departmentText)}>Dept: {conversationProfile.department}</Text>
+                    )}
+                    <View style={s(styles.badgeRow)}>
+                      <View style={s(styles.badge)}><Text style={s(styles.badgeText)}>{baseProfile?.role || "Staff"}</Text></View>
+                      {conversationProfile?.current_status && (
+                        <View style={s([styles.badge, styles.activeStatusBadge])}>
+                          <Text style={s(styles.activeStatusText)}>{conversationProfile.current_status}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={s(styles.formGroup)}>
+                  <Text style={s(styles.label)}>Full Name</Text>
+                  <TextInput
+                    style={s([styles.input, !isEditing && styles.disabledInput])}
+                    value={isEditing ? editedProfile?.name : baseProfile?.name}
+                    onChangeText={(txt) => setEditedProfile((prev) => prev ? { ...prev, name: txt } : null)}
+                    editable={isEditing}
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+
+                <View style={s(styles.formGroup)}>
+                  <Text style={s(styles.label)}>Email Address</Text>
+                  <TextInput style={s([styles.input, styles.disabledInput])} value={baseProfile?.email} editable={false} />
+                </View>
+
+                <View style={s(styles.formGroup)}>
+                  <Text style={s(styles.label)}>Phone Line</Text>
+                  <TextInput
+                    style={s([styles.input, !isEditing && styles.disabledInput])}
+                    value={isEditing ? editedProfile?.phone : baseProfile?.phone}
+                    onChangeText={(txt) => setEditedProfile((prev) => prev ? { ...prev, phone: txt } : null)}
+                    editable={isEditing}
+                    keyboardType="phone-pad"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+
+                <View style={s(styles.formGroup)}>
+                  <Text style={s(styles.label)}>Location Base</Text>
+                  <TextInput
+                    style={s([styles.input, !isEditing && styles.disabledInput])}
+                    value={isEditing ? editedProfile?.location : baseProfile?.location}
+                    onChangeText={(txt) => setEditedProfile((prev) => prev ? { ...prev, location: txt } : null)}
+                    editable={isEditing}
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={s(styles.card)}>
+              <View style={s(styles.cardHeader)}>
+                <View>
+                  <Text style={s(styles.cardTitle)}>Compliance Verification</Text>
+                  <Text style={s(styles.cardSubTitle)}>Review files and complete regulatory configurations</Text>
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Full Name</Text>
-                <TextInput
-                  style={[styles.input, !isEditing && styles.disabledInput]}
-                  value={isEditing ? editedProfile?.name : baseProfile?.name}
-                  onChangeText={(txt) => setEditedProfile({ ...editedProfile!, name: txt })}
-                  editable={isEditing}
-                  placeholderTextColor="#52525b"
-                />
-              </View>
+              <View style={s(styles.cardContent)}>
+                {onboardingData && (
+                  <View style={s(styles.statusBox)}>
+                    <View style={s(styles.statusLayoutRow)}>
+                      {onboardingData.overallStatus === "approved" ? (
+                        <CheckCircle2 size={16} color={colors.primary} />
+                      ) : (
+                        <Clock size={16} color={colors.textSecondary} />
+                      )}
+                      <Text style={s(styles.statusText)}>
+                        System Token: <Text style={{ textTransform: "uppercase", color: colors.primary }}>{onboardingData.overallStatus}</Text>
+                      </Text>
+                    </View>
+                    <Text style={s(styles.statusProgressText)}>{getOnboardingProgress()}% Done</Text>
+                  </View>
+                )}
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Email Address</Text>
-                <TextInput style={[styles.input, styles.disabledInput]} value={baseProfile?.email} editable={false} />
-              </View>
+                {onboardingData?.overallStatus !== "approved" && (
+                  <>
+                    <Text style={s(styles.sectionHeading)}>Personal Record Dossier</Text>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>First Name *</Text><TextInput style={s(styles.input)} value={onboardingForm.firstName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, firstName: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Last Name *</Text><TextInput style={s(styles.input)} value={onboardingForm.lastName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, lastName: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Phone *</Text><TextInput style={s(styles.input)} value={onboardingForm.phone} keyboardType="phone-pad" onChangeText={(t) => setOnboardingForm({ ...onboardingForm, phone: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Address Route *</Text><TextInput style={s(styles.input)} value={onboardingForm.address} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, address: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>City *</Text><TextInput style={s(styles.input)} value={onboardingForm.city} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, city: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>State *</Text><TextInput style={s(styles.input)} value={onboardingForm.state} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, state: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>ZIP Index *</Text><TextInput style={s(styles.input)} value={onboardingForm.zip} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, zip: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Country *</Text><TextInput style={s(styles.input)} value={onboardingForm.country} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, country: t })} /></View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Phone Line</Text>
-                <TextInput
-                  style={[styles.input, !isEditing && styles.disabledInput]}
-                  value={isEditing ? editedProfile?.phone : baseProfile?.phone}
-                  onChangeText={(txt) => setEditedProfile({ ...editedProfile!, phone: txt })}
-                  editable={isEditing}
-                  keyboardType="phone-pad"
-                  placeholderTextColor="#52525b"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Location Base</Text>
-                <TextInput
-                  style={[styles.input, !isEditing && styles.disabledInput]}
-                  value={isEditing ? editedProfile?.location : baseProfile?.location}
-                  onChangeText={(txt) => setEditedProfile({ ...editedProfile!, location: txt })}
-                  editable={isEditing}
-                  placeholderTextColor="#52525b"
-                />
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Compliance Verification</Text>
-                <Text style={styles.cardSubTitle}>Review files and complete regulatory configurations</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardContent}>
-              {loadingOnboarding ? (
-                <ActivityIndicator size="small" color="#ffd27a" />
-              ) : (
-                <>
-                  {onboardingData && (
-                    <View style={styles.statusBox}>
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        {onboardingData.overallStatus === "approved" ? (
-                          <CheckCircle2 size={16} color="#ffd27a" />
-                        ) : (
-                          <Clock size={16} color="#a1a1aa" />
-                        )}
-                        <Text style={styles.statusText}>
-                          System Token: <Text style={{ textTransform: "uppercase", color: "#ffd27a" }}>{onboardingData.overallStatus}</Text>
+                    <Text style={s(styles.sectionHeading)}>Cryptographic & Government Verification</Text>
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>ID Class *</Text>
+                      <TouchableOpacity 
+                        style={s(styles.pickerSelector)} 
+                        onPress={() => showSelectAlert("ID Type", [
+                          { label: "Passport", value: "passport" },
+                          { label: "Driver's License", value: "drivers_license" },
+                          { label: "National ID", value: "national_id" }
+                        ], (v) => setOnboardingForm({ ...onboardingForm, idType: v }))}
+                      >
+                        <Text style={s(onboardingForm.idType ? styles.pickerText : styles.pickerPlaceholder)}>
+                          {onboardingForm.idType || "Select ID Type"}
                         </Text>
-                      </View>
-                      <Text style={{ fontSize: 12, color: "#a1a1aa", fontWeight: "600" }}>{getOnboardingProgress()}% Done</Text>
-                    </View>
-                  )}
-
-                  {onboardingData?.overallStatus !== "approved" && (
-                    <>
-                      <Text style={styles.sectionHeading}>Personal Record Dossier</Text>
-                      <View style={styles.formGroup}><Text style={styles.label}>First Name *</Text><TextInput style={styles.input} value={onboardingForm.firstName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, firstName: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Last Name *</Text><TextInput style={styles.input} value={onboardingForm.lastName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, lastName: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Phone *</Text><TextInput style={styles.input} value={onboardingForm.phone} keyboardType="phone-pad" onChangeText={(t) => setOnboardingForm({ ...onboardingForm, phone: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Address Route *</Text><TextInput style={styles.input} value={onboardingForm.address} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, address: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>City *</Text><TextInput style={styles.input} value={onboardingForm.city} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, city: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>State *</Text><TextInput style={styles.input} value={onboardingForm.state} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, state: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>ZIP Index *</Text><TextInput style={styles.input} value={onboardingForm.zip} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, zip: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Country *</Text><TextInput style={styles.input} value={onboardingForm.country} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, country: t })} /></View>
-
-                      <Text style={styles.sectionHeading}>Cryptographic & Government Verification</Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>ID Class *</Text>
-                        <TouchableOpacity 
-                          style={styles.pickerSelector} 
-                          onPress={() => showSelectAlert("ID Type", [
-                            { label: "Passport", value: "passport" },
-                            { label: "Driver's License", value: "drivers_license" },
-                            { label: "National ID", value: "national_id" }
-                          ], (v) => setOnboardingForm({ ...onboardingForm, idType: v }))}
-                        >
-                          <Text style={onboardingForm.idType ? styles.pickerText : styles.pickerPlaceholder}>
-                            {onboardingForm.idType || "Select ID Type"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>ID Serial String *</Text>
-                        <TextInput style={styles.input} value={onboardingForm.idNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, idNumber: t })} />
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Primary ID Asset (Front) *</Text>
-                        <TouchableOpacity style={styles.fileUploadBtn} onPress={() => handleDocumentSelection("idFrontUrl")}>
-                          {uploadingFields["idFrontUrl"] ? <ActivityIndicator size="small" color="#ffd27a" /> : <Text style={styles.uploadBtnText}>{onboardingData?.identityVerification?.idFrontUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Primary ID Asset (Back)</Text>
-                        <TouchableOpacity style={styles.fileUploadBtn} onPress={() => handleDocumentSelection("idBackUrl")}>
-                          {uploadingFields["idBackUrl"] ? <ActivityIndicator size="small" color="#ffd27a" /> : <Text style={styles.uploadBtnText}>{onboardingData?.identityVerification?.idBackUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Secondary Verification Class *</Text>
-                        <TouchableOpacity 
-                          style={styles.pickerSelector} 
-                          onPress={() => showSelectAlert("Secondary ID Type", [
-                            { label: "Social Security Card", value: "ss_card" },
-                            { label: "Other", value: "other" }
-                          ], (v) => setSecondaryIdType(v))}
-                        >
-                          <Text style={secondaryIdType ? styles.pickerText : styles.pickerPlaceholder}>
-                            {secondaryIdType || "Select Token Variant"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Secondary ID Asset *</Text>
-                        <TouchableOpacity style={styles.fileUploadBtn} onPress={() => handleDocumentSelection("secondaryIdUrl")}>
-                          {uploadingFields["secondaryIdUrl"] ? <ActivityIndicator size="small" color="#ffd27a" /> : <Text style={styles.uploadBtnText}>{onboardingData?.identityVerification?.secondaryIdUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
-                        </TouchableOpacity>
-                      </View>
-
-                      <Text style={styles.sectionHeading}>Tax Vault Information</Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>SSN Vault Token *</Text>
-                        <TextInput style={styles.input} secureTextEntry value={onboardingForm.ssn} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, ssn: t })} />
-                      </View>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Filing Strategy Group *</Text>
-                        <TouchableOpacity 
-                          style={styles.pickerSelector} 
-                          onPress={() => showSelectAlert("Tax Status", [
-                            { label: "Single", value: "single" },
-                            { label: "Married Filing Jointly", value: "married_joint" },
-                            { label: "Married Filing Separately", value: "married_separate" },
-                            { label: "Head of Household", value: "head_of_household" }
-                          ], (v) => setOnboardingForm({ ...onboardingForm, taxFilingStatus: v }))}
-                        >
-                          <Text style={onboardingForm.taxFilingStatus ? styles.pickerText : styles.pickerPlaceholder}>
-                            {onboardingForm.taxFilingStatus || "Select Group Status"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <Text style={styles.sectionHeading}>Financial Settlement Ledger</Text>
-                      <View style={styles.formGroup}><Text style={styles.label}>Bank Institution *</Text><TextInput style={styles.input} value={onboardingForm.bankName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, bankName: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Account Routing Hex *</Text><TextInput style={styles.input} secureTextEntry value={onboardingForm.accountNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, accountNumber: t })} /></View>
-                      <View style={styles.formGroup}><Text style={styles.label}>Transit Clearing Code *</Text><TextInput style={styles.input} value={onboardingForm.routingNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, routingNumber: t })} /></View>
-
-                      <Text style={styles.sectionHeading}>Signed Disclosures</Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>W-4 Regulatory Bind *</Text>
-                        <TouchableOpacity style={styles.fileUploadBtn} onPress={() => handleDocumentSelection("w4FormUrl")}>
-                          {uploadingFields["w4FormUrl"] ? <ActivityIndicator size="small" color="#ffd27a" /> : <Text style={styles.uploadBtnText}>{onboardingData?.documents?.w4FormUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Handbook Signature Bind *</Text>
-                        <TouchableOpacity style={styles.fileUploadBtn} onPress={() => handleDocumentSelection("handbookSignatureUrl")}>
-                          {uploadingFields["handbookSignatureUrl"] ? <ActivityIndicator size="small" color="#ffd27a" /> : <Text style={styles.uploadBtnText}>{onboardingData?.documents?.handbookSignatureUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
-                        </TouchableOpacity>
-                      </View>
-
-                      <TouchableOpacity style={styles.submitButton} onPress={handleSubmitOnboarding} disabled={submittingOnboarding}>
-                        {submittingOnboarding ? (
-                          <ActivityIndicator size="small" color="#09090b" />
-                        ) : (
-                          <Text style={styles.submitButtonText}>
-                            {onboardingData?.overallStatus === "submitted" || onboardingData?.overallStatus === "rejected"
-                              ? "Re-authorize & Sync Dossier"
-                              : "Commit Config Data"}
-                          </Text>
-                        )}
                       </TouchableOpacity>
-                    </>
-                  )}
-
-                  {onboardingData?.overallStatus === "approved" && (
-                    <View style={styles.approvedBanner}>
-                      <CheckCircle2 size={20} color="#ffd27a" />
-                      <Text style={styles.approvedText}>Admin system authorization confirmed. Clearance level active.</Text>
                     </View>
-                  )}
-                </>
-              )}
+                    
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>ID Serial String *</Text>
+                      <TextInput style={s(styles.input)} value={onboardingForm.idNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, idNumber: t })} />
+                    </View>
+
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Primary ID Asset (Front) *</Text>
+                      <TouchableOpacity style={s(styles.fileUploadBtn)} onPress={() => handleDocumentSelection("idFrontUrl")}>
+                        {uploadingFields["idFrontUrl"] ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={s(styles.uploadBtnText)}>{onboardingData?.identityVerification?.idFrontUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Primary ID Asset (Back)</Text>
+                      <TouchableOpacity style={s(styles.fileUploadBtn)} onPress={() => handleDocumentSelection("idBackUrl")}>
+                        {uploadingFields["idBackUrl"] ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={s(styles.uploadBtnText)}>{onboardingData?.identityVerification?.idBackUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Secondary Verification Class *</Text>
+                      <TouchableOpacity 
+                        style={s(styles.pickerSelector)} 
+                        onPress={() => showSelectAlert("Secondary ID Type", [
+                          { label: "Social Security Card", value: "ss_card" },
+                          { label: "Other", value: "other" }
+                        ], (v) => setSecondaryIdType(v))}
+                      >
+                        <Text style={s(secondaryIdType ? styles.pickerText : styles.pickerPlaceholder)}>
+                          {secondaryIdType || "Select Token Variant"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Secondary ID Asset *</Text>
+                      <TouchableOpacity style={s(styles.fileUploadBtn)} onPress={() => handleDocumentSelection("secondaryIdUrl")}>
+                        {uploadingFields["secondaryIdUrl"] ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={s(styles.uploadBtnText)}>{onboardingData?.identityVerification?.secondaryIdUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={s(styles.sectionHeading)}>Tax Vault Information</Text>
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>SSN Vault Token *</Text>
+                      <TextInput style={s(styles.input)} secureTextEntry value={onboardingForm.ssn} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, ssn: t })} />
+                    </View>
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Filing Strategy Group *</Text>
+                      <TouchableOpacity 
+                        style={s(styles.pickerSelector)} 
+                        onPress={() => showSelectAlert("Tax Status", [
+                          { label: "Single", value: "single" },
+                          { label: "Married Filing Jointly", value: "married_joint" },
+                          { label: "Married Filing Separately", value: "married_separate" },
+                          { label: "Head of Household", value: "head_of_household" }
+                        ], (v) => setOnboardingForm({ ...onboardingForm, taxFilingStatus: v }))}
+                      >
+                        <Text style={s(onboardingForm.taxFilingStatus ? styles.pickerText : styles.pickerPlaceholder)}>
+                          {onboardingForm.taxFilingStatus || "Select Group Status"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={s(styles.sectionHeading)}>Financial Settlement Ledger</Text>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Bank Institution *</Text><TextInput style={s(styles.input)} value={onboardingForm.bankName} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, bankName: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Account Routing Hex *</Text><TextInput style={s(styles.input)} secureTextEntry value={onboardingForm.accountNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, accountNumber: t })} /></View>
+                    <View style={s(styles.formGroup)}><Text style={s(styles.label)}>Transit Clearing Code *</Text><TextInput style={s(styles.input)} value={onboardingForm.routingNumber} onChangeText={(t) => setOnboardingForm({ ...onboardingForm, routingNumber: t })} /></View>
+
+                    <Text style={s(styles.sectionHeading)}>Signed Disclosures</Text>
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>W-4 Regulatory Bind *</Text>
+                      <TouchableOpacity style={s(styles.fileUploadBtn)} onPress={() => handleDocumentSelection("w4FormUrl")}>
+                        {uploadingFields["w4FormUrl"] ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={s(styles.uploadBtnText)}>{onboardingData?.documents?.w4FormUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
+                      </TouchableOpacity>
+                    </View>
+                    <View style={s(styles.formGroup)}>
+                      <Text style={s(styles.label)}>Handbook Signature Bind *</Text>
+                      <TouchableOpacity style={s(styles.fileUploadBtn)} onPress={() => handleDocumentSelection("handbookSignatureUrl")}>
+                        {uploadingFields["handbookSignatureUrl"] ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={s(styles.uploadBtnText)}>{onboardingData?.documents?.handbookSignatureUrl ? "Asset Secured ✓" : "Attach File"}</Text>}
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity style={s(styles.submitButton)} onPress={handleSubmitOnboarding} disabled={submittingOnboarding}>
+                      {submittingOnboarding ? (
+                        <ActivityIndicator size="small" color={colors.inputBg} />
+                      ) : (
+                        <Text style={s(styles.submitButtonText)}>
+                          {onboardingData?.overallStatus === "submitted" || onboardingData?.overallStatus === "rejected"
+                            ? "Re-authorize & Sync Dossier"
+                            : "Commit Config Data"}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {onboardingData?.overallStatus === "approved" && (
+                  <View style={s(styles.approvedBanner)}>
+                    <CheckCircle2 size={20} color={colors.primary} />
+                    <Text style={s(styles.approvedText)}>Admin system authorization confirmed. Clearance level active.</Text>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  container: {
-    padding: 16,
-    backgroundColor: "#09090b",
-  },
-  titleHeading: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#f4f4f5",
-    letterSpacing: 0.5,
-    marginBottom: 20,
-  },
-  tabContainer: {
-    flexDirection: "row",
-    backgroundColor: "#18181b",
-    padding: 4,
-    borderRadius: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#27272a",
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderRadius: 6,
-  },
-  activeTabButton: {
-    backgroundColor: "#27272a",
-  },
-  tabText: {
-    fontSize: 13,
-    color: "#a1a1aa",
-    fontWeight: "600",
-  },
-  activeTabText: {
-    color: "#ffd27a",
-    fontWeight: "700",
-  },
-  card: {
-    backgroundColor: "#141417",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: "#27272a",
-    paddingBottom: 12,
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#f4f4f5",
-  },
-  cardSubTitle: {
-    fontSize: 11,
-    color: "#a1a1aa",
-    marginTop: 2,
-  },
-  cardContent: {
-    marginTop: 4,
-  },
-  outlineButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: "#09090b",
-  },
-  outlineButtonText: {
-    color: "#ffd27a",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  actionCancelBtn: {
-    padding: 6,
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    backgroundColor: "#1c1917",
-  },
-  actionSaveBtn: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: "#ffd27a",
-  },
-  avatarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  avatarWrapper: {
-    position: "relative",
-    width: 68,
-    height: 68,
-  },
-  avatarImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: "#27272a",
-  },
-  avatarFallback: {
-    backgroundColor: "#27272a",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarFallbackText: {
-    color: "#ffd27a",
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  cameraBadge: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    backgroundColor: "#ffd27a",
-    padding: 6,
-    borderRadius: 99,
-    borderWidth: 2,
-    borderColor: "#141417",
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#f4f4f5",
-  },
-  profileEmail: {
-    fontSize: 12,
-    color: "#a1a1aa",
-    marginTop: 1,
-  },
-  departmentText: {
-    fontSize: 11,
-    color: "#ffd27a",
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 6,
-  },
-  badge: {
-    backgroundColor: "#27272a",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  badgeText: {
-    fontSize: 10,
-    color: "#e4e4e7",
-    fontWeight: "600",
-  },
-  activeStatusBadge: {
-    backgroundColor: "rgba(255, 210, 122, 0.1)",
-    borderWidth: 0.5,
-    borderColor: "rgba(255, 210, 122, 0.3)",
-  },
-  activeStatusText: {
-    fontSize: 10,
-    color: "#ffd27a",
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 12,
-    color: "#a1a1aa",
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: "#09090b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#f4f4f5",
-    fontSize: 13,
-  },
-  disabledInput: {
-    backgroundColor: "#18181b",
-    color: "#71717a",
-  },
-  statusBox: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#18181b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-  },
-  statusText: {
-    fontSize: 12,
-    color: "#e4e4e7",
-    fontWeight: "600",
-    marginLeft: 6,
-  },
-  sectionHeading: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#ffd27a",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginTop: 12,
-    marginBottom: 12,
-    borderBottomWidth: 0.5,
-    borderColor: "#27272a",
-    paddingBottom: 4,
-  },
-  pickerSelector: {
-    backgroundColor: "#09090b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  pickerText: {
-    color: "#f4f4f5",
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  pickerPlaceholder: {
-    color: "#52525b",
-    fontSize: 13,
-  },
-  fileUploadBtn: {
-    backgroundColor: "#09090b",
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderStyle: "dashed",
-    borderRadius: 6,
-    padding: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  uploadBtnText: {
-    color: "#a1a1aa",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  submitButton: {
-    backgroundColor: "#ffd27a",
-    borderRadius: 6,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 20,
-  },
-  submitButtonText: {
-    color: "#09090b",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  approvedBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(255, 210, 122, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 210, 122, 0.2)",
-    borderRadius: 8,
-    padding: 16,
-  },
-  approvedText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#e4e4e7",
-    fontWeight: "600",
-    lineHeight: 18,
-  },
-});

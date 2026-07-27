@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import {
   Calendar as CalendarIcon,
@@ -21,10 +20,8 @@ import {
 import { format, parseISO, addDays } from "date-fns";
 
 // --- API Implementation Imports ---
-// (Adjust path as needed to match your project architecture)
 import { getEmployeeSchedule } from "@/lib/admin/apiClient";
-
-const { width } = Dimensions.get("window");
+import { s, wp, hp, fs } from "@/util/styles";
 
 interface ScheduleEvent {
   id: string;
@@ -38,13 +35,13 @@ interface ScheduleEvent {
 
 // --- Shared Internal UI Layout Subcomponents ---
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  return <View style={s([styles.card, style])}>{children}</View>;
 }
 
 function Badge({ children, style }: { children: React.ReactNode; style?: any }) {
   return (
-    <View style={[styles.badge, style]}>
-      <Text style={styles.badgeText}>{children}</Text>
+    <View style={s([styles.badge, style])}>
+      <Text style={s(styles.badgeText)}>{children}</Text>
     </View>
   );
 }
@@ -142,33 +139,33 @@ export default function EmployeeScheduleScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <CalendarIcon color="#27272a" size={48} style={{ marginBottom: 12 }} />
+      <View style={s([styles.container, styles.center])}>
+        <CalendarIcon color="#27272a" size={fs(12)} style={s({ marginBottom: hp(1.5) })} />
         <ActivityIndicator size="small" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading schedule...</Text>
+        <Text style={s(styles.loadingText)}>Loading schedule...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+    <View style={s(styles.container)}>
+      <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false}>
         
         {/* Header Title Bar */}
-        <View style={styles.headerRow}>
-          <Text style={styles.mainHeading}>My Schedule</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>{upcomingEvents.length} upcoming</Text>
+        <View style={s(styles.headerRow)}>
+          <Text style={s(styles.mainHeading)}>My Schedule</Text>
+          <View style={s(styles.countBadge)}>
+            <Text style={s(styles.countBadgeText)}>{upcomingEvents.length} upcoming</Text>
           </View>
         </View>
 
         {/* Search and Dropdown Filter Panel */}
         <Card style={styles.filterCard}>
-          <View style={styles.filterLayoutRow}>
-            <View style={styles.searchBarWrapper}>
-              <Search color="#71717a" size={16} style={styles.searchIcon} />
+          <View style={s(styles.filterLayoutRow)}>
+            <View style={s(styles.searchBarWrapper)}>
+              <Search color="#71717a" size={fs(4)} style={s(styles.searchIcon)} />
               <TextInput
-                style={styles.searchInput}
+                style={s(styles.searchInput)}
                 placeholder="Search events..."
                 placeholderTextColor="#71717a"
                 value={searchTerm}
@@ -178,33 +175,33 @@ export default function EmployeeScheduleScreen() {
 
             <TouchableOpacity 
               activeOpacity={0.8}
-              style={styles.dropdownSelector}
+              style={s(styles.dropdownSelector)}
               onPress={() => setShowFilterDropdown(!showFilterDropdown)}
             >
-              <Filter color="#a1a1aa" size={14} style={{ marginRight: 6 }} />
-              <Text style={styles.dropdownValueText}>
+              <Filter color="#a1a1aa" size={fs(3.5)} style={s({ marginRight: wp(1.5) })} />
+              <Text style={s(styles.dropdownValueText)}>
                 {filterType === "all" ? "All Types" : filterType.charAt(0).toUpperCase() + filterType.slice(1)}
               </Text>
-              <ChevronDown color="#71717a" size={14} style={{ marginLeft: 6 }} />
+              <ChevronDown color="#71717a" size={fs(3.5)} style={s({ marginLeft: wp(1.5) })} />
             </TouchableOpacity>
           </View>
 
           {/* Dynamic Mobile Accordion for Native Select option */}
           {showFilterDropdown && (
-            <View style={styles.dropdownOptionsContainer}>
+            <View style={s(styles.dropdownOptionsContainer)}>
               <TouchableOpacity 
-                style={[styles.dropdownOptionItem, filterType === "all" && styles.activeOption]}
+                style={s([styles.dropdownOptionItem, filterType === "all" && styles.activeOption])}
                 onPress={() => { setFilterType("all"); setShowFilterDropdown(false); }}
               >
-                <Text style={[styles.optionText, filterType === "all" && styles.activeOptionText]}>All Types</Text>
+                <Text style={s([styles.optionText, filterType === "all" && styles.activeOptionText])}>All Types</Text>
               </TouchableOpacity>
               {uniqueTypes.map((type) => (
                 <TouchableOpacity 
                   key={type}
-                  style={[styles.dropdownOptionItem, filterType === type && styles.activeOption]}
+                  style={s([styles.dropdownOptionItem, filterType === type && styles.activeOption])}
                   onPress={() => { setFilterType(type); setShowFilterDropdown(false); }}
                 >
-                  <Text style={[styles.optionText, filterType === type && styles.activeOptionText]}>
+                  <Text style={s([styles.optionText, filterType === type && styles.activeOptionText])}>
                     {type.charAt(0).toUpperCase() + type.slice(1)}
                   </Text>
                 </TouchableOpacity>
@@ -215,62 +212,62 @@ export default function EmployeeScheduleScreen() {
 
         {/* Upcoming Events Main Block Section */}
         <Card>
-          <View style={styles.cardHeaderBar}>
-            <CalendarIcon color="#ffffff" size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.cardTitleText}>Upcoming Events</Text>
+          <View style={s(styles.cardHeaderBar)}>
+            <CalendarIcon color="#ffffff" size={fs(4.5)} style={s({ marginRight: wp(2) })} />
+            <Text style={s(styles.cardTitleText)}>Upcoming Events</Text>
             {upcomingEvents.length > 0 && (
-              <View style={styles.totalIndicatorBadge}>
-                <Text style={styles.indicatorText}>{upcomingEvents.length}</Text>
+              <View style={s(styles.totalIndicatorBadge)}>
+                <Text style={s(styles.indicatorText)}>{upcomingEvents.length}</Text>
               </View>
             )}
           </View>
 
           {upcomingEvents.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <CalendarIcon color="#27272a" size={44} style={{ marginBottom: 12, opacity: 0.5 }} />
-              <Text style={styles.emptyText}>No upcoming events found</Text>
+            <View style={s(styles.emptyContainer)}>
+              <CalendarIcon color="#27272a" size={fs(11)} style={s({ marginBottom: hp(1.5), opacity: 0.5 })} />
+              <Text style={s(styles.emptyText)}>No upcoming events found</Text>
             </View>
           ) : (
-            <View style={styles.eventsListDivider}>
+            <View style={s(styles.eventsListDivider)}>
               {upcomingEvents.map((event) => {
                 const colors = getTypeColorStyles(event.type);
                 return (
-                  <View key={event.id} style={styles.eventListItem}>
-                    <View style={styles.eventLeftWrapper}>
-                      <View style={styles.briefcaseIconBox}>
-                        <Briefcase color="#3b82f6" size={20} />
+                  <View key={event.id} style={s(styles.eventListItem)}>
+                    <View style={s(styles.eventLeftWrapper)}>
+                      <View style={s(styles.briefcaseIconBox)}>
+                        <Briefcase color="#3b82f6" size={fs(5)} />
                       </View>
                       
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.titleBadgeRow}>
-                          <Text style={styles.eventTitleText} numberOfLines={2}>{event.title}</Text>
-                          <View style={[styles.typeBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-                            <Text style={[styles.typeBadgeText, { color: colors.text }]}>{event.type}</Text>
+                      <View style={s({ flex: 1 })}>
+                        <View style={s(styles.titleBadgeRow)}>
+                          <Text style={s(styles.eventTitleText)} numberOfLines={2}>{event.title}</Text>
+                          <View style={s([styles.typeBadge, { backgroundColor: colors.bg, borderColor: colors.border }])}>
+                            <Text style={s([styles.typeBadgeText, { color: colors.text }])}>{event.type}</Text>
                           </View>
                         </View>
 
                         {/* Event Meta Details Grid Mapping */}
-                        <View style={styles.metaFlexWrap}>
-                          <View style={styles.metaItem}>
-                            <CalendarIcon color="#71717a" size={13} style={{ marginRight: 4 }} />
-                            <Text style={styles.metaItemText}>
+                        <View style={s(styles.metaFlexWrap)}>
+                          <View style={s(styles.metaItem)}>
+                            <CalendarIcon color="#71717a" size={fs(3.2)} style={s({ marginRight: wp(1) })} />
+                            <Text style={s(styles.metaItemText)}>
                               {formatEventDate(event.day)}
                               {formatEventDay(event.day) ? (
-                                <Text style={styles.highlightDayText}> ({formatEventDay(event.day)})</Text>
+                                <Text style={s(styles.highlightDayText)}> ({formatEventDay(event.day)})</Text>
                               ) : null}
                             </Text>
                           </View>
 
-                          <View style={styles.metaItem}>
-                            <Clock color="#71717a" size={13} style={{ marginRight: 4 }} />
-                            <Text style={styles.metaItemText}>
+                          <View style={s(styles.metaItem)}>
+                            <Clock color="#71717a" size={fs(3.2)} style={s({ marginRight: wp(1) })} />
+                            <Text style={s(styles.metaItemText)}>
                               {event.startTime || "--:--"} - {event.endTime || "--:--"}
                             </Text>
                           </View>
 
-                          <View style={styles.metaItem}>
-                            <MapPin color="#71717a" size={13} style={{ marginRight: 4 }} />
-                            <Text style={styles.metaItemText} numberOfLines={1}>
+                          <View style={s(styles.metaItem)}>
+                            <MapPin color="#71717a" size={fs(3.2)} style={s({ marginRight: wp(1) })} />
+                            <Text style={s(styles.metaItemText)} numberOfLines={1}>
                               {event.location || "No location"}
                             </Text>
                           </View>
@@ -294,56 +291,58 @@ export default function EmployeeScheduleScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#09090b" },
   center: { justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "#a1a1aa", fontSize: 13, marginTop: 10 },
-  scrollContainer: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
+  loadingText: { color: "#a1a1aa", fontSize: fs(3.2), marginTop: hp(1.2) },
+  scrollContainer: { paddingHorizontal: wp(4), paddingTop: hp(2.5), paddingBottom: hp(5) },
 
   // Header Styles
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  mainHeading: { color: "#ffffff", fontSize: 24, fontWeight: "bold", letterSpacing: -0.5 },
-  countBadge: { borderColor: "#27272a", borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  countBadgeText: { color: "#a1a1aa", fontSize: 12, fontWeight: "500" },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: hp(2) },
+  mainHeading: { color: "#ffffff", fontSize: fs(5.8), fontWeight: "bold", letterSpacing: -0.5 },
+  countBadge: { borderColor: "#27272a", borderWidth: 1, paddingHorizontal: wp(2.5), paddingVertical: hp(0.5), borderRadius: wp(5) },
+  countBadgeText: { color: "#a1a1aa", fontSize: fs(2.8), fontWeight: "500" },
 
   // Filters Controls Styles
-  filterCard: { padding: 12, zIndex: 10 },
-  filterLayoutRow: { flexDirection: "row", gap: 10 },
-  searchBarWrapper: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, height: 40 },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, color: "#ffffff", fontSize: 14, paddingVertical: 0 },
-  dropdownSelector: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1f", borderColor: "#27272a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, height: 40 },
-  dropdownValueText: { color: "#ffffff", fontSize: 13, fontWeight: "500" },
+  filterCard: { padding: wp(3), zIndex: 10 },
+  filterLayoutRow: { flexDirection: "row", gap: wp(2.5) },
+  searchBarWrapper: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#09090b", borderColor: "#27272a", borderWidth: 1, borderRadius: wp(2), paddingHorizontal: wp(2.5), height: hp(5) },
+  searchIcon: { marginRight: wp(2) },
+  searchInput: { flex: 1, color: "#ffffff", fontSize: fs(3.5), paddingVertical: 0 },
+  dropdownSelector: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1f", borderColor: "#27272a", borderWidth: 1, borderRadius: wp(2), paddingHorizontal: wp(3), height: hp(5) },
+  dropdownValueText: { color: "#ffffff", fontSize: fs(3.2), fontWeight: "500" },
   
   // Custom Dropdown Open State Components
-  dropdownOptionsContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: "#27272a", paddingTop: 4 },
-  dropdownOptionItem: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: 6 },
+  dropdownOptionsContainer: { marginTop: hp(1.2), borderTopWidth: 1, borderTopColor: "#27272a", paddingTop: hp(0.5) },
+  dropdownOptionItem: { paddingVertical: hp(1.2), paddingHorizontal: wp(2), borderRadius: wp(1.5) },
   activeOption: { backgroundColor: "#1e3a8a30" },
-  optionText: { color: "#a1a1aa", fontSize: 13 },
+  optionText: { color: "#a1a1aa", fontSize: fs(3.2) },
   activeOptionText: { color: "#3b82f6", fontWeight: "600" },
 
   // Main Cards UI Layout Structure
-  card: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: 12, marginBottom: 16, overflow: "hidden" },
-  cardHeaderBar: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#27272a", flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1f" },
-  cardTitleText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
-  totalIndicatorBadge: { backgroundColor: "#133767", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginLeft: 8 },
-  indicatorText: { color: "#ffffff", fontSize: 11, fontWeight: "700" },
+  card: { backgroundColor: "#18181b", borderColor: "#27272a", borderWidth: 1, borderRadius: wp(3), marginBottom: hp(2), overflow: "hidden" },
+  cardHeaderBar: { padding: wp(4), borderBottomWidth: 1, borderBottomColor: "#27272a", flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1f" },
+  cardTitleText: { color: "#ffffff", fontSize: fs(3.8), fontWeight: "600" },
+  totalIndicatorBadge: { backgroundColor: "#133767", paddingHorizontal: wp(2), paddingVertical: hp(0.2), borderRadius: wp(1.5), marginLeft: wp(2) },
+  indicatorText: { color: "#ffffff", fontSize: fs(2.8), fontWeight: "700" },
 
   // List Rows Mapping Layout
   eventsListDivider: { backgroundColor: "#18181b" },
-  eventListItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#27272a" },
-  eventLeftWrapper: { flexDirection: "row", gap: 12 },
-  briefcaseIconBox: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#13376715", justifyContent: "center", alignItems: "center", shrink: 0 },
+  eventListItem: { padding: wp(4), borderBottomWidth: 1, borderBottomColor: "#27272a" },
+  eventLeftWrapper: { flexDirection: "row", gap: wp(3) },
+  briefcaseIconBox: { width: wp(11), height: wp(11), borderRadius: wp(2.5), backgroundColor: "#13376715", justifyContent: "center", alignItems: "center" },
   
-  titleBadgeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 6, marginBottom: 6 },
-  eventTitleText: { color: "#ffffff", fontSize: 14, fontWeight: "600", flex: 1, minWidth: width * 0.4 },
-  typeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderWidth: 1 },
-  typeBadgeText: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
+  titleBadgeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: wp(1.5), marginBottom: hp(0.8) },
+  eventTitleText: { color: "#ffffff", fontSize: fs(3.5), fontWeight: "600", flex: 1, minWidth: wp(40) },
+  typeBadge: { paddingHorizontal: wp(2), paddingVertical: hp(0.3), borderRadius: wp(1), borderWidth: 1 },
+  typeBadgeText: { fontSize: fs(2.5), fontWeight: "700", textTransform: "uppercase" },
 
   // Meta Elements Wrapper 
-  metaFlexWrap: { flexDirection: "row", flexWrap: "wrap", columnGap: 14, rowGap: 4, marginTop: 4 },
+  metaFlexWrap: { flexDirection: "row", flexWrap: "wrap", columnGap: wp(3.5), rowGap: hp(0.5), marginTop: hp(0.5) },
   metaItem: { flexDirection: "row", alignItems: "center" },
-  metaItemText: { color: "#a1a1aa", fontSize: 12 },
+  metaItemText: { color: "#a1a1aa", fontSize: fs(2.8) },
   highlightDayText: { color: "#3b82f6", fontWeight: "500" },
 
   // Empty List View Layout Placeholder
-  emptyContainer: { padding: 40, alignItems: "center", justifyContent: "center" },
-  emptyText: { color: "#71717a", fontSize: 13 }
+  emptyContainer: { padding: wp(10), alignItems: "center", justifyContent: "center" },
+  emptyText: { color: "#71717a", fontSize: fs(3.2) },
+  badge: { paddingHorizontal: wp(2), paddingVertical: hp(0.3), borderRadius: wp(1) },
+  badgeText: { fontSize: fs(2.8), fontWeight: "600" }
 });

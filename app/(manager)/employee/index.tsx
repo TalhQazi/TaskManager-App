@@ -11,12 +11,10 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Alert,
-  Dimensions
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  Plus, 
   Search, 
   Phone, 
   Mail, 
@@ -25,23 +23,8 @@ import {
   Users, 
   X
 } from "lucide-react-native";
-
-// --- Design System Tokens ---
-const COLORS = {
-  primary: "#2563eb",
-  primaryLight: "#dbeafe",
-  success: "#10b981",
-  successLight: "#d1fae5",
-  warning: "#f59e0b",
-  warningLight: "#fef3c7",
-  destructive: "#ef4444",
-  destructiveLight: "#fee2e2",
-  background: "#f8fafc",
-  card: "#ffffff",
-  border: "#e2e8f0",
-  text: "#0f172a",
-  textLight: "#64748b",
-};
+import { useTheme } from "@/contexts/ThemeContext";
+import { s, wp, hp, fs } from "@/util/styles";
 
 // --- Interfaces & Data Mappers ---
 interface Employee {
@@ -82,12 +65,6 @@ function normalizeEmployee(e: EmployeeApi): Employee {
   };
 }
 
-const statusColors = {
-  active: COLORS.success,
-  inactive: COLORS.textLight,
-  "on-leave": COLORS.warning,
-};
-
 const statusLabels = {
   active: "Active",
   inactive: "Inactive",
@@ -107,7 +84,6 @@ const BASE_API_URL = "https://task.se7eninc.com/api/employees";
 
 const apiFetch = async <T,>(urlSuffix: string = "", init?: RequestInit): Promise<T> => {
   const res = await fetch(`${BASE_API_URL}${urlSuffix}`, init);
-  console.log(res);
   if (!res.ok) {
     const errorText = await res.text().catch(() => "Unknown error");
     throw new Error(`API error (${res.status}): ${errorText}`);
@@ -115,7 +91,108 @@ const apiFetch = async <T,>(urlSuffix: string = "", init?: RequestInit): Promise
   return res.json();
 };
 
+function buildColors(uiTheme: any, isDark: boolean) {
+  return {
+    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#0b0c16" : "#f8fafc"),
+    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "rgba(255, 255, 255, 0.03)" : "#ffffff"),
+    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#ffffff" : "#0f172a"),
+    textSecondary:   isDark ? "#94a3b8" : "#64748b",
+    textMuted:       isDark ? "#64748b" : "#94a3b8",
+    border:          isDark ? "rgba(255, 255, 255, 0.08)" : "#e2e8f0",
+    borderLight:     isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
+    inputBg:         isDark ? "rgba(0, 0, 0, 0.4)" : "#ffffff",
+    primary:         uiTheme.customColors?.primary || "#2563eb",
+    primaryLight:    isDark ? "rgba(37, 99, 235, 0.15)" : "#dbeafe",
+    success:         "#10b981",
+    warning:         "#f59e0b",
+    destructive:     "#ef4444",
+    modalBg:         isDark ? "#1e293b" : "#ffffff",
+    overlayBg:       isDark ? "rgba(0, 0, 0, 0.6)" : "rgba(15, 23, 42, 0.6)",
+  };
+}
+
+function createStyles(colors: ReturnType<typeof buildColors>) {
+  return StyleSheet.create({
+    safeContainer: { flex: 1, backgroundColor: colors.background },
+    mainContainer: { flex: 1, paddingHorizontal: wp(4), paddingTop: hp(1.5) },
+    header: { marginBottom: hp(2) },
+    title: { fontSize: fs(6), fontWeight: "700", color: colors.text, letterSpacing: -0.5 },
+    subtitle: { fontSize: fs(3.2), color: colors.textSecondary, marginTop: hp(0.25) },
+    filterSection: { marginBottom: hp(2), gap: hp(1.5) },
+    searchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.border, borderRadius: wp(2.5), paddingHorizontal: wp(3), height: hp(5.2) },
+    searchIcon: { marginRight: wp(2) },
+    searchInput: { flex: 1, fontSize: fs(3.2), color: colors.text },
+    pillsScroll: { flexDirection: "row", marginVertical: hp(0.5) },
+    pillButton: { paddingHorizontal: wp(4), paddingVertical: hp(1), borderRadius: wp(5), backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.border, marginRight: wp(2) },
+    pillButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    pillText: { fontSize: fs(3), fontWeight: "500", color: colors.textSecondary },
+    pillTextActive: { color: "#fff" },
+    listContainer: { paddingBottom: hp(3), gap: hp(1.5) },
+    card: { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.border, borderRadius: wp(3), padding: wp(4) },
+    cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+    profileRow: { flexDirection: "row", alignItems: "center", flex: 1, gap: wp(3) },
+    avatarContainer: { width: wp(11), height: wp(11), borderRadius: wp(5.5), backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center", position: "relative" },
+    avatarText: { fontSize: fs(3.5), fontWeight: "600", color: colors.primary },
+    statusIndicatorDot: { position: "absolute", bottom: 0, right: 0, width: wp(3), height: wp(3), borderRadius: wp(1.5), borderWidth: 2, borderColor: colors.cardBg },
+    headerMetaData: { flex: 1 },
+    employeeName: { fontSize: fs(3.8), fontWeight: "600", color: colors.text },
+    employeeRole: { fontSize: fs(3), color: colors.textSecondary, marginTop: hp(0.25) },
+    moreButton: { padding: wp(1) },
+    inlineActionDropdown: { flexDirection: "row", justifyContent: "space-around", backgroundColor: colors.background, borderRadius: wp(2), paddingVertical: hp(1), marginVertical: hp(1.2), borderWidth: 1, borderColor: colors.border },
+    inlineActionItem: { paddingVertical: hp(0.5), paddingHorizontal: wp(3) },
+    actionTextView: { color: colors.primary, fontSize: fs(3), fontWeight: "600" },
+    actionTextDelete: { color: colors.destructive, fontSize: fs(3), fontWeight: "600" },
+    cardBody: { marginTop: hp(1.8), gap: hp(1) },
+    infoLine: { flexDirection: "row", alignItems: "center" },
+    iconSpaced: { marginRight: wp(2) },
+    infoLineText: { fontSize: fs(3), color: colors.textSecondary },
+    cardFooter: { marginTop: hp(1.8), paddingTop: hp(1.5), borderTopWidth: 1, borderTopColor: colors.border, flexDirection: "row", alignItems: "center" },
+    badgeWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: colors.background, paddingHorizontal: wp(2), paddingVertical: hp(0.5), borderRadius: wp(1.5) },
+    statusIndicatorDotSmall: { width: wp(1.5), height: wp(1.5), borderRadius: wp(0.75), marginRight: wp(1.5) },
+    statusBadgeText: { fontSize: fs(2.8), fontWeight: "500" },
+    centerBox: { flex: 1, alignItems: "center", paddingVertical: hp(5), justifyContent: "center" },
+    loadingText: { fontSize: fs(3.2), color: colors.textSecondary, marginTop: hp(1.2) },
+    errorText: { color: colors.destructive, fontSize: fs(3.2) },
+    noResultsTitle: { fontSize: fs(4), fontWeight: "600", color: colors.text, marginTop: hp(1.5) },
+    noResultsSubtitle: { fontSize: fs(3), color: colors.textSecondary, marginTop: hp(0.5) },
+    footerStatsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: hp(1.5), borderTopWidth: 1, borderTopColor: colors.border },
+    showingText: { fontSize: fs(2.8), color: colors.textSecondary },
+    footerStatusMetrics: { flexDirection: "row", gap: wp(3) },
+    metricItem: { fontSize: fs(2.8), color: colors.textSecondary },
+    modalOverlay: { flex: 1, backgroundColor: colors.overlayBg, justifyContent: "flex-end" },
+    modalContent: { backgroundColor: colors.modalBg, borderTopLeftRadius: wp(5), borderTopRightRadius: wp(5), maxHeight: "85%", paddingBottom: hp(4) },
+    modalDragHandle: { width: wp(10), height: hp(0.5), backgroundColor: colors.border, borderRadius: wp(0.5), alignSelf: "center", marginTop: hp(1.2), marginBottom: hp(1.2) },
+    modalHeader: { paddingHorizontal: wp(5), paddingBottom: hp(2), borderBottomWidth: 1, borderBottomColor: colors.border },
+    modalProfileRow: { flexDirection: "row", alignItems: "center" },
+    modalAvatarPlaceholder: { width: wp(12), height: wp(12), borderRadius: wp(6), backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center" },
+    modalAvatarText: { fontSize: fs(4), fontWeight: "700", color: colors.primary },
+    detailsViewTitle: { fontSize: fs(4.5), fontWeight: "700", color: colors.text },
+    detailsViewSubtitle: { fontSize: fs(3), color: colors.textSecondary, marginTop: hp(0.25) },
+    closeCircle: { width: wp(7), height: wp(7), borderRadius: wp(3.5), backgroundColor: colors.background, alignItems: "center", justifyContent: "center" },
+    modalBody: { padding: wp(5) },
+    detailsGrid: { gap: hp(2) },
+    detailBlockFull: { width: "100%" },
+    detailBlockHalf: { width: "100%" },
+    detailLabel: { fontSize: fs(2.8), color: colors.textSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: hp(0.5) },
+    detailValueText: { fontSize: fs(3.8), fontWeight: "500", color: colors.text },
+    modalFooter: { paddingHorizontal: wp(5), paddingTop: hp(2), borderTopWidth: 1, borderTopColor: colors.border },
+    dismissActionBtn: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: wp(2.5), height: hp(5.8), alignItems: "center", justifyContent: "center" },
+    dismissActionBtnText: { fontSize: fs(3.5), fontWeight: "600", color: colors.text },
+  });
+}
+
 export default function Employees() {
+  const { uiTheme } = useTheme();
+  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const statusColors = useMemo(() => ({
+    active: colors.success,
+    inactive: colors.textSecondary,
+    "on-leave": colors.warning,
+  }), [colors]);
+
   const { view } = useLocalSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -131,7 +208,6 @@ export default function Employees() {
   const employeesQuery = useQuery({
     queryKey: ["employees"],
     queryFn: async () => {
-      // The API endpoint directly returns either an array or an object holding the items array
       const responseData = await apiFetch<any>("");
       const items = Array.isArray(responseData) 
         ? responseData 
@@ -207,57 +283,57 @@ export default function Employees() {
     const isMenuOpen = activeMenuId === employee.id;
 
     return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>{getInitials(employee.name)}</Text>
-              <View style={[styles.statusIndicatorDot, { backgroundColor: statusColors[employee.status] }]} />
+      <View style={s(styles.card)}>
+        <View style={s(styles.cardHeader)}>
+          <View style={s(styles.profileRow)}>
+            <View style={s(styles.avatarContainer)}>
+              <Text style={s(styles.avatarText)}>{getInitials(employee.name)}</Text>
+              <View style={s([styles.statusIndicatorDot, { backgroundColor: statusColors[employee.status] }])} />
             </View>
-            <View style={styles.headerMetaData}>
-              <Text style={styles.employeeName} numberOfLines={1}>{employee.name}</Text>
-              <Text style={styles.employeeRole} numberOfLines={1}>{employee.role}</Text>
+            <View style={s(styles.headerMetaData)}>
+              <Text style={s(styles.employeeName)} numberOfLines={1}>{employee.name}</Text>
+              <Text style={s(styles.employeeRole)} numberOfLines={1}>{employee.role}</Text>
             </View>
           </View>
 
           <TouchableOpacity 
-            style={styles.moreButton} 
+            style={s(styles.moreButton)} 
             onPress={() => setActiveMenuId(isMenuOpen ? null : employee.id)}
           >
-            <MoreHorizontal size={20} color={COLORS.textLight} />
+            <MoreHorizontal size={fs(4.5)} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
         {isMenuOpen && (
-          <View style={styles.inlineActionDropdown}>
-            <TouchableOpacity style={styles.inlineActionItem} onPress={() => openView(employee)}>
-              <Text style={styles.actionTextView}>View Details</Text>
+          <View style={s(styles.inlineActionDropdown)}>
+            <TouchableOpacity style={s(styles.inlineActionItem)} onPress={() => openView(employee)}>
+              <Text style={s(styles.actionTextView)}>View Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.inlineActionItem} onPress={() => triggerDelete(employee)}>
-              <Text style={styles.actionTextDelete}>Delete Profile</Text>
+            <TouchableOpacity style={s(styles.inlineActionItem)} onPress={() => triggerDelete(employee)}>
+              <Text style={s(styles.actionTextDelete)}>Delete Profile</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <View style={styles.cardBody}>
-          <View style={styles.infoLine}>
-            <Mail size={14} color={COLORS.textLight} style={styles.iconSpaced} />
-            <Text style={styles.infoLineText} numberOfLines={1}>{employee.email}</Text>
+        <View style={s(styles.cardBody)}>
+          <View style={s(styles.infoLine)}>
+            <Mail size={fs(3.2)} color={colors.textSecondary} style={s(styles.iconSpaced)} />
+            <Text style={s(styles.infoLineText)} numberOfLines={1}>{employee.email}</Text>
           </View>
-          <View style={styles.infoLine}>
-            <Phone size={14} color={COLORS.textLight} style={styles.iconSpaced} />
-            <Text style={styles.infoLineText} numberOfLines={1}>{employee.phone}</Text>
+          <View style={s(styles.infoLine)}>
+            <Phone size={fs(3.2)} color={colors.textSecondary} style={s(styles.iconSpaced)} />
+            <Text style={s(styles.infoLineText)} numberOfLines={1}>{employee.phone}</Text>
           </View>
-          <View style={styles.infoLine}>
-            <MapPin size={14} color={COLORS.textLight} style={styles.iconSpaced} />
-            <Text style={styles.infoLineText} numberOfLines={1}>{employee.location}</Text>
+          <View style={s(styles.infoLine)}>
+            <MapPin size={fs(3.2)} color={colors.textSecondary} style={s(styles.iconSpaced)} />
+            <Text style={s(styles.infoLineText)} numberOfLines={1}>{employee.location}</Text>
           </View>
         </View>
 
-        <View style={styles.cardFooter}>
-          <View style={styles.badgeWrapper}>
-            <View style={[styles.statusIndicatorDotSmall, { backgroundColor: statusColors[employee.status] }]} />
-            <Text style={[styles.statusBadgeText, { color: statusColors[employee.status] }]}>
+        <View style={s(styles.cardFooter)}>
+          <View style={s(styles.badgeWrapper)}>
+            <View style={s([styles.statusIndicatorDotSmall, { backgroundColor: statusColors[employee.status] }])} />
+            <Text style={s([styles.statusBadgeText, { color: statusColors[employee.status] }])}>
               {statusLabels[employee.status]}
             </Text>
           </View>
@@ -267,42 +343,42 @@ export default function Employees() {
   };
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      <View style={styles.mainContainer}>
+    <SafeAreaView style={s(styles.safeContainer)}>
+      <View style={s(styles.mainContainer)}>
         
         {/* Top Header Block */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Employee Directory</Text>
-          <Text style={styles.subtitle}>View and manage corporate team members</Text>
+        <View style={s(styles.header)}>
+          <Text style={s(styles.title)}>Employee Directory</Text>
+          <Text style={s(styles.subtitle)}>View and manage corporate team members</Text>
         </View>
 
         {/* Input Controls Pipeline */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchContainer}>
-            <Search size={16} color={COLORS.textLight} style={styles.searchIcon} />
+        <View style={s(styles.filterSection)}>
+          <View style={s(styles.searchContainer)}>
+            <Search size={fs(3.8)} color={colors.textSecondary} style={s(styles.searchIcon)} />
             <TextInput
               placeholder="Search by name, email, or position..."
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              style={styles.searchInput}
+              style={s(styles.searchInput)}
             />
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillsScroll}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s(styles.pillsScroll)}>
             {["all", "active", "on-leave", "inactive"].map((statusOption) => (
               <TouchableOpacity
                 key={statusOption}
-                style={[
+                style={s([
                   styles.pillButton,
                   statusFilter === statusOption && styles.pillButtonActive
-                ]}
+                ])}
                 onPress={() => setStatusFilter(statusOption)}
               >
-                <Text style={[
+                <Text style={s([
                   styles.pillText,
                   statusFilter === statusOption && styles.pillTextActive
-                ]}>
+                ])}>
                   {statusOption === "all" ? "All Status" : statusLabels[statusOption as keyof typeof statusLabels]}
                 </Text>
               </TouchableOpacity>
@@ -312,38 +388,38 @@ export default function Employees() {
 
         {/* Dynamic Fetch Engine Views */}
         {employeesQuery.isLoading ? (
-          <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Syncing live directory records...</Text>
+          <View style={s(styles.centerBox)}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={s(styles.loadingText)}>Syncing live directory records...</Text>
           </View>
         ) : employeesQuery.isError ? (
-          <View style={styles.centerBox}>
-            <Text style={styles.errorText}>Failed connection to live directory API endpoint.</Text>
+          <View style={s(styles.centerBox)}>
+            <Text style={s(styles.errorText)}>Failed connection to live directory API endpoint.</Text>
           </View>
         ) : filteredEmployees.length === 0 ? (
-          <View style={styles.centerBox}>
-            <Users size={48} color={COLORS.textLight} />
-            <Text style={styles.noResultsTitle}>No structural profiles found</Text>
-            <Text style={styles.noResultsSubtitle}>Try modifying your filters or text search query values.</Text>
+          <View style={s(styles.centerBox)}>
+            <Users size={fs(10)} color={colors.textSecondary} />
+            <Text style={s(styles.noResultsTitle)}>No structural profiles found</Text>
+            <Text style={s(styles.noResultsSubtitle)}>Try modifying your filters or text search query values.</Text>
           </View>
         ) : (
           <FlatList
             data={filteredEmployees}
             keyExtractor={(item) => item.id}
             renderItem={renderEmployeeCard}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={s(styles.listContainer)}
             showsVerticalScrollIndicator={false}
           />
         )}
 
         {/* Real-Time Total Metrics Footer panel */}
-        <View style={styles.footerStatsRow}>
-          <Text style={styles.showingText}>Showing {filteredEmployees.length} of {employees.length}</Text>
-          <View style={styles.footerStatusMetrics}>
-            <Text style={styles.metricItem}>
+        <View style={s(styles.footerStatsRow)}>
+          <Text style={s(styles.showingText)}>Showing {filteredEmployees.length} of {employees.length}</Text>
+          <View style={s(styles.footerStatusMetrics)}>
+            <Text style={s(styles.metricItem)}>
               🟢 {employees.filter((e) => e.status === "active").length} Active
             </Text>
-            <Text style={styles.metricItem}>
+            <Text style={s(styles.metricItem)}>
               🟡 {employees.filter((e) => e.status === "on-leave").length} Leave
             </Text>
           </View>
@@ -353,76 +429,76 @@ export default function Employees() {
 
       {/* Modal Profile Sheet Details View */}
       <Modal visible={isViewOpen} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalDragHandle} />
+        <View style={s(styles.modalOverlay)}>
+          <View style={s(styles.modalContent)}>
+            <View style={s(styles.modalDragHandle)} />
 
             {selectedEmployee && (
               <>
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalProfileRow}>
-                    <View style={styles.modalAvatarPlaceholder}>
-                      <Text style={styles.modalAvatarText}>{getInitials(selectedEmployee.name)}</Text>
+                <View style={s(styles.modalHeader)}>
+                  <View style={s(styles.modalProfileRow)}>
+                    <View style={s(styles.modalAvatarPlaceholder)}>
+                      <Text style={s(styles.modalAvatarText)}>{getInitials(selectedEmployee.name)}</Text>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.detailsViewTitle}>{selectedEmployee.name}</Text>
-                      <Text style={styles.detailsViewSubtitle}>{selectedEmployee.role}</Text>
+                    <View style={{ flex: 1, marginLeft: wp(3) }}>
+                      <Text style={s(styles.detailsViewTitle)}>{selectedEmployee.name}</Text>
+                      <Text style={s(styles.detailsViewSubtitle)}>{selectedEmployee.role}</Text>
                     </View>
-                    <TouchableOpacity style={styles.closeCircle} onPress={() => setIsViewOpen(false)}>
-                      <X size={16} color={COLORS.text} />
+                    <TouchableOpacity style={s(styles.closeCircle)} onPress={() => setIsViewOpen(false)}>
+                      <X size={fs(3.8)} color={colors.text} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                <ScrollView style={styles.modalBody}>
-                  <View style={styles.detailsGrid}>
-                    <View style={styles.detailBlockFull}>
-                      <Text style={styles.detailLabel}>Email Address</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.email}</Text>
+                <ScrollView style={s(styles.modalBody)}>
+                  <View style={s(styles.detailsGrid)}>
+                    <View style={s(styles.detailBlockFull)}>
+                      <Text style={s(styles.detailLabel)}>Email Address</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.email}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Contact Phone Line</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.phone}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Contact Phone Line</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.phone}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Assigned Workstation Location</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.location}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Assigned Workstation Location</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.location}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Job Category Structure</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.category}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Job Category Structure</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.category}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Assigned Operational Shift</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.shift}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Assigned Operational Shift</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.shift}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Compensation Pay Rate</Text>
-                      <Text style={styles.detailValueText}>{selectedEmployee.payRate}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Compensation Pay Rate</Text>
+                      <Text style={s(styles.detailValueText)}>{selectedEmployee.payRate}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Employment Status Tag</Text>
-                      <Text style={styles.detailValueText}>{statusLabels[selectedEmployee.status]}</Text>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Employment Status Tag</Text>
+                      <Text style={s(styles.detailValueText)}>{statusLabels[selectedEmployee.status]}</Text>
                     </View>
 
-                    <View style={styles.detailBlockHalf}>
-                      <Text style={styles.detailLabel}>Onboarding Hire Date</Text>
-                      <Text style={styles.detailValueText}>
+                    <View style={s(styles.detailBlockHalf)}>
+                      <Text style={s(styles.detailLabel)}>Onboarding Hire Date</Text>
+                      <Text style={s(styles.detailValueText)}>
                         {selectedEmployee.hireDate ? new Date(selectedEmployee.hireDate).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'}
                       </Text>
                     </View>
                   </View>
                 </ScrollView>
 
-                <View style={styles.modalFooter}>
-                  <TouchableOpacity style={styles.dismissActionBtn} onPress={() => setIsViewOpen(false)}>
-                    <Text style={styles.dismissActionBtnText}>Close Detailed Sheet</Text>
+                <View style={s(styles.modalFooter)}>
+                  <TouchableOpacity style={s(styles.dismissActionBtn)} onPress={() => setIsViewOpen(false)}>
+                    <Text style={s(styles.dismissActionBtnText)}>Close Detailed Sheet</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -434,72 +510,3 @@ export default function Employees() {
     </SafeAreaView>
   );
 }
-
-// --- Layout Optimization StyleSheet Matrix ---
-const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: COLORS.background },
-  mainContainer: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: "700", color: COLORS.text, letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: COLORS.textLight, marginTop: 2 },
-  filterSection: { marginBottom: 16, gap: 12 },
-  searchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, height: 44 },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text },
-  pillsScroll: { flexDirection: "row", marginVertical: 4 },
-  pillButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, marginRight: 8 },
-  pillButtonActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  pillText: { fontSize: 13, fontWeight: "500", color: COLORS.textLight },
-  pillTextActive: { color: "#fff" },
-  listContainer: { paddingBottom: 24, gap: 12 },
-  card: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 16 },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  profileRow: { flexDirection: "row", alignItems: "center", flex: 1, gap: 12 },
-  avatarContainer: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primaryLight, alignItems: "center", justifyContent: "center", position: "relative" },
-  avatarText: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
-  statusIndicatorDot: { position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: COLORS.card },
-  headerMetaData: { flex: 1 },
-  employeeName: { fontSize: 15, fontWeight: "600", color: COLORS.text },
-  employeeRole: { fontSize: 13, color: COLORS.textLight, marginTop: 1 },
-  moreButton: { padding: 4 },
-  inlineActionDropdown: { flexDirection: "row", justifyContent: "space-around", backgroundColor: COLORS.background, borderRadius: 8, paddingVertical: 8, marginVertical: 10, borderWidth: 1, borderColor: COLORS.border },
-  inlineActionItem: { paddingVertical: 4, paddingHorizontal: 12 },
-  actionTextView: { color: COLORS.primary, fontSize: 13, fontWeight: "600" },
-  actionTextDelete: { color: COLORS.destructive, fontSize: 13, fontWeight: "600" },
-  cardBody: { marginTop: 14, gap: 8 },
-  infoLine: { flexDirection: "row", alignItems: "center" },
-  iconSpaced: { marginRight: 8 },
-  infoLineText: { fontSize: 13, color: COLORS.textLight },
-  cardFooter: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border, flexDirection: "row", alignItems: "center" },
-  badgeWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.background, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusIndicatorDotSmall: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  statusBadgeText: { fontSize: 12, fontWeight: "500" },
-  centerBox: { flex: 1, alignItems: "center", justifyValue: "center", paddingVertical: 40, justifyContent: "center" },
-  loadingText: { fontSize: 14, color: COLORS.textLight, marginTop: 10 },
-  errorText: { color: COLORS.destructive, fontSize: 14 },
-  noResultsTitle: { fontSize: 16, fontWeight: "600", color: COLORS.text, marginTop: 12 },
-  noResultsSubtitle: { fontSize: 13, color: COLORS.textLight, marginTop: 4 },
-  footerStatsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border },
-  showingText: { fontSize: 12, color: COLORS.textLight },
-  footerStatusMetrics: { flexDirection: "row", gap: 12 },
-  metricItem: { fontSize: 12, color: COLORS.textLight },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "flex-end" },
-  modalContent: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "85%", paddingBottom: 32 },
-  modalDragHandle: { width: 38, height: 4, backgroundColor: COLORS.border, borderRadius: 2, alignSelf: "center", marginTop: 10, marginBottom: 10 },
-  modalHeader: { paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  modalProfileRow: { flexDirection: "row", alignItems: "center" },
-  modalAvatarPlaceholder: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.primaryLight, alignItems: "center", justifyContent: "center" },
-  modalAvatarText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
-  detailsViewTitle: { fontSize: 18, fontWeight: "700", color: COLORS.text },
-  detailsViewSubtitle: { fontSize: 13, color: COLORS.textLight, marginTop: 2 },
-  closeCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.background, alignItems: "center", justifyContent: "center" },
-  modalBody: { padding: 20 },
-  detailsGrid: { gap: 16 },
-  detailBlockFull: { width: "100%" },
-  detailBlockHalf: { width: "100%" },
-  detailLabel: { fontSize: 12, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
-  detailValueText: { fontSize: 15, fontWeight: "500", color: COLORS.text },
-  modalFooter: { paddingHorizontal: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
-  dismissActionBtn: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, height: 48, alignItems: "center", justifyContent: "center" },
-  dismissActionBtnText: { fontSize: 14, fontWeight: "600", color: COLORS.text },
-});

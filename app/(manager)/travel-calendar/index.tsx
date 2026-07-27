@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -9,13 +9,12 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Platform,
-  SafeAreaView,
-  KeyboardAvoidingView,
+  useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { format } from "date-fns";
 import {
-  Calendar as CalendarIcon,
+  Calendar,
   MapPin,
   DollarSign,
   Filter,
@@ -25,23 +24,305 @@ import {
   Eye,
   X,
   ChevronDown,
+  Check,
 } from "lucide-react-native";
 
-import { getTravelCalendarList, travelCalendarApi } from "@/lib/admin/apiClient";
-import Colors from "@/constants/colors";
+import { 
+  travelCalendarApi, 
+  TravelCalendarCreateRequest, 
+  TravelCalendarUpdateRequest 
+} from "@/lib/admin/travelCalendar";
+import { useTheme } from "@/contexts/ThemeContext";
+import { s } from "@/util/styles";
 
-export default function AdminTravelCalendar() {
-  const [travelCalendars, setTravelCalendars] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<any>({});
+interface Budget {
+  estimated: number;
+  actual: number;
+  currency: string;
+}
+
+interface TravelCalendarItem {
+  _id: string;
+  title: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  destination: string;
+  purpose: string;
+  status: string;
+  visibility: string;
+  budget: Budget;
+  notes?: string;
+}
+
+interface FilterState {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  purpose?: string;
+}
+
+interface SelectorOption {
+  label: string;
+  value: string;
+}
+
+function safeFormatDate(dateValue: string | undefined | null, formatStr: string): string {
+  if (!dateValue) return "—";
+  try {
+    const raw = String(dateValue).trim();
+    const cleanStr = /^\d{4}-\d{2}-\d{2}/.exec(raw) ? `${raw.split("T")[0]}T00:00:00` : raw;
+    const parsedDate = new Date(cleanStr);
+    if (!Number.isFinite(parsedDate.getTime())) return raw;
+    return format(parsedDate, formatStr);
+  } catch {
+    return String(dateValue);
+  }
+}
+
+function buildColors(uiTheme: any) {
+  const isDark = uiTheme.theme !== "crystal-white";
+  return {
+    background: isDark ? "#090d13" : "#f8fafc",
+    surface: isDark ? "#0d1117" : "#ffffff",
+    surfaceMuted: isDark ? "#161b22" : "#f1f5f9",
+    border: isDark ? "#21262d" : "#e2e8f0",
+    text: isDark ? "#c9d1d9" : "#0f172a",
+    textBold: isDark ? "#f0f6fc" : "#020617",
+    textMuted: isDark ? "#8b949e" : "#64748b",
+    primary: "#0ea5e9",
+    success: "#10b981",
+    warning: "#f59e0b",
+    danger: "#ef4444",
+    info: "#3b82f6",
+    accentPurple: "#a855f7",
+  };
+}
+
+function createStyles(
+  c: ReturnType<typeof buildColors>,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  screenWidth: number
+) {
+  const horizontalPadding = isSmallScreen ? wp(3) : isTablet ? wp(6) : wp(4.2);
+
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.background },
+    scrollContainer: { paddingHorizontal: horizontalPadding, paddingTop: hp(2), paddingBottom: hp(5) },
+    headerBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: hp(2) },
+    titleText: { fontSize: isTablet ? 28 : 24, fontWeight: "800", color: c.textBold, letterSpacing: -0.5 },
+    subtitleText: { fontSize: isTablet ? 14 : 13, color: c.textMuted, marginTop: hp(0.3) },
+    addBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.textBold,
+      paddingHorizontal: wp(3.5),
+      paddingVertical: hp(1.2),
+      borderRadius: wp(2),
+      gap: wp(1.5),
+    },
+    addBtnText: { color: c.background, fontWeight: "700", fontSize: isTablet ? 14 : 13 },
+    filterCard: {
+      backgroundColor: c.surface,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2),
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    filterTitleRow: { flexDirection: "row", alignItems: "center", gap: wp(2), marginBottom: hp(1.8) },
+    filterCardTitle: { fontSize: isTablet ? 16 : 15, fontWeight: "700", color: c.textBold },
+    filterGridRow: { flexDirection: "row", gap: wp(3), marginBottom: hp(1.5) },
+    filterGridRowLast: { flexDirection: "row", gap: wp(3) },
+    filterGridCol: { flex: 1, gap: hp(0.5) },
+    filterLabel: { fontSize: isTablet ? 13 : 12, fontWeight: "600", color: c.text },
+    filterInput: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+      fontSize: isTablet ? 14 : 13,
+      color: c.text,
+      backgroundColor: c.background,
+      height: hp(5),
+    },
+    pickerBtnInline: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+      backgroundColor: c.background,
+      height: hp(5),
+    },
+    pickerBtnInlineText: { fontSize: isTablet ? 14 : 13, color: c.text },
+    loaderBox: { paddingVertical: hp(8), alignItems: "center", justifyContent: "center" },
+    listContainer: { gap: hp(1.5) },
+    calendarCard: {
+      backgroundColor: c.surface,
+      borderRadius: wp(3),
+      padding: wp(4),
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    cardMainArea: { flex: 1 },
+    badgeRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: wp(1.5), marginBottom: hp(1.2) },
+    cardTitle: { fontSize: isTablet ? 18 : 16, fontWeight: "700", color: c.textBold, flex: 1 },
+    badgeFrame: { paddingHorizontal: wp(2), paddingVertical: hp(0.4), borderRadius: wp(1.5) },
+    badgeText: { fontSize: isTablet ? 12 : 11, fontWeight: "700", textTransform: "capitalize" },
+    gridMetaRows: { gap: hp(0.8), marginBottom: hp(1) },
+    metaRowItem: { flexDirection: "row", alignItems: "center", gap: wp(1.5) },
+    metaRowText: { fontSize: isTablet ? 14 : 13, color: c.textMuted, flex: 1 },
+    descText: { fontSize: isTablet ? 14 : 13, color: c.text, marginTop: hp(0.5), lineHeight: 18 },
+    budgetTextRow: { flexDirection: "row", alignItems: "center", gap: wp(1), marginTop: hp(0.8) },
+    budgetText: { fontSize: isTablet ? 14 : 13, fontWeight: "600", color: c.textBold },
+    cardActionsRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: wp(2),
+      marginTop: hp(1.5),
+      paddingTop: hp(1.5),
+      borderTopWidth: 1,
+      borderTopColor: c.border + "40",
+    },
+    actionIconBtn: {
+      width: isTablet ? 38 : 34,
+      height: isTablet ? 38 : 34,
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.background,
+    },
+    emptyStateCard: {
+      backgroundColor: c.surface,
+      borderRadius: wp(3),
+      padding: wp(8),
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    emptyStateTitle: { fontSize: isTablet ? 18 : 16, fontWeight: "700", color: c.textBold, marginTop: hp(1.5), marginBottom: hp(0.5) },
+    emptyStateSub: { fontSize: isTablet ? 14 : 13, color: c.textMuted, textAlign: "center", marginBottom: hp(2) },
+    modalContainer: { flex: 1, backgroundColor: c.background },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(4),
+      borderBottomWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    modalTitle: { fontSize: isTablet ? 20 : 18, fontWeight: "700", color: c.textBold },
+    modalContent: {
+      padding: wp(4),
+      gap: hp(1.8),
+      maxWidth: isTablet ? 600 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
+    },
+    fieldLabel: { fontSize: isTablet ? 15 : 14, fontWeight: "600", color: c.text },
+    inputControl: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: wp(2),
+      padding: wp(3),
+      fontSize: isTablet ? 15 : 14,
+      color: c.text,
+      backgroundColor: c.surface,
+      minHeight: hp(5),
+    },
+    textAreaControl: { minHeight: hp(10), textAlignVertical: "top" },
+    formGridRow: { flexDirection: "row", gap: wp(3) },
+    formGridCol: { flex: 1, gap: hp(0.5) },
+    footerActionsRow: { flexDirection: "row", justifyContent: "flex-end", gap: wp(2.5), marginTop: hp(1.5), marginBottom: hp(3) },
+    formSubmitBtn: {
+      backgroundColor: c.primary,
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1.5),
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    formSubmitBtnDisabled: { opacity: 0.5 },
+    formSubmitBtnText: { color: "#FFFFFF", fontWeight: "700", fontSize: isTablet ? 15 : 14 },
+    formCancelBtn: {
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1.5),
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.surface,
+    },
+    formCancelBtnText: { color: c.text, fontWeight: "600", fontSize: isTablet ? 15 : 14 },
+    inspectDetailBlock: { gap: hp(2) },
+    inspectSection: { gap: hp(0.5) },
+    inspectLabel: { fontSize: isTablet ? 13 : 12, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+    inspectValue: { fontSize: isTablet ? 15 : 14, color: c.textBold, lineHeight: 20 },
+    
+    dropdownOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: wp(5) },
+    dropdownContentCard: {
+      width: "100%",
+      maxWidth: isTablet ? 400 : 320,
+      backgroundColor: c.surface,
+      borderRadius: wp(4),
+      borderWidth: 1,
+      borderColor: c.border,
+      overflow: "hidden",
+      maxHeight: "75%",
+    },
+    dropdownHeader: {
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1.8),
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: c.surfaceMuted,
+    },
+    dropdownHeaderText: { fontSize: isTablet ? 16 : 15, fontWeight: "700", color: c.textBold },
+    dropdownScrollView: { paddingVertical: hp(0.8) },
+    dropdownItemRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: wp(4), paddingVertical: hp(1.5) },
+    dropdownItemText: { fontSize: isTablet ? 15 : 14, color: c.text, flex: 1 },
+    dropdownItemTextActive: { color: c.primary, fontWeight: "600" },
+  });
+}
+
+export default function ManagerTravelCalendar() {
+  const { uiTheme } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
+  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
+  const styles = useMemo(
+    () => createStyles(colors, wp, hp, isTablet, isSmallScreen, width),
+    [colors, wp, hp, isTablet, isSmallScreen, width]
+  );
+
+  const [travelCalendars, setTravelCalendars] = useState<TravelCalendarItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [filters, setFilters] = useState<FilterState>({});
   
-  // Modal Visibility Controllers
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showViewDialog, setShowViewDialog] = useState(false);
-  const [selectedCalendar, setSelectedCalendar] = useState<any>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState<boolean>(false);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [newTravelCalendar, setNewTravelCalendar] = useState({
+  const [newTravelCalendar, setNewTravelCalendar] = useState<TravelCalendarCreateRequest>({
     title: "",
     description: "",
     startDate: "",
@@ -57,37 +338,40 @@ export default function AdminTravelCalendar() {
     },
     notes: "",
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load travel calendars data stream
-  const loadTravelCalendars = async () => {
+  const [isCreating, setIsCreating] = useState<boolean>(false);
+  const [selectedCalendar, setSelectedCalendar] = useState<TravelCalendarItem | null>(null);
+  const [showViewDialog, setShowViewDialog] = useState<boolean>(false);
+
+  const [customPickerVisible, setCustomPickerVisible] = useState<boolean>(false);
+  const [customPickerTitle, setCustomPickerTitle] = useState<string>("");
+  const [customPickerOptions, setCustomPickerOptions] = useState<SelectorOption[]>([]);
+  const [customPickerValue, setCustomPickerValue] = useState<string>("");
+  const [customPickerCallback, setCustomPickerCallback] = useState<(val: string) => void>(() => {});
+
+  const loadTravelCalendars = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await getTravelCalendarList(filters);
-      // Fallback evaluation structure if raw data payload returns directly 
-      if (response && response.items) {
-        setTravelCalendars(response.items);
-      } else if (response?.success && response?.data) {
-        setTravelCalendars(response.data.items || []);
-      } else {
-        setTravelCalendars([]);
+      const response = await travelCalendarApi.getTravelCalendars(filters);
+      if (response.success && response.data?.items) {
+        setTravelCalendars(response.data.items);
       }
     } catch (error) {
       console.error("Failed to load travel calendars:", error);
-      Alert.alert("System Sync Failure", "Could not synchronize operational travel schedules.");
+      Alert.alert("Error", "Failed to load travel calendars");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadTravelCalendars();
   }, [filters]);
 
-  const handleDelete = (id: string) => {
+  useEffect(() => {
+    void loadTravelCalendars();
+  }, [loadTravelCalendars]);
+
+  const handleDelete = async (id: string) => {
     Alert.alert(
-      "Confirm Removal",
-      "Are you sure you want to permanently delete this travel calendar registry index item?",
+      "Confirm Delete",
+      "Are you sure you want to delete this travel calendar?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -97,14 +381,14 @@ export default function AdminTravelCalendar() {
             try {
               const response = await travelCalendarApi.deleteTravelCalendar(id);
               if (response.success) {
-                Alert.alert("Success", "Travel calendar log deleted successfully.");
-                loadTravelCalendars();
+                Alert.alert("Success", "Travel calendar deleted successfully");
+                void loadTravelCalendars();
               } else {
-                Alert.alert("Deletion Failure", response.error?.message || "Purge execution failed.");
+                Alert.alert("Error", response.error?.message || "Failed to delete travel calendar");
               }
             } catch (error) {
               console.error("Failed to delete travel calendar:", error);
-              Alert.alert("Deletion Error", "Could not purge targeted item mapping.");
+              Alert.alert("Error", "Failed to delete travel calendar");
             }
           },
         },
@@ -112,21 +396,65 @@ export default function AdminTravelCalendar() {
     );
   };
 
-  // Pre-fill parameters and open edit context mode
-  const handleEditPress = (calendar: any) => {
-    setEditingId(calendar._id || calendar.id);
+  const handleCreateOrUpdateTravelCalendar = async () => {
+    setIsCreating(true);
+    try {
+      let response;
+      if (isEditing && editingId) {
+        response = await travelCalendarApi.updateTravelCalendar(
+          editingId, 
+          newTravelCalendar as TravelCalendarUpdateRequest
+        );
+      } else {
+        response = await travelCalendarApi.createTravelCalendar(
+          newTravelCalendar as TravelCalendarCreateRequest
+        );
+      }
+
+      if (response && response.success) {
+        Alert.alert("Success", response.message || `Travel calendar ${isEditing ? "updated" : "created"} successfully`);
+        setShowCreateDialog(false);
+        setIsEditing(false);
+        setEditingId(null);
+        setNewTravelCalendar({
+          title: "",
+          description: "",
+          startDate: "",
+          endDate: "",
+          destination: "",
+          purpose: "business",
+          status: "planned",
+          visibility: "team",
+          budget: { estimated: 0, actual: 0, currency: "USD" },
+          notes: "",
+        });
+        void loadTravelCalendars();
+      } else {
+        Alert.alert("Error", response?.error?.message || `Failed to ${isEditing ? "update" : "create"} travel calendar`);
+      }
+    } catch (error: any) {
+      console.error("Failed operation on travel calendar:", error);
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to execute pipeline parameters");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const openEditModal = (calendar: TravelCalendarItem) => {
+    setEditingId(calendar._id);
+    setIsEditing(true);
     setNewTravelCalendar({
-      title: calendar.title || "",
+      title: calendar.title,
       description: calendar.description || "",
-      startDate: calendar.startDate ? calendar.startDate.split('T')[0] : "",
-      endDate: calendar.endDate ? calendar.endDate.split('T')[0] : "",
-      destination: calendar.destination || "",
-      purpose: calendar.purpose || "business",
-      status: calendar.status || "planned",
-      visibility: calendar.visibility || "team",
+      startDate: calendar.startDate ? calendar.startDate.split("T")[0] : "",
+      endDate: calendar.endDate ? calendar.endDate.split("T")[0] : "",
+      destination: calendar.destination,
+      purpose: calendar.purpose as TravelCalendarCreateRequest["purpose"],
+      status: calendar.status as TravelCalendarCreateRequest["status"],
+      visibility: calendar.visibility as TravelCalendarCreateRequest["visibility"],
       budget: {
-        estimated: calendar.budget?.estimated || 0,
-        actual: calendar.budget?.actual || 0,
+        estimated: calendar.budget?.estimated ?? 0,
+        actual: calendar.budget?.actual ?? 0,
         currency: calendar.budget?.currency || "USD",
       },
       notes: calendar.notes || "",
@@ -134,428 +462,584 @@ export default function AdminTravelCalendar() {
     setShowCreateDialog(true);
   };
 
-  const handleCreateOrUpdateTravelCalendar = async () => {
-    setIsSubmitting(true);
-    try {
-      if (editingId) {
-        // Edit flow routing path
-        const response = await travelCalendarApi.updateTravelCalendar(editingId, newTravelCalendar);
-        if (response.success) {
-          Alert.alert("Updated", "Travel calendar parameters matrix updated successfully.");
-          closeAndResetForm();
-          loadTravelCalendars();
-        } else {
-          Alert.alert("Update Failed", response.error?.message || "Could not push parameters.");
-        }
-      } else {
-        // Create flow routing path
-        const response = await travelCalendarApi.createTravelCalendar(newTravelCalendar);
-        if (response.success) {
-          Alert.alert("Created", response.message || "Travel calendar created successfully");
-          closeAndResetForm();
-          loadTravelCalendars();
-        } else {
-          Alert.alert("Creation Failed", response.error?.message || "Could not save parameters.");
-        }
-      }
-    } catch (error) {
-      console.error("Failed to compile travel calendar payload:", error);
-      Alert.alert("Transaction Failure", "Failed to compile travel parameters matrix into runtime storage.");
-    } finally {
-      setIsSubmitting(false);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "planned": return { bg: colors.info + "20", text: colors.info };
+      case "approved": return { bg: colors.success + "20", text: colors.success };
+      case "in-progress": return { bg: colors.warning + "20", text: colors.warning };
+      case "completed": return { bg: colors.accentPurple + "20", text: colors.accentPurple };
+      case "cancelled": return { bg: colors.danger + "20", text: colors.danger };
+      default: return { bg: colors.surfaceMuted, text: colors.textMuted };
     }
   };
 
-  const closeAndResetForm = () => {
-    setShowCreateDialog(false);
-    setEditingId(null);
-    setNewTravelCalendar({
-      title: "",
-      description: "",
-      startDate: "",
-      endDate: "",
-      destination: "",
-      purpose: "business",
-      status: "planned",
-      visibility: "team",
-      budget: { estimated: 0, actual: 0, currency: "USD" },
-      notes: "",
+  const getPurposeColor = (purpose: string) => {
+    switch (purpose) {
+      case "business": return { bg: colors.info + "10", text: colors.info };
+      case "conference": return { bg: colors.accentPurple + "10", text: colors.accentPurple };
+      case "meeting": return { bg: colors.success + "10", text: colors.success };
+      case "training": return { bg: colors.warning + "10", text: colors.warning };
+      case "personal": return { bg: colors.danger + "10", text: colors.danger };
+      default: return { bg: colors.surfaceMuted, text: colors.textMuted };
+    }
+  };
+
+  const presentCustomPicker = (title: string, options: SelectorOption[], currentValue: string, onSelect: (val: string) => void) => {
+    setCustomPickerTitle(title);
+    setCustomPickerOptions(options);
+    setCustomPickerValue(currentValue);
+    setCustomPickerCallback(() => onSelect);
+    setCustomPickerVisible(true);
+  };
+
+  const triggerStatusFilterPicker = () => {
+    const options = [
+      { label: "All Status", value: "all" },
+      { label: "Planned", value: "planned" },
+      { label: "Approved", value: "approved" },
+      { label: "In Progress", value: "in-progress" },
+      { label: "Completed", value: "completed" },
+      { label: "Cancelled", value: "cancelled" },
+    ];
+    presentCustomPicker("Filter Status", options, filters.status || "all", (val) => {
+      setFilters({ ...filters, status: val === "all" ? undefined : val });
     });
   };
 
-  // Dynamic native color maps
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case "planned": return { bg: "#DBEAFE", txt: "#1E40AF" };
-      case "approved": return { bg: "#D1FAE5", txt: "#065F46" };
-      case "in-progress": return { bg: "#FEF3C7", txt: "#92400E" };
-      case "completed": return { bg: "#F3E8FF", txt: "#6B21A8" };
-      case "cancelled": return { bg: "#FEE2E2", txt: "#991B1B" };
-      default: return { bg: "#F1F5F9", txt: "#334155" };
-    }
+  const triggerPurposeFilterPicker = () => {
+    const options = [
+      { label: "All Purpose", value: "all" },
+      { label: "Business", value: "business" },
+      { label: "Conference", value: "conference" },
+      { label: "Meeting", value: "meeting" },
+      { label: "Training", value: "training" },
+      { label: "Personal", value: "personal" },
+    ];
+    presentCustomPicker("Filter Purpose", options, filters.purpose || "all", (val) => {
+      setFilters({ ...filters, purpose: val === "all" ? undefined : val });
+    });
   };
 
-  const getPurposeStyle = (purpose: string) => {
-    switch (purpose) {
-      case "business": return { bg: "#EFF6FF", txt: "#1D4ED8" };
-      case "conference": return { bg: "#F3E8FF", txt: "#7E22CE" };
-      case "meeting": return { bg: "#ECFDF5", txt: "#047857" };
-      case "training": return { bg: "#FFEDD5", txt: "#C2410C" };
-      case "personal": return { bg: "#FCE7F3", txt: "#BE185D" };
-      default: return { bg: "#F8FAFC", txt: "#475569" };
-    }
+  const triggerFormPurposePicker = () => {
+    const options = [
+      { label: "Business", value: "business" },
+      { label: "Conference", value: "conference" },
+      { label: "Meeting", value: "meeting" },
+      { label: "Training", value: "training" },
+      { label: "Personal", value: "personal" },
+      { label: "Other", value: "other" },
+    ];
+    presentCustomPicker("Select Purpose", options, newTravelCalendar.purpose || "business", (val) => {
+      setNewTravelCalendar({ ...newTravelCalendar, purpose: val as TravelCalendarCreateRequest["purpose"] });
+    });
   };
 
-  // Dialog-free cross platform Native Alert Pickers
-  const showPurposePicker = (isFilter: boolean) => {
-    const options = ["business", "conference", "meeting", "training", "personal"];
-    Alert.alert(
-      "Select Trip Purpose",
-      "Assign structural operational travel target indices:",
-      [
-        ...(isFilter ? [{ text: "All Purposes", onPress: () => setFilters({ ...filters, purpose: undefined }) }] : []),
-        ...options.map((p) => ({
-          text: p.toUpperCase(),
-          onPress: () => isFilter ? setFilters({ ...filters, purpose: p }) : setNewTravelCalendar({ ...newTravelCalendar, purpose: p }),
-        })),
-      ]
+  const triggerFormVisibilityPicker = () => {
+    const options = [
+      { label: "Private", value: "private" },
+      { label: "Team", value: "team" },
+      { label: "Department", value: "department" },
+      { label: "Company", value: "company" },
+    ];
+    presentCustomPicker("Select Visibility", options, newTravelCalendar.visibility || "team", (val) => {
+      setNewTravelCalendar({ ...newTravelCalendar, visibility: val as TravelCalendarCreateRequest["visibility"] });
+    });
+  };
+
+  const triggerFormStatusPicker = () => {
+    const options = [
+      { label: "Planned", value: "planned" },
+      { label: "Approved", value: "approved" },
+      { label: "In Progress", value: "in-progress" },
+      { label: "Completed", value: "completed" },
+      { label: "Cancelled", value: "cancelled" },
+    ];
+    presentCustomPicker("Select Status", options, newTravelCalendar.status || "planned", (val) => {
+      setNewTravelCalendar({ ...newTravelCalendar, status: val as TravelCalendarCreateRequest["status"] });
+    });
+  };
+
+  const formIsValid = useMemo(() => {
+    return (
+      !!newTravelCalendar.title?.trim() &&
+      !!newTravelCalendar.destination?.trim() &&
+      !!newTravelCalendar.startDate?.trim() &&
+      !!newTravelCalendar.endDate?.trim()
     );
-  };
+  }, [newTravelCalendar]);
 
-  const showStatusPicker = (isFilter: boolean) => {
-    const options = ["planned", "approved", "in-progress", "completed", "cancelled"];
-    Alert.alert(
-      "Select Assignment Status",
-      "Assign workflow lifecycle configuration indices:",
-      [
-        ...(isFilter ? [{ text: "All Statuses", onPress: () => setFilters({ ...filters, status: undefined }) }] : []),
-        ...options.map((s) => ({
-          text: s.toUpperCase(),
-          onPress: () => isFilter ? setFilters({ ...filters, status: s }) : setNewTravelCalendar({ ...newTravelCalendar, status: s }),
-        })),
-      ]
-    );
-  };
+  const sortedStatusLabel = useMemo(() => {
+    if (!filters.status) return "All Status";
+    return filters.status.charAt(0).toUpperCase() + filters.status.slice(1);
+  }, [filters.status]);
 
-  const showVisibilityPicker = () => {
-    const options = ["private", "team", "department", "company"];
-    Alert.alert("Select Target Visibility", "Configure operational container access visibility:", 
-      options.map((v) => ({
-        text: v.toUpperCase(),
-        onPress: () => setNewTravelCalendar({ ...newTravelCalendar, visibility: v }),
-      }))
-    );
-  };
-
-  const safeFormatDate = (dateStr: string) => {
-    if (!dateStr) return "—";
-    const d = new Date(dateStr);
-    return Number.isFinite(d.getTime()) ? format(d, "MMM dd, yyyy") : dateStr;
-  };
+  const sortedPurposeLabel = useMemo(() => {
+    if (!filters.purpose) return "All Purpose";
+    return filters.purpose.charAt(0).toUpperCase() + filters.purpose.slice(1);
+  }, [filters.purpose]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flexWrapper}>
+    <SafeAreaView style={s(styles.root)} edges={["top", "left", "right"]}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
-        <ScrollView contentContainerStyle={styles.mainScrollPadding}>
-          {/* Header Segment */}
-          <View style={styles.headerLayoutRow}>
-            <View style={styles.flexItem}>
-              <Text style={styles.mainTitle}>Travel Calendar</Text>
-              <Text style={styles.subTitle}>Manage all global travel schedules logs maps</Text>
-            </View>
-            <TouchableOpacity style={styles.addTriggerButton} onPress={() => setShowCreateDialog(true)}>
-              <Plus size={16} color="#FFFFFF" />
-              <Text style={styles.addTriggerButtonText}>Add Travel</Text>
-            </TouchableOpacity>
+        <View style={styles.headerBlock}>
+          <View style={{ flex: 1, paddingRight: wp(2) }}>
+            <Text style={styles.titleText}>Team Travel Calendar</Text>
+            <Text style={styles.subtitleText}>Manage travel schedules for your team</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.addBtn} 
+            onPress={() => {
+              setIsEditing(false);
+              setEditingId(null);
+              setNewTravelCalendar({
+                title: "",
+                description: "",
+                startDate: "",
+                endDate: "",
+                destination: "",
+                purpose: "business",
+                status: "planned",
+                visibility: "team",
+                budget: { estimated: 0, actual: 0, currency: "USD" },
+                notes: "",
+              });
+              setShowCreateDialog(true);
+            }}
+          >
+            <Plus size={15} color={colors.background} />
+            <Text style={styles.addBtnText}>Add Travel</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.filterCard}>
+          <View style={styles.filterTitleRow}>
+            <Filter size={16} color={colors.textBold} />
+            <Text style={styles.filterCardTitle}>Filters</Text>
           </View>
 
-          {/* Collapsible Filter Panel Engine Card */}
-          <View style={styles.cardWrapper}>
-            <View style={styles.cardHeaderInline}>
-              <Filter size={18} color="#475569" />
-              <Text style={styles.cardHeaderTitle}>Operational Filters</Text>
+          <View style={styles.filterGridRow}>
+            <View style={styles.filterGridCol}>
+              <Text style={styles.filterLabel}>Start Date</Text>
+              <TextInput 
+                style={styles.filterInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                value={filters.startDate || ""}
+                onChangeText={(txt) => setFilters({ ...filters, startDate: txt })}
+              />
             </View>
-            
-            <View style={styles.filtersFormGrid}>
-              <View style={styles.inputColHalf}>
-                <Text style={styles.fieldLabel}>Start Limit Date</Text>
-                <TextInput style={styles.inputFieldElement} placeholder="YYYY-MM-DD" value={filters.startDate || ""} onChangeText={(t) => setFilters({ ...filters, startDate: t })} placeholderTextColor="#94A3B8" />
-              </View>
-              <View style={styles.inputColHalf}>
-                <Text style={styles.fieldLabel}>End Limit Date</Text>
-                <TextInput style={styles.inputFieldElement} placeholder="YYYY-MM-DD" value={filters.endDate || ""} onChangeText={(t) => setFilters({ ...filters, endDate: t })} placeholderTextColor="#94A3B8" />
-              </View>
-              <View style={styles.inputColHalf}>
-                <Text style={styles.fieldLabel}>Filter Status</Text>
-                <TouchableOpacity style={styles.customNativeDropdown} onPress={() => showStatusPicker(true)}>
-                  <Text style={styles.customNativeDropdownText}>{filters.status || "All Statuses"}</Text>
-                  <ChevronDown size={14} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.inputColHalf}>
-                <Text style={styles.fieldLabel}>Filter Purpose</Text>
-                <TouchableOpacity style={styles.customNativeDropdown} onPress={() => showPurposePicker(true)}>
-                  <Text style={styles.customNativeDropdownText}>{filters.purpose || "All Purposes"}</Text>
-                  <ChevronDown size={14} color="#64748B" />
-                </TouchableOpacity>
-              </View>
+
+            <View style={styles.filterGridCol}>
+              <Text style={styles.filterLabel}>End Date</Text>
+              <TextInput 
+                style={styles.filterInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                value={filters.endDate || ""}
+                onChangeText={(txt) => setFilters({ ...filters, endDate: txt })}
+              />
             </View>
           </View>
 
-          {/* Core Dataset Map Stream View */}
-          <Text style={styles.registrySectionHeader}>Schedules Registries ({travelCalendars.length})</Text>
-          
-          {loading ? (
-            <ActivityIndicator size="large" color="#2563EB" style={styles.loaderBufferSpacing} />
-          ) : (
-            travelCalendars.map((calendar: any) => {
-              const currentId = calendar._id || calendar.id;
-              const statusCol = getStatusStyle(calendar.status);
-              const purposeCol = getPurposeStyle(calendar.purpose);
+          <View style={styles.filterGridRowLast}>
+            <View style={styles.filterGridCol}>
+              <Text style={styles.filterLabel}>Status</Text>
+              <TouchableOpacity style={styles.pickerBtnInline} onPress={triggerStatusFilterPicker}>
+                <Text style={styles.pickerBtnInlineText} numberOfLines={1}>
+                  {sortedStatusLabel}
+                </Text>
+                <ChevronDown size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterGridCol}>
+              <Text style={styles.filterLabel}>Purpose</Text>
+              <TouchableOpacity style={styles.pickerBtnInline} onPress={triggerPurposeFilterPicker}>
+                <Text style={styles.pickerBtnInlineText} numberOfLines={1}>
+                  {sortedPurposeLabel}
+                </Text>
+                <ChevronDown size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loaderBox}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : (
+          <View style={styles.listContainer}>
+            {travelCalendars.map((calendar) => {
+              const statusTheme = getStatusColor(calendar.status);
+              const purposeTheme = getPurposeColor(calendar.purpose);
+
               return (
-                <View key={currentId} style={styles.registryRecordCard}>
-                  <View style={styles.recordContentBlock}>
-                    <Text style={styles.recordMainHeadline}>{calendar.title}</Text>
-                    
-                    <View style={styles.badgesWrapperRowInline}>
-                      <View style={[styles.statusBadgeCapsule, { backgroundColor: statusCol.bg }]}>
-                        <Text style={[styles.statusBadgeText, { color: statusCol.txt }]}>{calendar.status}</Text>
+                <View key={calendar._id} style={styles.calendarCard}>
+                  <View style={styles.cardMainArea}>
+                    <View style={styles.badgeRow}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>{calendar.title}</Text>
+                      <View style={[styles.badgeFrame, { backgroundColor: statusTheme.bg }]}>
+                        <Text style={[styles.badgeText, { color: statusTheme.text }]}>{calendar.status}</Text>
                       </View>
-                      <View style={[styles.statusBadgeCapsule, { backgroundColor: purposeCol.bg }]}>
-                        <Text style={[styles.statusBadgeText, { color: purposeCol.txt }]}>{calendar.purpose}</Text>
+                      <View style={[styles.badgeFrame, { backgroundColor: purposeTheme.bg }]}>
+                        <Text style={[styles.badgeText, { color: purposeTheme.text }]}>{calendar.purpose}</Text>
                       </View>
                     </View>
 
-                    <View style={styles.metaInformationRowInlineGap}>
-                      <CalendarIcon size={14} color="#64748B" />
-                      <Text style={styles.metaInformationRowInlineText}>
-                        {safeFormatDate(calendar.startDate)} - {safeFormatDate(calendar.endDate)}
-                      </Text>
+                    <View style={styles.gridMetaRows}>
+                      <View style={styles.metaRowItem}>
+                        <Calendar size={14} color={colors.textMuted} />
+                        <Text style={styles.metaRowText} numberOfLines={1}>
+                          {safeFormatDate(calendar.startDate, "MMM dd, yyyy")} - {safeFormatDate(calendar.endDate, "MMM dd, yyyy")}
+                        </Text>
+                      </View>
+
+                      <View style={styles.metaRowItem}>
+                        <MapPin size={14} color={colors.textMuted} />
+                        <Text style={styles.metaRowText} numberOfLines={1}>{calendar.destination}</Text>
+                      </View>
                     </View>
 
-                    <View style={styles.metaInformationRowInlineGap}>
-                      <MapPin size={14} color="#64748B" />
-                      <Text style={styles.metaInformationRowInlineText} numberOfLines={1}>{calendar.destination}</Text>
-                    </View>
+                    {!!calendar.description && (
+                      <Text style={styles.descText} numberOfLines={2}>{calendar.description}</Text>
+                    )}
 
-                    {calendar.budget?.estimated > 0 && (
-                      <View style={styles.metaInformationRowInlineGap}>
-                        <DollarSign size={14} color="#16A34A" />
-                        <Text style={[styles.metaInformationRowInlineText, { color: "#16A34A", fontWeight: "600" }]}>
-                          Est Budget: {calendar.budget.currency} {calendar.budget.estimated}
+                    {!!calendar.budget && calendar.budget.estimated > 0 && (
+                      <View style={styles.budgetTextRow}>
+                        <DollarSign size={14} color={colors.textBold} />
+                        <Text style={styles.budgetText}>
+                          Budget: {calendar.budget.currency} {calendar.budget.estimated}
                         </Text>
                       </View>
                     )}
                   </View>
 
-                  {/* Horizontal Action Bars */}
-                  <View style={styles.recordActionControlColumn}>
-                    <TouchableOpacity style={styles.inlineActionButtonSquare} onPress={() => { setSelectedCalendar(calendar); setShowViewDialog(true); }}>
-                      <Eye size={16} color="#475569" />
+                  <View style={styles.cardActionsRow}>
+                    <TouchableOpacity 
+                      style={styles.actionIconBtn}
+                      onPress={() => {
+                        setSelectedCalendar(calendar);
+                        setShowViewDialog(true);
+                      }}
+                    >
+                      <Eye size={15} color={colors.text} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.inlineActionButtonSquare} onPress={() => handleEditPress(calendar)}>
-                      <Edit size={16} color="#475569" />
+
+                    <TouchableOpacity style={styles.actionIconBtn} onPress={() => openEditModal(calendar)}>
+                      <Edit size={14} color={colors.text} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.inlineActionButtonSquare, styles.dangerActionButtonBg]} onPress={() => handleDelete(currentId)}>
-                      <Trash2 size={16} color="#DC2626" />
+
+                    <TouchableOpacity style={styles.actionIconBtn} onPress={() => handleDelete(calendar._id)}>
+                      <Trash2 size={14} color={colors.danger} />
                     </TouchableOpacity>
                   </View>
                 </View>
               );
-            })
-          )}
+            })}
 
-          {!loading && travelCalendars.length === 0 && (
-            <View style={styles.emptyContainerCard}>
-              <CalendarIcon size={44} color="#94A3B8" />
-              <Text style={styles.emptyContainerHeadline}>No active travel logs parsed out matching query matrix.</Text>
+            {travelCalendars.length === 0 && (
+              <View style={styles.emptyStateCard}>
+                <Calendar size={40} color={colors.textMuted} />
+                <Text style={styles.emptyStateTitle}>No travel calendars found</Text>
+                <Text style={styles.emptyStateSub}>Get started by creating your first travel calendar entry</Text>
+                <TouchableOpacity 
+                  style={styles.addBtn} 
+                  onPress={() => {
+                    setIsEditing(false);
+                    setEditingId(null);
+                    setNewTravelCalendar({
+                      title: "",
+                      description: "",
+                      startDate: "",
+                      endDate: "",
+                      destination: "",
+                      purpose: "business",
+                      status: "planned",
+                      visibility: "team",
+                      budget: { estimated: 0, actual: 0, currency: "USD" },
+                      notes: "",
+                    });
+                    setShowCreateDialog(true);
+                  }}
+                >
+                  <Plus size={14} color={colors.background} />
+                  <Text style={styles.addBtnText}>Add Travel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal visible={showCreateDialog} animationType="slide" transparent={false}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {isEditing ? "Update Travel Entry" : "Create Travel Calendar Entry"}
+            </Text>
+            <TouchableOpacity onPress={() => setShowCreateDialog(false)}>
+              <X size={20} color={colors.textBold} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <View style={{ gap: hp(0.5) }}>
+              <Text style={styles.fieldLabel}>Title *</Text>
+              <TextInput 
+                style={styles.inputControl}
+                value={newTravelCalendar.title}
+                onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, title: txt })}
+                placeholder="Entry label context"
+                placeholderTextColor={colors.textMuted}
+              />
             </View>
-          )}
-        </ScrollView>
 
-        {/* Input & Edit Form Modal Sheet */}
-        <Modal visible={showCreateDialog} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeAndResetForm}>
-          <SafeAreaView style={styles.modalScreenLayout}>
-            <View style={styles.modalNavigationHeaderTopBar}>
-              <Text style={styles.modalMainHeaderTitle}>
-                {editingId ? "Update Travel Calendar Entry" : "Create Travel Calendar Entry"}
-              </Text>
-              <TouchableOpacity onPress={closeAndResetForm} style={styles.modalCloseTapZone}>
-                <X size={22} color="#0F172A" />
+            <View style={{ gap: hp(0.5) }}>
+              <Text style={styles.fieldLabel}>Destination *</Text>
+              <TextInput 
+                style={styles.inputControl}
+                value={newTravelCalendar.destination}
+                onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, destination: txt })}
+                placeholder="Target region geo location"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.formGridRow}>
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>Start Date *</Text>
+                <TextInput 
+                  style={styles.inputControl}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textMuted}
+                  value={newTravelCalendar.startDate}
+                  onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, startDate: txt })}
+                />
+              </View>
+
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>End Date *</Text>
+                <TextInput 
+                  style={styles.inputControl}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textMuted}
+                  value={newTravelCalendar.endDate}
+                  onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, endDate: txt })}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGridRow}>
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>Purpose</Text>
+                <TouchableOpacity style={styles.pickerBtnInline} onPress={triggerFormPurposePicker}>
+                  <Text style={[styles.pickerBtnInlineText, { textTransform: "capitalize" }]}>
+                    {newTravelCalendar.purpose}
+                  </Text>
+                  <ChevronDown size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>Visibility</Text>
+                <TouchableOpacity style={styles.pickerBtnInline} onPress={triggerFormVisibilityPicker}>
+                  <Text style={[styles.pickerBtnInlineText, { textTransform: "capitalize" }]}>
+                    {newTravelCalendar.visibility}
+                  </Text>
+                  <ChevronDown size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.formGridRow}>
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>Status</Text>
+                <TouchableOpacity style={styles.pickerBtnInline} onPress={triggerFormStatusPicker}>
+                  <Text style={[styles.pickerBtnInlineText, { textTransform: "capitalize" }]}>
+                    {newTravelCalendar.status}
+                  </Text>
+                  <ChevronDown size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGridCol}>
+                <Text style={styles.fieldLabel}>Estimated Budget</Text>
+                <TextInput 
+                  style={styles.inputControl}
+                  keyboardType="numeric"
+                  value={String(newTravelCalendar.budget?.estimated ?? 0)}
+                  onChangeText={(txt) => setNewTravelCalendar({
+                    ...newTravelCalendar,
+                    budget: {
+                      estimated: Number(txt) || 0,
+                      actual: newTravelCalendar.budget?.actual ?? 0,
+                      currency: newTravelCalendar.budget?.currency || "USD"
+                    }
+                  })}
+                />
+              </View>
+            </View>
+
+            <View style={{ gap: hp(0.5) }}>
+              <Text style={styles.fieldLabel}>Description</Text>
+              <TextInput 
+                style={[styles.inputControl, styles.textAreaControl]}
+                multiline
+                numberOfLines={3}
+                value={newTravelCalendar.description}
+                onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, description: txt })}
+                placeholder="Structural specifications or agenda summary"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            <View style={{ gap: hp(0.5) }}>
+              <Text style={styles.fieldLabel}>Notes</Text>
+              <TextInput 
+                style={[styles.inputControl, styles.textAreaControl]}
+                multiline
+                numberOfLines={3}
+                value={newTravelCalendar.notes}
+                onChangeText={(txt) => setNewTravelCalendar({ ...newTravelCalendar, notes: txt })}
+                placeholder="Additional operational parameters"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.footerActionsRow}>
+              <TouchableOpacity style={styles.formCancelBtn} onPress={() => setShowCreateDialog(false)}>
+                <Text style={styles.formCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalContentFormScrollingBody}>
-              <View style={styles.formElementWrapperBlock}>
-                <Text style={styles.fieldHeadingLabelText}>Calendar Log Title *</Text>
-                <TextInput style={styles.modalInputField} placeholder="e.g. Q3 EMEA General Leadership Summit" value={newTravelCalendar.title} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, title: t })} placeholderTextColor="#94A3B8" />
-              </View>
-
-              <View style={styles.formElementWrapperBlock}>
-                <Text style={styles.fieldHeadingLabelText}>Destination *</Text>
-                <TextInput style={styles.modalInputField} placeholder="e.g. London, United Kingdom" value={newTravelCalendar.destination} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, destination: t })} placeholderTextColor="#94A3B8" />
-              </View>
-
-              <View style={styles.inlineFormElementRowHalfSplit}>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>Start Date *</Text>
-                  <TextInput style={styles.modalInputField} placeholder="YYYY-MM-DD" value={newTravelCalendar.startDate} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, startDate: t })} placeholderTextColor="#94A3B8" />
-                </View>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>End Date *</Text>
-                  <TextInput style={styles.modalInputField} placeholder="YYYY-MM-DD" value={newTravelCalendar.endDate} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, endDate: t })} placeholderTextColor="#94A3B8" />
-                </View>
-              </View>
-
-              <View style={styles.inlineFormElementRowHalfSplit}>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>Purpose Category</Text>
-                  <TouchableOpacity style={styles.modalFormPickerDropdown} onPress={() => showPurposePicker(false)}>
-                    <Text style={styles.modalFormPickerDropdownText}>{newTravelCalendar.purpose.toUpperCase()}</Text>
-                    <ChevronDown size={14} color="#475569" />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>Visibility Range</Text>
-                  <TouchableOpacity style={styles.modalFormPickerDropdown} onPress={() => showVisibilityPicker()}>
-                    <Text style={styles.modalFormPickerDropdownText}>{newTravelCalendar.visibility.toUpperCase()}</Text>
-                    <ChevronDown size={14} color="#475569" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.inlineFormElementRowHalfSplit}>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>Execution Status</Text>
-                  <TouchableOpacity style={styles.modalFormPickerDropdown} onPress={() => showStatusPicker(false)}>
-                    <Text style={styles.modalFormPickerDropdownText}>{newTravelCalendar.status.toUpperCase()}</Text>
-                    <ChevronDown size={14} color="#475569" />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.flexItem}>
-                  <Text style={styles.fieldHeadingLabelText}>Estimated Budget (USD)</Text>
-                  <TextInput style={styles.modalInputField} keyboardType="numeric" value={newTravelCalendar.budget.estimated ? String(newTravelCalendar.budget.estimated) : ""} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, budget: { ...newTravelCalendar.budget, estimated: Number(t) || 0 } })} placeholder="0" placeholderTextColor="#94A3B8" />
-                </View>
-              </View>
-
-              <View style={styles.formElementWrapperBlock}>
-                <Text style={styles.fieldHeadingLabelText}>Trip Description Summary</Text>
-                <TextInput style={[styles.modalInputField, styles.modalTextAreaElement]} multiline numberOfLines={3} placeholder="Provide structural overview context tracking indices..." value={newTravelCalendar.description} onChangeText={(t) => setNewTravelCalendar({ ...newTravelCalendar, description: t })} placeholderTextColor="#94A3B8" />
-              </View>
-
-              <TouchableOpacity style={[styles.commitFormSubmitButton, (!newTravelCalendar.title || !newTravelCalendar.destination) && styles.commitButtonDisabled]} disabled={isSubmitting || !newTravelCalendar.title || !newTravelCalendar.destination} onPress={handleCreateOrUpdateTravelCalendar}>
-                <Text style={styles.commitFormSubmitButtonText}>
-                  {isSubmitting ? "Compiling Registries..." : editingId ? "Save Dynamic System Updates" : "Commit Travel Schedule Parameters"}
+              
+              <TouchableOpacity 
+                style={[styles.formSubmitBtn, !formIsValid && styles.formSubmitBtnDisabled]} 
+                disabled={isCreating || !formIsValid}
+                onPress={handleCreateOrUpdateTravelCalendar}
+              >
+                <Text style={styles.formSubmitBtnText}>
+                  {isCreating ? "Processing..." : isEditing ? "Save Changes" : "Create Travel"}
                 </Text>
               </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
-        {/* View Extended Details Sheet Overlay */}
-        <Modal visible={showViewDialog} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowViewDialog(false)}>
-          <SafeAreaView style={styles.modalScreenLayout}>
-            <View style={styles.modalNavigationHeaderTopBar}>
-              <Text style={styles.modalMainHeaderTitle}>Detailed Travel Profile Matrix</Text>
-              <TouchableOpacity onPress={() => setShowViewDialog(false)} style={styles.modalCloseTapZone}>
-                <X size={22} color="#0F172A" />
+      <Modal visible={showViewDialog} animationType="slide" transparent={false}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Travel Calendar Details</Text>
+            <TouchableOpacity onPress={() => setShowViewDialog(false)}>
+              <X size={20} color={colors.textBold} />
+            </TouchableOpacity>
+          </View>
+
+          {selectedCalendar && (
+            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.inspectDetailBlock}>
+                <View style={styles.inspectSection}>
+                  <Text style={styles.inspectLabel}>Title</Text>
+                  <Text style={[styles.inspectValue, { fontSize: 18, fontWeight: "700" }]}>
+                    {selectedCalendar.title}
+                  </Text>
+                  <View style={[styles.badgeRow, { marginTop: hp(0.8), marginBottom: 0 }]}>
+                    <View style={[styles.badgeFrame, { backgroundColor: getStatusColor(selectedCalendar.status).bg }]}>
+                      <Text style={[styles.badgeText, { color: getStatusColor(selectedCalendar.status).text }]}>
+                        {selectedCalendar.status}
+                      </Text>
+                    </View>
+                    <View style={[styles.badgeFrame, { backgroundColor: getPurposeColor(selectedCalendar.purpose).bg }]}>
+                      <Text style={[styles.badgeText, { color: getPurposeColor(selectedCalendar.purpose).text }]}>
+                        {selectedCalendar.purpose}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.formGridRow}>
+                  <View style={styles.formGridCol}>
+                    <Text style={styles.inspectLabel}>Start Date</Text>
+                    <Text style={styles.inspectValue}>
+                      {safeFormatDate(selectedCalendar.startDate, "MMMM dd, yyyy")}
+                    </Text>
+                  </View>
+
+                  <View style={styles.formGridCol}>
+                    <Text style={styles.inspectLabel}>End Date</Text>
+                    <Text style={styles.inspectValue}>
+                      {safeFormatDate(selectedCalendar.endDate, "MMMM dd, yyyy")}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.inspectSection}>
+                  <Text style={styles.inspectLabel}>Destination</Text>
+                  <Text style={styles.inspectValue}>{selectedCalendar.destination}</Text>
+                </View>
+
+                {!!selectedCalendar.description && (
+                  <View style={styles.inspectSection}>
+                    <Text style={styles.inspectLabel}>Description</Text>
+                    <Text style={styles.inspectValue}>{selectedCalendar.description}</Text>
+                  </View>
+                )}
+
+                {!!selectedCalendar.budget && selectedCalendar.budget.estimated > 0 && (
+                  <View style={styles.inspectSection}>
+                    <Text style={styles.inspectLabel}>Budget Assignment</Text>
+                    <Text style={styles.inspectValue}>
+                      {selectedCalendar.budget.currency} {selectedCalendar.budget.estimated}
+                    </Text>
+                  </View>
+                )}
+
+                {!!selectedCalendar.notes && (
+                  <View style={styles.inspectSection}>
+                    <Text style={styles.inspectLabel}>Notes</Text>
+                    <Text style={styles.inspectValue}>{selectedCalendar.notes}</Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={customPickerVisible} animationType="fade" transparent={true}>
+        <View style={styles.dropdownOverlay}>
+          <View style={styles.dropdownContentCard}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownHeaderText}>{customPickerTitle}</Text>
+              <TouchableOpacity onPress={() => setCustomPickerVisible(false)} style={{ padding: 4 }}>
+                <X size={18} color={colors.textBold} />
               </TouchableOpacity>
             </View>
+            <ScrollView contentContainerStyle={styles.dropdownScrollView} showsVerticalScrollIndicator={false}>
+              {customPickerOptions.map((opt) => {
+                const isActive = customPickerValue === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={styles.dropdownItemRow}
+                    onPress={() => {
+                      customPickerCallback(opt.value);
+                      setCustomPickerVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, isActive && styles.dropdownItemTextActive]}>
+                      {opt.label}
+                    </Text>
+                    {isActive && <Check size={16} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
-            {selectedCalendar && (
-              <ScrollView contentContainerStyle={styles.modalContentFormScrollingBody}>
-                <Text style={styles.viewDetailsHeadlineText}>{selectedCalendar.title}</Text>
-                
-                <View style={[styles.badgesWrapperRowInline, { marginVertical: 10 }]}>
-                  <View style={[styles.statusBadgeCapsule, { backgroundColor: getStatusStyle(selectedCalendar.status).bg }]}><Text style={[styles.statusBadgeText, { color: getStatusStyle(selectedCalendar.status).txt }]}>{selectedCalendar.status?.toUpperCase()}</Text></View>
-                  <View style={[styles.statusBadgeCapsule, { backgroundColor: getPurposeStyle(selectedCalendar.purpose).bg }]}><Text style={[styles.statusBadgeText, { color: getPurposeStyle(selectedCalendar.purpose).txt }]}>{selectedCalendar.purpose?.toUpperCase()}</Text></View>
-                </View>
-
-                <View style={styles.viewRowDetailMetadataBox}>
-                  <Text style={styles.viewRowDetailLabel}>Destination Location Space</Text>
-                  <Text style={styles.viewRowDetailPayload}>{selectedCalendar.destination}</Text>
-                </View>
-
-                <View style={styles.viewRowDetailMetadataBox}>
-                  <Text style={styles.viewRowDetailLabel}>Active Timeline Scope</Text>
-                  <Text style={styles.viewRowDetailPayload}>{safeFormatDate(selectedCalendar.startDate)} to {safeFormatDate(selectedCalendar.endDate)}</Text>
-                </View>
-
-                {selectedCalendar.description && (
-                  <View style={styles.viewRowDetailMetadataBox}>
-                    <Text style={styles.viewRowDetailLabel}>Operational Context Abstract Description</Text>
-                    <Text style={styles.viewRowDetailPayload}>{selectedCalendar.description}</Text>
-                  </View>
-                )}
-
-                {selectedCalendar.notes && (
-                  <View style={styles.viewRowDetailMetadataBox}>
-                    <Text style={styles.viewRowDetailLabel}>Internal Memo Notes</Text>
-                    <Text style={styles.viewRowDetailPayload}>{selectedCalendar.notes}</Text>
-                  </View>
-                )}
-              </ScrollView>
-            )}
-          </SafeAreaView>
-        </Modal>
-
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.background },
-  flexWrapper: { flex: 1 },
-  flexItem: { flex: 1 },
-  mainScrollPadding: { padding: 16, paddingBottom: 40 },
-  headerLayoutRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 12 },
-  mainTitle: { fontSize: 24, fontWeight: "800", color: Colors.surface },
-  subTitle: { fontSize: 13, color: "#64748B", marginTop: 2 },
-  addTriggerButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#2563EB", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, gap: 6 },
-  addTriggerButtonText: { color: "#FFFFFF", fontWeight: "600", fontSize: 13 },
-  cardWrapper: { backgroundColor: Colors.background, borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: "#E2E8F0" },
-  cardHeaderInline: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
-  cardHeaderTitle: { fontSize: 15, fontWeight: "700", color: Colors.surface },
-  filtersFormGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  inputColHalf: { width: "48%" },
-  fieldLabel: { fontSize: 12, fontWeight: "600", color: Colors.surface, marginBottom: 4 },
-  inputFieldElement: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: "#0F172A", backgroundColor: "#FFFFFF" },
-  customNativeDropdown: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#F8FAFC" },
-  customNativeDropdownText: { fontSize: 13, color: "#334155", textTransform: "capitalize" },
-  registrySectionHeader: { fontSize: 14, fontWeight: "700", color: Colors.surface, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 },
-  loaderBufferSpacing: { paddingVertical: 40 },
-  registryRecordCard: { backgroundColor: Colors.background, borderRadius: 12, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#E2E8F0", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-  recordContentBlock: { flex: 1, gap: 6 },
-  recordMainHeadline: { fontSize: 16, fontWeight: "700", color: Colors.surface },
-  badgesWrapperRowInline: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  statusBadgeCapsule: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  statusBadgeText: { fontSize: 11, fontWeight: "700", textTransform: "capitalize" },
-  metaInformationRowInlineGap: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
-  metaInformationRowInlineText: { fontSize: 13, color: "#475569" },
-  recordActionControlColumn: { justifyContent: "space-between", alignItems: "flex-end", minHeight: 90 },
-  inlineActionButtonSquare: { width: 32, height: 32, borderRadius: 6, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
-  dangerActionButtonBg: { backgroundColor: "#FEE2E2" },
-  emptyContainerCard: { backgroundColor: "#FFFFFF", borderRadius: 12, padding: 40, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E2E8F0", borderStyle: "dashed" },
-  emptyContainerHeadline: { marginTop: 12, fontSize: 14, color: "#64748B", textAlign: "center" },
-  modalScreenLayout: { flex: 1, backgroundColor: "#FFFFFF" },
-  modalNavigationHeaderTopBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderColor: "#E2E8F0" },
-  modalMainHeaderTitle: { fontSize: 17, fontWeight: "700", color: "#0F172A" },
-  modalCloseTapZone: { padding: 4 },
-  modalContentFormScrollingBody: { padding: 16, gap: 14 },
-  formElementWrapperBlock: { gap: 4 },
-  inlineFormElementRowHalfSplit: { flexDirection: "row", gap: 12 },
-  fieldHeadingLabelText: { fontSize: 13, fontWeight: "600", color: "#334155" },
-  modalInputField: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, padding: 12, fontSize: 14, color: "#0F172A", backgroundColor: "#FFFFFF" },
-  modalTextAreaElement: { minHeight: 70, textAlignVertical: "top" },
-  modalFormPickerDropdown: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, padding: 12, backgroundColor: "#F8FAFC" },
-  modalFormPickerDropdownText: { fontSize: 13, fontWeight: "600", color: "#475569" },
-  commitFormSubmitButton: { backgroundColor: "#2563EB", padding: 14, borderRadius: 8, alignItems: "center", marginTop: 14 },
-  commitButtonDisabled: { backgroundColor: "#94A3B8" },
-  commitFormSubmitButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  viewDetailsHeadlineText: { fontSize: 20, fontWeight: "800", color: "#0F172A" },
-  viewRowDetailMetadataBox: { borderBottomWidth: 1, borderColor: "#F1F5F9", paddingBottom: 10, gap: 4 },
-  viewRowDetailLabel: { fontSize: 12, fontWeight: "600", color: "#64748B", textTransform: "uppercase" },
-  viewRowDetailPayload: { fontSize: 15, color: "#1E293B", lineHeight: 22 },
-});
