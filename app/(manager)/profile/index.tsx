@@ -6,17 +6,18 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Image,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Edit2,
@@ -30,8 +31,10 @@ import { apiFetch } from "@/lib/admin/apiClient";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { API_BASE_URL, API_BASE_URL_IMAGE } from "@/services/api";
 
 const { width } = Dimensions.get("window");
+const BASE_DOMAIN = API_BASE_URL_IMAGE; 
 
 interface ProfileData {
   id: string;
@@ -447,6 +450,7 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"personal" | "onboarding">("personal");
   const [tokenReady, setTokenReady] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [editedProfile, setEditedProfile] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -476,8 +480,23 @@ export default function Profile() {
 
   useEffect(() => {
     (async () => {
-      await initToken();
-      setTokenReady(true);
+      try {
+        const token = await initToken();
+        if (token && typeof token === "string") {
+          setAuthToken(token);
+        } else {
+          // Fallback to AsyncStorage token lookup if initToken doesn't return string directly
+          const storedToken =
+            (await AsyncStorage.getItem("token")) ||
+            (await AsyncStorage.getItem("jwt")) ||
+            (await AsyncStorage.getItem("auth_token"));
+          if (storedToken) setAuthToken(storedToken);
+        }
+      } catch (err) {
+        console.warn("Failed to load auth token:", err);
+      } finally {
+        setTokenReady(true);
+      }
     })();
   }, []);
 
@@ -491,7 +510,7 @@ export default function Profile() {
   const { data: conversationProfile, isLoading: loadingConvProfile } = useQuery({
     queryKey: ["conversationProfile", baseProfile?.email],
     queryFn: async () => {
-      const res = await fetch(`https://task.se7eninc.com/api/messages/conversations/${baseProfile?.email}`);
+      const res = await fetch(`${BASE_DOMAIN}/api/messages/conversations/${baseProfile?.email}`);
       if (!res.ok) throw new Error("Failed to fetch conversations profile");
       return res.json() as Promise<ProfileData>;
     },
@@ -517,18 +536,33 @@ export default function Profile() {
     baseProfile?.avatarUrl ||
     null;
 
-  const avatarUrl = useMemo(() => {
-    if (!avatarRaw) return null;
-    return avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")
-      ? avatarRaw
-      : `https://task.se7eninc.com${avatarRaw}`;
-  }, [avatarRaw]);
-
   const resolvedAvatarUri = useMemo(() => {
-    if (!avatarUrl) return null;
-    if (avatarUrl.startsWith("data:")) return avatarUrl;
-    return tokenReady ? toProxiedUrl(avatarUrl) : null;
-  }, [avatarUrl, tokenReady]);
+    if (!avatarRaw) return null;
+    if (avatarRaw.startsWith("data:")) {
+      return avatarRaw.replace(/[\r\n]/g, "").trim();
+    }
+
+    let processedPath = avatarRaw;
+
+    // Map /uploads/ to /api/s3-proxy/
+    if (processedPath.includes("/uploads/")) {
+      processedPath = processedPath.replace("/uploads/", "/api/s3-proxy/");
+    }
+
+    if (!processedPath.startsWith("http://") && !processedPath.startsWith("https://")) {
+      processedPath = `${BASE_DOMAIN}${processedPath.startsWith("/") ? "" : "/"}${processedPath}`;
+    }
+
+    let proxied = tokenReady ? toProxiedUrl(processedPath) : processedPath;
+
+    // Attach ?token= parameter if missing
+    if (authToken && !proxied.includes("token=")) {
+      const separator = proxied.includes("?") ? "&" : "?";
+      proxied = `${proxied}${separator}token=${encodeURIComponent(authToken)}`;
+    }
+
+    return proxied;
+  }, [avatarRaw, tokenReady, authToken]);
 
   const initials = useMemo(() => {
     return (baseProfile?.name || baseProfile?.email || "M")
@@ -645,7 +679,8 @@ export default function Profile() {
 
     setUploadingImage(true);
     try {
-      const base64String = `data:image/jpeg;base64,${asset.base64}`;
+      const cleanBase64 = asset.base64 ? asset.base64.replace(/[\r\n]/g, "") : "";
+      const base64String = `data:image/jpeg;base64,${cleanBase64}`;
       await apiFetch("/api/settings", {
         method: "PUT",
         body: JSON.stringify({ avatarDataUrl: base64String }),
@@ -678,7 +713,8 @@ export default function Profile() {
         encoding: FileSystem.EncodingType.Base64,
       });
       const mimeType = file.mimeType || "application/octet-stream";
-      const base64String = `data:${mimeType};base64,${base64Content}`;
+      const cleanBase64 = base64Content.replace(/[\r\n]/g, "");
+      const base64String = `data:${mimeType};base64,${cleanBase64}`;
 
       queryClient.setQueryData(["onboardingMe"], (prev: any) => {
         if (!prev?.item) return prev;
@@ -834,10 +870,15 @@ export default function Profile() {
                       <Image 
                         source={{ 
                           uri: resolvedAvatarUri,
-                          headers: { Accept: "image/*" }
+                          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
                         }} 
                         style={s(styles.avatarImage)} 
-                        onError={() => setAvatarLoadError(true)}
+                        contentFit="cover"
+                        transition={200}
+                        onError={(e) => {
+                          console.warn("Avatar image load error:", e.error);
+                          setAvatarLoadError(true);
+                        }}
                       />
                     ) : (
                       <View style={s([styles.avatarImage, styles.avatarFallback])}>

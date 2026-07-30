@@ -1,10 +1,9 @@
 import React, { useMemo, useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { Bell, Menu, LogOut, Mail, Bug, Sparkles } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,7 +14,6 @@ import { apiRequest } from "@/services/api";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 
 interface HeaderSettings {
-  _id?: string;
   backgroundType: "color" | "image";
   colorConfig: {
     from: string; 
@@ -36,65 +34,6 @@ interface HeaderSettings {
   };
 }
 
-interface EmployeeMeResponse {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string;
-  current_status?: string;
-  role?: string;
-}
-
-/**
- * Bulletproof Image URL converter
- * Transforms `/uploads/asset-library/xxx.png` -> `https://task.se7eninc.com/api/s3-proxy/asset-library/xxx.png?token=...`
- */
-const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
-
-  // 1. Return inline data/file URIs directly
-  if (rawPath.startsWith("data:") || rawPath.startsWith("file://") || rawPath.startsWith("content://")) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-
-  // 2. If token is already attached, return immediately
-  if (path.includes("token=")) return path;
-
-  // 3. Normalize path: Map `/uploads/` or `uploads/` -> `/api/s3-proxy/`
-  if (path.startsWith("/uploads/")) {
-    path = path.replace("/uploads/", "/api/s3-proxy/");
-  } else if (path.startsWith("uploads/")) {
-    path = path.replace("uploads/", "/api/s3-proxy/");
-  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
-    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
-  }
-
-  // 4. Construct absolute URL
-  if (!path.startsWith("http://") && !path.startsWith("https://")) {
-    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  // 5. Try toProxiedUrl on the fully constructed absolute URL
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes("token=")) {
-      return proxied;
-    }
-  } catch (e) {
-    // Fall back to manual injection
-  }
-
-  // 6. Manual token fallback injection
-  if (activeToken) {
-    const separator = path.includes("?") ? "&" : "?";
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
-};
-
 export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -103,88 +42,40 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
   const { socket } = useSocket();
   const { uiTheme } = useTheme();
 
-  const [jwtToken, setJwtToken] = useState<string | null>(null);
+  const [tokenReady, setTokenReady] = useState(false);
   const [avatarLoadError, setAvatarLoadError] = useState(false);
-  const [bgLoadError, setBgLoadError] = useState(false);
 
   const isDark = uiTheme?.theme !== "crystal-white";
   const isMetallic = uiTheme?.theme === "metallic-elite";
 
-useEffect(() => {
-  let isMounted = true;
-
-  (async () => {
-    try {
+  useEffect(() => {
+    (async () => {
       await initToken();
+      setTokenReady(true);
+    })();
+  }, []);
 
-      // Check AuthContext user object first
-      let token =
-        (user as any)?.token ||
-        (user as any)?.accessToken ||
-        (user as any)?.jwt ||
-        (user as any)?.user?.token;
-
-      // Search AsyncStorage dynamically across key names
-      if (!token) {
-        const keys = await AsyncStorage.getAllKeys();
-        const possibleTokenKeys = keys.filter((k) =>
-          /token|jwt|auth|session/i.test(k)
-        );
-
-        for (const key of possibleTokenKeys) {
-          const val = await AsyncStorage.getItem(key);
-          if (val && typeof val === "string" && val.length > 10) {
-            token = val;
-            break;
-          }
-        }
-      }
-
-      if (isMounted && token) {
-        setJwtToken(token);
-      }
-    } catch (err) {
-      console.error("Failed to load JWT token:", err);
-    }
-  })();
-
-  return () => {
-    isMounted = false;
-  };
-}, [user]);
-  const { data: headerSettings } = useQuery<HeaderSettings | null>({
+  const { data: headerSettings } = useQuery<HeaderSettings>({
     queryKey: ["managerHeaderSettings"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest<any>("/header-settings");
-        return res.data?.item || res.data || null;
-      } catch (e) {
-        return null;
-      }
+      const res = await apiRequest<{ item: HeaderSettings }>("/header-settings");
+      return res.data?.item;
     },
   });
 
-  const { data: userSettings } = useQuery<any>({
+  const { data: userSettings } = useQuery({
     queryKey: ["userSettings"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest<any>("/settings");
-        return res.data?.item || res.data || null;
-      } catch (e) {
-        return null;
-      }
+      const res = await apiRequest("/settings");
+      return res.data;
     },
   });
 
-  const { data: employeeStatus } = useQuery<EmployeeMeResponse | null>({
+  const { data: employeeStatus } = useQuery({
     queryKey: ["managerEmployeeStatus"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest<{ item: EmployeeMeResponse }>("/employees/me");
-        return res.data?.item || null;
-      } catch (e) {
-        return null;
-      }
+      const res = await apiRequest<{ item: { current_status?: string; id?: string } }>("/employees/me");
+      return res.data?.item;
     },
   });
 
@@ -239,7 +130,7 @@ useEffect(() => {
     return "#10b981";
   }, [currentStatus]);
 
-  const initials = (employeeStatus?.name || user?.fullName || user?.email || "M")
+  const initials = (user?.fullName || user?.email || "M")
     .split(" ")
     .filter(Boolean)
     .map((p) => p[0])
@@ -247,27 +138,9 @@ useEffect(() => {
     .join("")
     .toUpperCase();
 
-  // Background Image Resolution
-  const rawBgImage = headerSettings?.imageConfig?.url || headerSettings?.imageConfig?.dataUrl || null;
-  const imageUri = useMemo(() => {
-    return getDisplayImageUrl(rawBgImage, jwtToken);
-  }, [rawBgImage, jwtToken]);
-
- // console.log('url is',imageUri);
-
-  const hasImageBackground = headerSettings?.backgroundType === "image" && !!imageUri && !bgLoadError;
-//console.log('urhasImageBackgroundl is',hasImageBackground);
-  // Avatar Image Resolution
-  const avatarRaw =
-    userSettings?.item?.avatarDataUrl ||
-    userSettings?.item?.avatarUrl ||
-    employeeStatus?.avatarUrl ||
-    user?.avatarUrl ||
-    null;
-
-  const resolvedAvatarUri = useMemo(() => {
-    return getDisplayImageUrl(avatarRaw, jwtToken);
-  }, [avatarRaw, jwtToken]);
+  const rawImage = headerSettings?.imageConfig?.url || headerSettings?.imageConfig?.dataUrl;
+  const imageUri = tokenReady ? toProxiedUrl(rawImage) : undefined;
+  const hasImageBackground = headerSettings?.backgroundType === "image" && !!imageUri;
 
   const dynamicColors = useMemo(() => {
     return {
@@ -280,13 +153,23 @@ useEffect(() => {
     ? [headerSettings.colorConfig.from, headerSettings.colorConfig.via, headerSettings.colorConfig.to]
     : [Colors.primary || "#1f6feb", Colors.primary || "#1f6feb", Colors.primaryDark || "#020408"];
 
+  const avatarRaw = userSettings?.item?.avatarDataUrl || userSettings?.item?.avatarUrl || null;
+  const avatarUrl = useMemo(() => {
+    if (!avatarRaw) return null;
+    return avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")
+      ? avatarRaw
+      : `https://task.se7eninc.com${avatarRaw}`;
+  }, [avatarRaw]);
+
+  const resolvedAvatarUri = useMemo(() => {
+    if (!avatarUrl) return null;
+    if (avatarUrl.startsWith("data:")) return avatarUrl;
+    return tokenReady ? toProxiedUrl(avatarUrl) : null;
+  }, [avatarUrl, tokenReady]);
+
   useEffect(() => {
     setAvatarLoadError(false);
   }, [resolvedAvatarUri]);
-
-  useEffect(() => {
-    setBgLoadError(false);
-  }, [imageUri]);
 
   const handleLogout = () => {
     Alert.alert("Confirm Logout", "Are you sure you want to sign out of your account?", [
@@ -299,23 +182,18 @@ useEffect(() => {
     router.push("/(manager)/bug" as any);
   };
 
-  const baseHeaderHeight = headerSettings?.height ? Math.max(140, headerSettings.height + 20) : 165;
+  const baseHeaderHeight = 165;
 
   return (
     <View style={[styles.header, { paddingTop: insets.top, height: baseHeaderHeight + insets.top, backgroundColor: dynamicColors.background }]}>
       {hasImageBackground && imageUri ? (
-        <Image 
-          source={{ uri: imageUri }} 
-          style={styles.backgroundImage}  
-          resizeMode="cover"
-          onError={() => setBgLoadError(true)}
-        />
+        <Image source={{ uri: imageUri }} style={styles.backgroundImage} />
       ) : (
         <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientBackground} />
       )}
 
       {hasImageBackground && headerSettings?.overlay?.enabled && (
-        <View style={[styles.overlay, { backgroundColor: headerSettings?.overlay?.color || "rgba(0, 0, 0, 0.3)" }]} />
+        <View style={[styles.overlay, { backgroundColor: headerSettings?.overlay?.color || "rgba(0, 0, 0, 0.4)" }]} />
       )}
 
       {isMetallic && <View style={styles.metallicSparkLine} />}
@@ -330,12 +208,7 @@ useEffect(() => {
             <View style={styles.avatarWrapper}>
               <View style={[styles.avatarRingFrame, { borderColor: statusColor }]}>
                 {resolvedAvatarUri && !avatarLoadError ? (
-                  <Image 
-                    source={{ uri: resolvedAvatarUri }} 
-                    style={styles.avatarAsset} 
-                    resizeMode="cover"
-                    onError={() => setAvatarLoadError(true)}
-                  />
+                  <Image source={{ uri: resolvedAvatarUri }} style={styles.avatarAsset} />
                 ) : (
                   <View style={[styles.fallbackAvatar, { backgroundColor: isMetallic ? "#c89537" : "#0ea5e9" }]}>
                     <Text style={styles.fallbackAvatarText}>{initials}</Text>
@@ -346,11 +219,9 @@ useEffect(() => {
             </View>
 
             <View style={styles.identityMetaColumn}>
-              <Text style={styles.identityNameText} numberOfLines={1}>
-                {employeeStatus?.name || user?.fullName || "Talha Qazi"}
-              </Text>
+              <Text style={styles.identityNameText} numberOfLines={1}>{user?.fullName || "Talha Qazi"}</Text>
               <Text style={[styles.identityRoleText, { color: isMetallic ? "#ffd27a" : "rgba(255,255,255,0.6)" }]}>
-                {(employeeStatus?.role || user?.role || "MANAGER").toUpperCase()}
+                {user?.role?.toUpperCase() || "MANAGER"}
               </Text>
             </View>
           </TouchableOpacity>

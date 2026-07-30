@@ -44,9 +44,12 @@ import {
   ChevronRight,
   Layers,
   Sliders,
+  Square,
+  CheckSquare,
 } from "lucide-react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { apiRequest } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -72,6 +75,9 @@ import {
   dollarsToCents,
   PurchaseStatus,
 } from "@/services/costManager";
+import MobileCostManager from "@/components/cost-manager/MobileCostManager";
+
+
 
 // ==========================================
 // CENTRAL DYNAMIC THEME & COLOR PALETTE
@@ -103,6 +109,12 @@ interface FileObject {
   size: number;
 }
 
+interface Subtask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 interface Task {
   id: string;
   taskNumber?: number;
@@ -119,6 +131,8 @@ interface Task {
   createdAt: string;
   projectId?: string | { _id?: string; id?: string };
   attachments?: FileObject[];
+  attachment?: FileObject;
+  subtasks?: Subtask[];
 }
 
 interface Project {
@@ -127,7 +141,7 @@ interface Project {
   description?: string;
   createdAt?: string;
   assignees?: string[];
-  logo?: { url?: string };
+  logo?: { url?: string; fileName?: string };
   taskCount?: number;
   status?: string;
   attachments?: FileObject[];
@@ -145,6 +159,37 @@ interface TaskComment {
 type TabMode = "all" | "projects" | "tasks";
 type ProjectDetailTab = "overview" | "tasks" | "discussion";
 const PAGE_SIZE = 25;
+
+// Utility to resolve asset/logo URLs with authentication tokens
+const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
+  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
+
+  if (rawPath.startsWith("data:") || rawPath.startsWith("file://") || rawPath.startsWith("content://")) {
+    return rawPath;
+  }
+
+  let path = rawPath.trim();
+  if (path.includes("token=")) return path;
+
+  if (path.startsWith("/uploads/")) {
+    path = path.replace("/uploads/", "/api/s3-proxy/");
+  } else if (path.startsWith("uploads/")) {
+    path = path.replace("uploads/", "/api/s3-proxy/");
+  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
+    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
+  }
+
+  if (!path.startsWith("http://") && !path.startsWith("https://")) {
+    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  if (activeToken) {
+    const separator = path.includes("?") ? "&" : "?";
+    return `${path}${separator}token=${activeToken}`;
+  }
+
+  return path;
+};
 
 // =======================================================
 // DYNAMIC RESPONSIVE STYLE GENERATOR FUNCTIONS
@@ -252,7 +297,10 @@ function createStyles(
     verticalBlockAssetSectionContainer: { flexDirection: "column", gap: hp(1), marginTop: hp(0.8) },
     verticalBlockAssetSectionHeadingLabel: { fontSize: 14, fontWeight: "bold", color: colors.textPrimary, marginBottom: hp(0.3), marginTop: hp(0.5) },
     premiumAssetDisplayListItemCard: { backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: wp(2), padding: wp(3), gap: hp(0.8) },
-    premiumAssetDisplayCardTitleText: { fontSize: 15, fontWeight: "bold", color: colors.textPrimary, flex: 1, marginRight: wp(2) },
+    assetCardHeaderRow: { flexDirection: "row", alignItems: "center", gap: wp(2.5) },
+    assetThumbnailImage: { width: wp(10), height: wp(10), borderRadius: wp(1.5), backgroundColor: colors.bgPrimary, borderWidth: 0.5, borderColor: colors.border },
+    assetPlaceholderBox: { width: wp(10), height: wp(10), borderRadius: wp(1.5), backgroundColor: colors.bgPrimary, borderWidth: 0.5, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+    premiumAssetDisplayCardTitleText: { fontSize: 15, fontWeight: "bold", color: colors.textPrimary, flex: 1 },
     premiumAssetDisplayCardSubTextDescription: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
     inlineProjectTeamLabelMetaTextString: { fontSize: 12, color: colors.textSecondary },
     footerInlineMetadataLabelString: { fontSize: 11, color: colors.accentBlueLight, fontWeight: "bold" },
@@ -260,7 +308,7 @@ function createStyles(
     projectStatusInlineBadgeBoxTextString: { color: colors.textLight, fontSize: 10, fontWeight: "bold" },
     priorityLabelIndicatorString: { fontSize: 11, color: colors.textSecondary, fontWeight: "600" },
     timerCountdownDisplayString: { fontSize: 12, fontWeight: "bold", color: colors.accentRedDark },
-    combinedBadgesInlineMatrixRow: { flexDirection: "row", gap: wp(1), flexWrap: "wrap" },
+    combinedBadgesInlineMatrixRow: { flexDirection: "row", gap: wp(1), flexWrap: "wrap", alignItems: "center" },
     condensedInlineStatusBadgePill: { backgroundColor: "rgba(88,166,255,0.1)", paddingHorizontal: wp(1.8), paddingVertical: hp(0.3), borderRadius: wp(1) },
     condensedInlineStatusBadgePillText: { color: colors.accentBlueLight, fontSize: 10, fontWeight: "bold" },
     projectPortalOverviewDisplayBannerCard: { backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: wp(2.5), padding: wp(3.5), gap: hp(1.2) },
@@ -378,7 +426,6 @@ function createDialogStyles(
   return StyleSheet.create({
     modalBlurOverlay: { flex: 1, backgroundColor: "rgba(13, 17, 23, 0.75)", justifyContent: "center", padding: isSmallScreen ? wp(3) : wp(4) },
     modalDialogContentBox: { backgroundColor: colors.bgSecondary, borderRadius: wp(3), borderWidth: 1, borderColor: colors.border, padding: wp(4), maxHeight: "90%", width: "100%", maxWidth: isTablet ? 560 : undefined, alignSelf: "center" },
-    modalDialogContentBoxActive: { opacity: 1 },
     modalHeaderContainerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: hp(1.8), borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: hp(1) },
     modalHeaderHeading: { fontSize: 16, fontWeight: "bold", color: colors.textPrimary },
     modalFormBody: { flexDirection: "column", gap: hp(1.5) },
@@ -425,7 +472,7 @@ function ItemInputDialogModal({ sectionId, projectId, onClose, onSuccess }: Item
   const [purchaseStatus, setPurchaseStatus] = useState<PurchaseStatus>("not_purchased");
   const [saving, setSaving] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-
+  
   const handleSaveItem = async () => {
     if (!itemName.trim()) {
       Alert.alert("Required Input", "Please enter an item name.");
@@ -550,7 +597,7 @@ interface MobileCostManagerProps {
   tasks: Array<{ id: string; title: string }>;
 }
 
-function MobileCostManager({ projectId, projectName, tasks }: MobileCostManagerProps) {
+function MobileCostManager_({ projectId, projectName, tasks }: MobileCostManagerProps) {
   const { width, height } = useWindowDimensions();
   const wp = (percentage: number) => (width * percentage) / 100;
   const hp = (percentage: number) => (height * percentage) / 100;
@@ -787,6 +834,7 @@ export default function MobileTasksScreen() {
   const isTablet = width >= 768;
   const isSmallScreen = width < 375;
   const colors = useMemo(() => buildColors(), []);
+  
 
   const styles = useMemo(
     () => createStyles(colors, wp, hp, isTablet, isSmallScreen),
@@ -804,11 +852,13 @@ export default function MobileTasksScreen() {
   const { triggerReward } = useRewards();
   const now = useGlobalTimer();
 
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+
   // Navigation Scope States
   const [activeTab, setActiveTab] = useState<TabMode>("all");
   const [currentViewMode, setCurrentViewMode] = useState<"list" | "project-detail">("list");
   const [activeProjectTab, setActiveProjectTab] = useState<ProjectDetailTab>("tasks");
-  
+  const [modalTab, setModalTab] = useState<"overview" | "followup" | "expenses" | "discussion">("overview");
   // Filtering & Query Matrix States
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -878,6 +928,50 @@ export default function MobileTasksScreen() {
   const [showTaskPriorityDropdown, setShowTaskPriorityDropdown] = useState(false);
   const [showTaskStatusDropdown, setShowTaskStatusDropdown] = useState(false);
 
+  const [commentAttachments, setCommentAttachments] = useState<FileObject[]>([]);
+
+  // Retrieve auth token for image requests
+
+  const handleOpenTask = (task: Task) => {
+    setSelectedTask(task);
+    setModalTab("overview");
+    setIsViewTaskModalOpen(true);
+    void fetchTaskComments(task.id);
+  };
+  
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        let token =
+          (currentUser as any)?.token ||
+          (currentUser as any)?.accessToken ||
+          (currentUser as any)?.jwt;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) =>
+            /token|jwt|auth|session/i.test(k)
+          );
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === "string" && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error("Failed to retrieve token:", err);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [currentUser]);
+
   // Fetch Team Directory API Sync Hooks
   const { data: usersContainer = { items: [] } } = useQuery({
     queryKey: ["workspace-users"],
@@ -895,7 +989,6 @@ export default function MobileTasksScreen() {
     return ["Talha Qazi", "Nathan Reardon", "Sarah Connor", "Alex Mercer", "Emma Watson"];
   }, [usersContainer]);
 
-  // FIX 2: Added `selectedProject?.id` to queryKey and endpoint parameter so project tasks fetch cleanly from backend
   const { data: tasksContainer = { items: [], totalPages: 1 }, isLoading: isTasksLoading } = useQuery({
     queryKey: ["tasks", taskPage, projectSearchQuery, statusFilter, priorityFilter, assignmentFilter, viewByPriority, selectedProject?.id],
     queryFn: async () => {
@@ -917,7 +1010,7 @@ export default function MobileTasksScreen() {
     queryKey: ["projects", projectPage, projectSearchQuery],
     queryFn: async () => {
       const res = await apiRequest<{ items: Project[]; totalPages: number }>(`/projects?page=${projectPage}&limit=${PAGE_SIZE}&search=${projectSearchQuery}`);
-      return { items: res.data?.items || [], totalPages: res.data?.totalPages || 1 };
+      return { items: (res.data?.items || []).map((p: any) => ({ id: p._id || p.id, ...p })), totalPages: res.data?.totalPages || 1 };
     },
   });
 
@@ -954,15 +1047,25 @@ export default function MobileTasksScreen() {
     setComments(res.data?.items || []);
   };
 
-  const handlePostComment = async () => {
-    if (!commentDraft.trim() || !selectedTask) return;
+ const handlePostComment = async () => {
+  if (!commentDraft.trim() && commentAttachments.length === 0) return;
+  if (!selectedTask) return;
+
+  try {
     const res = await apiRequest<{ item: TaskComment }>(`/tasks/${selectedTask.id}/comments`, {
       method: "POST",
-      data: { message: commentDraft.trim() },
+      data: { 
+        message: commentDraft.trim(),
+        attachments: commentAttachments,
+      },
     });
-    setComments(c => [...c, res.data!.item]);
+    setComments((c) => [...c, res.data!.item]);
     setCommentDraft("");
-  };
+    setCommentAttachments([]);
+  } catch (err) {
+    Alert.alert("Error", "Failed to post comment.");
+  }
+};
 
   const emitTypingStatus = (text: string) => {
     setCommentDraft(text);
@@ -980,9 +1083,6 @@ export default function MobileTasksScreen() {
     }, 2000);
   };
 
-  // =======================================================
-  // EXPO IMAGE PICKER IMPLEMENTATION CORE
-  // =======================================================
   const launchNativeImagePickerPipeline = async (target: "project-logo" | "project-attachments" | "task-attachments" | "subtask-attachments") => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -992,7 +1092,7 @@ export default function MobileTasksScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ['images'],
         allowsMultipleSelection: target !== "project-logo",
         quality: 0.8,
         base64: true,
@@ -1056,7 +1156,54 @@ export default function MobileTasksScreen() {
     },
   });
 
-  // FIX 3: Safe resolution for raw string vs populated MongoDB object IDs
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async ({ taskId, status }: { taskId: string; status: Task["status"] }) => {
+      return await apiRequest(`/tasks/${taskId}`, { method: "PATCH", data: { status } });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      if (res?.data) {
+        setSelectedTask({ id: res.data._id || res.data.id, ...res.data });
+      }
+    }
+  });
+
+  const updateTaskPriorityMutation = useMutation({
+    mutationFn: async ({ taskId, priority }: { taskId: string; priority: Task["priority"] }) => {
+      return await apiRequest(`/tasks/${taskId}`, { method: "PATCH", data: { priority } });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      if (res?.data) {
+        setSelectedTask({ id: res.data._id || res.data.id, ...res.data });
+      }
+    }
+  });
+
+  const toggleSubtaskMutation = useMutation({
+    mutationFn: async ({ taskId, subtaskId, completed }: { taskId: string; subtaskId: string; completed: boolean }) => {
+      return await apiRequest(`/tasks/${taskId}/subtasks/${subtaskId}`, { method: "PATCH", data: { completed } });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      if (res?.data) {
+        setSelectedTask({ id: res.data._id || res.data.id, ...res.data });
+      }
+    }
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      return await apiRequest(`/tasks/${taskId}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      setIsViewTaskModalOpen(false);
+      setSelectedTask(null);
+      Alert.alert("Success", "Task deleted successfully.");
+    }
+  });
+
   const resolvedTasks = useMemo(() => {
     let base = tasksContainer.items || [];
     if (selectedProject) {
@@ -1268,19 +1415,26 @@ export default function MobileTasksScreen() {
                 <Text style={styles.verticalBlockAssetSectionHeadingLabel}>Projects</Text>
                 {isProjectsLoading ? <ActivityIndicator color="#58a6ff" /> : projectsContainer.items.map((proj) => {
                   const hasTeam = Array.isArray(proj.assignees) && proj.assignees.length > 0;
+                  const logoUri = getDisplayImageUrl(proj.logo?.url, jwtToken);
                   return (
                     <TouchableOpacity
                       key={proj.id}
                       style={styles.premiumAssetDisplayListItemCard}
-                      // FIX 1: Set default activeProjectTab to "tasks" on project click
                       onPress={() => { 
                         setSelectedProject(proj); 
                         setActiveProjectTab("tasks");
                         setCurrentViewMode("project-detail"); 
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                        <Text style={styles.premiumAssetDisplayCardTitleText}>{proj.name}</Text>
+                      <View style={styles.assetCardHeaderRow}>
+                        {logoUri ? (
+                          <Image source={{ uri: logoUri }} style={styles.assetThumbnailImage} resizeMode="cover" />
+                        ) : (
+                          <View style={styles.assetPlaceholderBox}>
+                            <FileText size={16} color="#8b949e" />
+                          </View>
+                        )}
+                        <Text style={styles.premiumAssetDisplayCardTitleText} numberOfLines={1}>{proj.name}</Text>
                         <View style={styles.projectStatusInlineBadgeBox}>
                           <Text style={styles.projectStatusInlineBadgeBoxTextString}>{proj.status || "Pending"}</Text>
                         </View>
@@ -1304,32 +1458,62 @@ export default function MobileTasksScreen() {
                 {isTasksLoading ? <ActivityIndicator color="#58a6ff" /> : tasksContainer.items.map((task, index) => {
                   const timer = task.dueDate ? getRemainingTime(task.dueDate, now) : null;
                   const tState = timer ? getTimerState(timer.totalMs) : null;
+                  const firstAttach = task.attachments?.[0]?.url || task.attachment?.url;
+                  const attachUri = getDisplayImageUrl(firstAttach, jwtToken);
+                  const hasAssignees = Array.isArray(task.assignees) && task.assignees.length > 0;
+                  const completedSubtasks = task.subtasks?.filter(s => s.completed).length || 0;
+                  const totalSubtasks = task.subtasks?.length || 0;
+
                   return (
                     <TouchableOpacity
                       key={task.id}
                       style={styles.premiumAssetDisplayListItemCard}
                       onPress={() => { setSelectedTask(task); setIsViewTaskModalOpen(true); void fetchTaskComments(task.id); }}
                     >
-                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={styles.premiumAssetDisplayCardTitleText}>
+                      <View style={styles.assetCardHeaderRow}>
+                        {attachUri ? (
+                          <Image source={{ uri: attachUri }} style={styles.assetThumbnailImage} resizeMode="cover" />
+                        ) : (
+                          <View style={styles.assetPlaceholderBox}>
+                            <FileText size={16} color="#58a6ff" />
+                          </View>
+                        )}
+                        <Text style={styles.premiumAssetDisplayCardTitleText} numberOfLines={1}>
                           {task.taskNumber || (index + 1)}. {task.title}
                         </Text>
                         <Text style={styles.priorityLabelIndicatorString}>{task.priority} priority</Text>
                       </View>
                       <Text style={styles.premiumAssetDisplayCardSubTextDescription} numberOfLines={2}>{task.description}</Text>
                       
+                      {!!task.location && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: wp(1) }}>
+                          <MapPin size={11} color="#8b949e" />
+                          <Text style={{ color: "#8b949e", fontSize: 11 }}>{task.location}</Text>
+                        </View>
+                      )}
+
                       {timer && (
                         <Text style={[styles.timerCountdownDisplayString, {
                           color: tState === "critical" || tState === "overdue" ? "#f85149" : tState === "warning" ? "#d29922" : "#56d364"
                         }]}>
-                          ⏱ {timer.formatted}
+                          ⏱ Due: {task.dueDate} ({timer.formatted})
                         </Text>
                       )}
                       
                       <View style={styles.combinedBadgesInlineMatrixRow}>
                         <View style={styles.condensedInlineStatusBadgePill}>
-                          <Text style={styles.condensedInlineStatusBadgePillText}>{task.status}</Text>
+                          <Text style={styles.condensedInlineStatusBadgePillText}>{task.status.toUpperCase()}</Text>
                         </View>
+                        {hasAssignees && (
+                          <View style={[styles.condensedInlineStatusBadgePill, { backgroundColor: "rgba(139,92,246,0.1)" }]}>
+                            <Text style={[styles.condensedInlineStatusBadgePillText, { color: "#8b5cf6" }]}>👤 {task.assignees.join(", ")}</Text>
+                          </View>
+                        )}
+                        {totalSubtasks > 0 && (
+                          <View style={[styles.condensedInlineStatusBadgePill, { backgroundColor: "rgba(251,191,36,0.1)" }]}>
+                            <Text style={[styles.condensedInlineStatusBadgePillText, { color: "#fbbf24" }]}>☑ {completedSubtasks}/{totalSubtasks} subtasks</Text>
+                          </View>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -1343,7 +1527,14 @@ export default function MobileTasksScreen() {
         {currentViewMode === "project-detail" && selectedProject && (
           <View style={{ gap: hp(1.5), marginTop: hp(1.5) }}>
             <View style={styles.projectPortalOverviewDisplayBannerCard}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={styles.assetCardHeaderRow}>
+                {selectedProject.logo?.url ? (
+                  <Image source={{ uri: getDisplayImageUrl(selectedProject.logo.url, jwtToken)! }} style={styles.assetThumbnailImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.assetPlaceholderBox}>
+                    <FileText size={18} color="#58a6ff" />
+                  </View>
+                )}
                 <Text style={styles.projectPortalOverviewHeadlineTitleText}>{selectedProject.name} Project</Text>
                 <View style={styles.projectStatusInlineBadgeBox}>
                   <Text style={styles.projectStatusInlineBadgeBoxTextString}>{selectedProject.status || "In Progress"}</Text>
@@ -1408,23 +1599,58 @@ export default function MobileTasksScreen() {
                 ) : resolvedTasks.length === 0 ? (
                   <Text style={styles.emptyStateItalicTextCaptionString}>No tasks mapped inside this project container structure.</Text>
                 ) : (
-                  resolvedTasks.map((task, index) => (
-                    <TouchableOpacity
-                      key={task.id}
-                      style={styles.premiumAssetDisplayListItemCard}
-                      onPress={() => { setSelectedTask(task); setIsViewTaskModalOpen(true); void fetchTaskComments(task.id); }}
-                    >
-                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={styles.premiumAssetDisplayCardTitleText}>{task.taskNumber || (index + 1)}. {task.title}</Text>
-                        <Text style={styles.priorityLabelIndicatorString}>{task.priority} priority</Text>
-                      </View>
-                      <Text style={styles.premiumAssetDisplayCardSubTextDescription} numberOfLines={2}>{task.description}</Text>
-                      <View style={[styles.condensedInlineStatusBadgePill, { marginTop: hp(0.5), alignSelf: "flex-start" }]}>
-                        <Text style={styles.condensedInlineStatusBadgePillText}>{task.status}</Text>
-                      </View>
-                      <Text style={{ color: "#8b949e", fontSize: 11, marginTop: hp(0.5) }}>Due: {task.dueDate || "2026-03-25"}</Text>
-                    </TouchableOpacity>
-                  ))
+                  resolvedTasks.map((task, index) => {
+                    const firstAttach = task.attachments?.[0]?.url || task.attachment?.url;
+                    const attachUri = getDisplayImageUrl(firstAttach, jwtToken);
+                    const hasAssignees = Array.isArray(task.assignees) && task.assignees.length > 0;
+                    const completedSubtasks = task.subtasks?.filter(s => s.completed).length || 0;
+                    const totalSubtasks = task.subtasks?.length || 0;
+
+                    return (
+                      <TouchableOpacity
+                        key={task.id}
+                        style={styles.premiumAssetDisplayListItemCard}
+                        onPress={() => { setSelectedTask(task); setIsViewTaskModalOpen(true); void fetchTaskComments(task.id); }}
+                      >
+                        <View style={styles.assetCardHeaderRow}>
+                          {attachUri ? (
+                            <Image source={{ uri: attachUri }} style={styles.assetThumbnailImage} resizeMode="cover" />
+                          ) : (
+                            <View style={styles.assetPlaceholderBox}>
+                              <FileText size={16} color="#58a6ff" />
+                            </View>
+                          )}
+                          <Text style={styles.premiumAssetDisplayCardTitleText} numberOfLines={1}>{task.taskNumber || (index + 1)}. {task.title}</Text>
+                          <Text style={styles.priorityLabelIndicatorString}>{task.priority} priority</Text>
+                        </View>
+                        <Text style={styles.premiumAssetDisplayCardSubTextDescription} numberOfLines={2}>{task.description}</Text>
+                        
+                        {!!task.location && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: wp(1) }}>
+                            <MapPin size={11} color="#8b949e" />
+                            <Text style={{ color: "#8b949e", fontSize: 11 }}>{task.location}</Text>
+                          </View>
+                        )}
+
+                        <View style={styles.combinedBadgesInlineMatrixRow}>
+                          <View style={styles.condensedInlineStatusBadgePill}>
+                            <Text style={styles.condensedInlineStatusBadgePillText}>{task.status.toUpperCase()}</Text>
+                          </View>
+                          {hasAssignees && (
+                            <View style={[styles.condensedInlineStatusBadgePill, { backgroundColor: "rgba(139,92,246,0.1)" }]}>
+                              <Text style={[styles.condensedInlineStatusBadgePillText, { color: "#8b949e" }]}>👤 {task.assignees.join(", ")}</Text>
+                            </View>
+                          )}
+                          {totalSubtasks > 0 && (
+                            <View style={[styles.condensedInlineStatusBadgePill, { backgroundColor: "rgba(251,191,36,0.1)" }]}>
+                              <Text style={[styles.condensedInlineStatusBadgePillText, { color: "#fbbf24" }]}>☑ {completedSubtasks}/{totalSubtasks}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ color: "#8b949e", fontSize: 11, marginTop: hp(0.3) }}>Due: {task.dueDate || "—"}</Text>
+                      </TouchableOpacity>
+                    );
+                  })
                 )}
               </View>
             )}
@@ -1440,7 +1666,7 @@ export default function MobileTasksScreen() {
       </ScrollView>
 
       {/* Task View Detail Sheet */}
-      <Modal visible={isViewTaskModalOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsViewTaskModalOpen(false)}>
+      <Modal visible={false} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsViewTaskModalOpen(false)}>
         <View style={styles.fullscreenModalViewFrameContainer}>
           <View style={styles.modalNavigationHeaderTopbarNavBar}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: wp(1.5) }}>
@@ -1449,9 +1675,24 @@ export default function MobileTasksScreen() {
               </View>
               {selectedTask && <Text style={styles.modalHeaderIdLabelString}>• ID: {selectedTask.id.substring(0, 6)}</Text>}
             </View>
-            <TouchableOpacity style={styles.modalNavigationHeaderTopbarNavBarCloseTouchNodeBtn} onPress={() => setIsViewTaskModalOpen(false)}>
-              <X size={16} color="#fff" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: wp(2) }}>
+              {selectedTask && (
+                <TouchableOpacity 
+                  onPress={() => {
+                    Alert.alert("Delete Task", "Are you sure you want to delete this task?", [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Delete", style: "destructive", onPress: () => deleteTaskMutation.mutate(selectedTask.id) }
+                    ]);
+                  }}
+                  style={{ padding: wp(1) }}
+                >
+                  <Trash2 size={16} color="#ff7b72" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.modalNavigationHeaderTopbarNavBarCloseTouchNodeBtn} onPress={() => setIsViewTaskModalOpen(false)}>
+                <X size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {selectedTask && (
@@ -1464,6 +1705,29 @@ export default function MobileTasksScreen() {
                     <Text style={styles.sectionSmallCapHeadingLabel}>Description</Text>
                     <View style={styles.narrativeDescriptionTextCardBoxFrame}>
                       <Text style={styles.narrativeDescriptionBodyMarkdownText}>{selectedTask.description}</Text>
+                    </View>
+                  </View>
+
+                  {/* Subtasks / Checklist Section */}
+                  <View style={{ gap: hp(0.8), marginTop: hp(1.5) }}>
+                    <Text style={styles.sectionSmallCapHeadingLabel}>Subtasks & Checklist</Text>
+                    <View style={styles.narrativeDescriptionTextCardBoxFrame}>
+                      {(!selectedTask.subtasks || selectedTask.subtasks.length === 0) ? (
+                        <Text style={styles.emptyStateItalicTextCaptionString}>No subtasks registered.</Text>
+                      ) : (
+                        selectedTask.subtasks.map((sub) => (
+                          <TouchableOpacity
+                            key={sub.id}
+                            style={{ flexDirection: "row", alignItems: "center", gap: wp(2), paddingVertical: hp(0.5) }}
+                            onPress={() => toggleSubtaskMutation.mutate({ taskId: selectedTask.id, subtaskId: sub.id, completed: !sub.completed })}
+                          >
+                            {sub.completed ? <CheckSquare size={16} color="#56d364" /> : <Square size={16} color="#8b949e" />}
+                            <Text style={[styles.narrativeDescriptionBodyMarkdownText, sub.completed && { textDecorationLine: "line-through", color: "#8b949e" }]} numberOfLines={1}>
+                              {sub.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
                     </View>
                   </View>
 
@@ -1481,6 +1745,18 @@ export default function MobileTasksScreen() {
                       </View>
                       <View style={styles.timelineStepContainerItemRow}>
                         <Clock size={12} color="#58a6ff" />
+                        <Text style={styles.timelineStepContainerItemRowLabel}>Due Date & Time: </Text>
+                        <Text style={styles.timelineStepContainerItemRowValue}>{selectedTask.dueDate || "—"} {selectedTask.dueTime || ""}</Text>
+                      </View>
+                      {!!selectedTask.location && (
+                        <View style={styles.timelineStepContainerItemRow}>
+                          <MapPin size={12} color="#fbbf24" />
+                          <Text style={styles.timelineStepContainerItemRowLabel}>Location Site: </Text>
+                          <Text style={styles.timelineStepContainerItemRowValue}>{selectedTask.location}</Text>
+                        </View>
+                      )}
+                      <View style={styles.timelineStepContainerItemRow}>
+                        <Users size={12} color="#8b5cf6" />
                         <Text style={styles.timelineStepContainerItemRowLabel}>Operators: </Text>
                         <Text style={styles.timelineStepContainerItemRowValue}>
                           {selectedTask.assignees?.length > 0 ? selectedTask.assignees.join(", ") : "Unassigned"}
@@ -1492,16 +1768,19 @@ export default function MobileTasksScreen() {
                   <View style={{ gap: hp(1), marginTop: hp(2) }}>
                     <Text style={styles.sectionSmallCapHeadingLabel}>Attached Specification File Assets</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: wp(2) }}>
-                      {selectedTask.attachments?.map((file, i) => (
-                        <View key={i} style={styles.attachedFileAssetDocumentDisplayCardItemTile}>
-                          {file.mimeType?.startsWith("image/") ? (
-                            <Image source={{ uri: file.url }} style={{ width: "100%", height: hp(7.5), borderRadius: wp(1) }} />
-                          ) : (
-                            <FileText size={20} color="#58a6ff" />
-                          )}
-                          <Text style={styles.attachedFileAssetDocumentDisplayCardItemTileNameTextString} numberOfLines={1}>{file.fileName}</Text>
-                        </View>
-                      ))}
+                      {selectedTask.attachments?.map((file, i) => {
+                        const fileUri = getDisplayImageUrl(file.url, jwtToken);
+                        return (
+                          <View key={i} style={styles.attachedFileAssetDocumentDisplayCardItemTile}>
+                            {file.mimeType?.startsWith("image/") || fileUri ? (
+                              <Image source={{ uri: fileUri! }} style={{ width: "100%", height: hp(7.5), borderRadius: wp(1) }} />
+                            ) : (
+                              <FileText size={20} color="#58a6ff" />
+                            )}
+                            <Text style={styles.attachedFileAssetDocumentDisplayCardItemTileNameTextString} numberOfLines={1}>{file.fileName}</Text>
+                          </View>
+                        );
+                      })}
                     </ScrollView>
                   </View>
 
@@ -1525,6 +1804,7 @@ export default function MobileTasksScreen() {
 
                 <View style={styles.rightStructuralParameterMetadataColumnPropertyBoardStrip}>
                   <Text style={styles.sectionSmallCapHeadingLabel}>Properties Engine</Text>
+                  
                   <View style={styles.propertyInspectorIndivCardItemBlockNode}>
                     <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Assignees Stack</Text>
                     <Text style={styles.propertyInspectorIndivCardItemBlockNodeValue}>
@@ -1534,12 +1814,42 @@ export default function MobileTasksScreen() {
 
                   <View style={styles.propertyInspectorIndivCardItemBlockNode}>
                     <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Priority Class</Text>
-                    <Text style={[styles.propertyInspectorIndivCardItemBlockNodeValue, { color: "#ff7b72" }]}>{selectedTask.priority.toUpperCase()}</Text>
+                    <View style={{ flexDirection: "row", gap: wp(1), marginTop: hp(0.5) }}>
+                      {(["low", "medium", "high"] as Task["priority"][]).map((pr) => (
+                        <TouchableOpacity
+                          key={pr}
+                          style={[
+                            styles.condensedInlineStatusBadgePill,
+                            selectedTask.priority === pr && { backgroundColor: "rgba(249,115,22,0.2)", borderColor: "#f97316", borderWidth: 1 }
+                          ]}
+                          onPress={() => updateTaskPriorityMutation.mutate({ taskId: selectedTask.id, priority: pr })}
+                        >
+                          <Text style={[styles.condensedInlineStatusBadgePillText, selectedTask.priority === pr && { color: "#f97316" }]}>
+                            {pr.toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
 
                   <View style={styles.propertyInspectorIndivCardItemBlockNode}>
                     <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Workflow Control State</Text>
-                    <Text style={[styles.propertyInspectorIndivCardItemBlockNodeValue, { color: "#fbbf24" }]}>{selectedTask.status.toUpperCase()}</Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: wp(1), marginTop: hp(0.5) }}>
+                      {(["pending", "in-progress", "completed", "overdue"] as Task["status"][]).map((st) => (
+                        <TouchableOpacity
+                          key={st}
+                          style={[
+                            styles.condensedInlineStatusBadgePill,
+                            selectedTask.status === st && { backgroundColor: "rgba(35,134,54,0.2)", borderColor: "#238636", borderWidth: 1 }
+                          ]}
+                          onPress={() => updateTaskStatusMutation.mutate({ taskId: selectedTask.id, status: st })}
+                        >
+                          <Text style={[styles.condensedInlineStatusBadgePillText, selectedTask.status === st && { color: "#56d364" }]}>
+                            {st.toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
 
                   <TouchableOpacity style={styles.utilityFrameworkLauncherActionRowBtn} onPress={() => Alert.alert("Print Workflow Processed", "Generating data matrices...")}>
@@ -1568,6 +1878,511 @@ export default function MobileTasksScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* FULL TASK INSPECTOR MODAL */}
+<Modal
+  visible={isViewTaskModalOpen}
+  animationType="slide"
+  presentationStyle="pageSheet"
+  onRequestClose={() => setIsViewTaskModalOpen(false)}
+>
+  <KeyboardAvoidingView
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    style={styles.fullscreenModalViewFrameContainer}
+  >
+    {/* Navigation Topbar */}
+    <View style={styles.modalNavigationHeaderTopbarNavBar}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: wp(1.5), flex: 1 }}>
+        <View style={styles.webStyleProjectBadgeLabelPill}>
+          <Text style={styles.webStyleProjectBadgeLabelPillText}>Task Details</Text>
+        </View>
+        {selectedTask && (
+          <Text style={styles.modalHeaderIdLabelString} numberOfLines={1}>
+            • ID: {selectedTask.id.substring(0, 8)}
+          </Text>
+        )}
+      </View>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: wp(2) }}>
+        {selectedTask && (
+          <TouchableOpacity
+            onPress={() => {
+              Alert.alert(
+                "Delete Task",
+                "Are you sure you want to delete this task? This action cannot be undone.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => deleteTaskMutation.mutate(selectedTask.id),
+                  },
+                ]
+              );
+            }}
+            style={{ padding: wp(1) }}
+          >
+            <Trash2 size={18} color="#ff7b72" />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.modalNavigationHeaderTopbarNavBarCloseTouchNodeBtn}
+          onPress={() => setIsViewTaskModalOpen(false)}
+        >
+          <X size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </View>
+
+    {/* Web-Style Sub-Tab Header Strip */}
+    {selectedTask && (
+      <View style={styles.tabSwitcherCapsuleContainerRow}>
+        <TouchableOpacity
+          style={[
+            styles.tabSwitcherSelectionPillBtn,
+            modalTab === "overview" && styles.tabSwitcherSelectionPillBtnActive,
+          ]}
+          onPress={() => setModalTab("overview")}
+        >
+          <Text
+            style={[
+              styles.tabSwitcherSelectionPillBtnText,
+              modalTab === "overview" && styles.tabSwitcherSelectionPillBtnTextActive,
+            ]}
+          >
+            Overview
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabSwitcherSelectionPillBtn,
+            modalTab === "followup" && styles.tabSwitcherSelectionPillBtnActive,
+          ]}
+          onPress={() => setModalTab("followup")}
+        >
+          <Text
+            style={[
+              styles.tabSwitcherSelectionPillBtnText,
+              modalTab === "followup" && styles.tabSwitcherSelectionPillBtnTextActive,
+            ]}
+          >
+            Follow-Ups
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabSwitcherSelectionPillBtn,
+            modalTab === "expenses" && styles.tabSwitcherSelectionPillBtnActive,
+          ]}
+          onPress={() => setModalTab("expenses")}
+        >
+          <Text
+            style={[
+              styles.tabSwitcherSelectionPillBtnText,
+              modalTab === "expenses" && styles.tabSwitcherSelectionPillBtnTextActive,
+            ]}
+          >
+            Expenses
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabSwitcherSelectionPillBtn,
+            modalTab === "discussion" && styles.tabSwitcherSelectionPillBtnActive,
+          ]}
+          onPress={() => setModalTab("discussion")}
+        >
+          <Text
+            style={[
+              styles.tabSwitcherSelectionPillBtnText,
+              modalTab === "discussion" && styles.tabSwitcherSelectionPillBtnTextActive,
+            ]}
+          >
+            Discussion ({comments.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {/* Body Viewport */}
+    {selectedTask && (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: hp(6) }}>
+        <View style={styles.splitLayoutInspectorWorkspaceContainerBlockRow}>
+          
+          {/* TAB 1: OVERVIEW */}
+          {modalTab === "overview" && (
+            <View style={styles.leftNarrativeFlowStreamColumnBlock}>
+              <Text style={styles.inspectorHeadlineTaskTitleText}>{selectedTask.title}</Text>
+
+              {/* Description */}
+              <View style={{ gap: hp(0.8), marginTop: hp(1) }}>
+                <Text style={styles.sectionSmallCapHeadingLabel}>Description</Text>
+                <View style={styles.narrativeDescriptionTextCardBoxFrame}>
+                  <Text style={styles.narrativeDescriptionBodyMarkdownText}>
+                    {selectedTask.description || "No description provided."}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Checklist & Subtasks */}
+              <View style={{ gap: hp(0.8), marginTop: hp(1.5) }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={styles.sectionSmallCapHeadingLabel}>Subtasks & Checklist</Text>
+                  <Text style={{ color: "#8b949e", fontSize: 11 }}>
+                    {selectedTask.subtasks?.filter((s) => s.completed).length || 0} of{" "}
+                    {selectedTask.subtasks?.length || 0} done
+                  </Text>
+                </View>
+                <View style={styles.narrativeDescriptionTextCardBoxFrame}>
+                  {!selectedTask.subtasks || selectedTask.subtasks.length === 0 ? (
+                    <Text style={styles.emptyStateItalicTextCaptionString}>No subtasks registered.</Text>
+                  ) : (
+                    selectedTask.subtasks.map((sub) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: wp(2),
+                          paddingVertical: hp(0.6),
+                        }}
+                        onPress={() =>
+                          toggleSubtaskMutation.mutate({
+                            taskId: selectedTask.id,
+                            subtaskId: sub.id,
+                            completed: !sub.completed,
+                          })
+                        }
+                      >
+                        {sub.completed ? (
+                          <CheckSquare size={16} color="#56d364" />
+                        ) : (
+                          <Square size={16} color="#8b949e" />
+                        )}
+                        <Text
+                          style={[
+                            styles.narrativeDescriptionBodyMarkdownText,
+                            sub.completed && { textDecorationLine: "line-through", color: "#8b949e" },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {sub.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              </View>
+
+              {/* Timeline Tracking */}
+              <View style={{ gap: hp(1), marginTop: hp(1.5) }}>
+                <Text style={styles.sectionSmallCapHeadingLabel}>Timeline Tracking Block</Text>
+                <View style={styles.narrativeDescriptionTextCardBoxFrame}>
+                  <View style={styles.timelineStepContainerItemRow}>
+                    <CheckCircle2 size={12} color="#56d364" />
+                    <Text style={styles.timelineStepContainerItemRowLabel}>Created On Platform Line: </Text>
+                    <Text style={styles.timelineStepContainerItemRowValue}>
+                      {selectedTask.createdAt || "2026-03-26"}
+                    </Text>
+                  </View>
+                  <View style={styles.timelineStepContainerItemRow}>
+                    <Clock size={12} color="#58a6ff" />
+                    <Text style={styles.timelineStepContainerItemRowLabel}>Due Date & Time: </Text>
+                    <Text style={styles.timelineStepContainerItemRowValue}>
+                      {selectedTask.dueDate || "—"} {selectedTask.dueTime || ""}
+                    </Text>
+                  </View>
+                  {!!selectedTask.location && (
+                    <View style={styles.timelineStepContainerItemRow}>
+                      <MapPin size={12} color="#fbbf24" />
+                      <Text style={styles.timelineStepContainerItemRowLabel}>Location Site: </Text>
+                      <Text style={styles.timelineStepContainerItemRowValue}>{selectedTask.location}</Text>
+                    </View>
+                  )}
+                  <View style={styles.timelineStepContainerItemRow}>
+                    <Users size={12} color="#8b5cf6" />
+                    <Text style={styles.timelineStepContainerItemRowLabel}>Operators: </Text>
+                    <Text style={styles.timelineStepContainerItemRowValue}>
+                      {selectedTask.assignees?.length > 0 ? selectedTask.assignees.join(", ") : "Unassigned"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Attachments */}
+              {selectedTask.attachments && selectedTask.attachments.length > 0 && (
+                <View style={{ gap: hp(1), marginTop: hp(1.5) }}>
+                  <Text style={styles.sectionSmallCapHeadingLabel}>Attached File Assets</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: wp(2) }}>
+                    {selectedTask.attachments.map((file, i) => {
+                      const fileUri = getDisplayImageUrl(file.url, jwtToken);
+                      return (
+                        <View key={i} style={styles.attachedFileAssetDocumentDisplayCardItemTile}>
+                          {file.mimeType?.startsWith("image/") || fileUri ? (
+                            <Image
+                              source={{ uri: fileUri! }}
+                              style={{ width: "100%", height: hp(7.5), borderRadius: wp(1) }}
+                            />
+                          ) : (
+                            <FileText size={20} color="#58a6ff" />
+                          )}
+                          <Text
+                            style={styles.attachedFileAssetDocumentDisplayCardItemTileNameTextString}
+                            numberOfLines={1}
+                          >
+                            {file.fileName}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Visual Timeline Component */}
+              <View style={{ marginTop: hp(1.5) }}>
+                <TaskTimeline task={selectedTask} />
+              </View>
+            </View>
+          )}
+
+          {/* TAB 2: FOLLOW-UP CONTROL CENTER */}
+          {modalTab === "followup" && (
+            <View style={{ flex: 1 }}>
+              <FollowUpControlCenter taskId={selectedTask.id} />
+            </View>
+          )}
+
+          {/* TAB 3: EXPENSES PANEL */}
+          {modalTab === "expenses" && (
+            <View style={{ flex: 1 }}>
+              <TaskExpensesPanel taskId={selectedTask.id} />
+            </View>
+          )}
+
+          {/* TAB 4: DISCUSSION STREAM */}
+          {modalTab === "discussion" && (
+            <View style={styles.leftNarrativeFlowStreamColumnBlock}>
+              <Text style={styles.sectionSmallCapHeadingLabel}>
+                Activity Feed & Live Discussions ({comments.length})
+              </Text>
+
+              {othersTyping.length > 0 && (
+                <Text style={{ color: "#58a6ff", fontSize: 11, fontStyle: "italic" }}>
+                  {othersTyping.join(", ")} {othersTyping.length === 1 ? "is" : "are"} typing...
+                </Text>
+              )}
+
+              {comments.length === 0 ? (
+                <Text style={styles.emptyStateItalicTextCaptionString}>
+                  No comments posted yet. Start the conversation below.
+                </Text>
+              ) : (
+                comments.map((c) => (
+                  <View key={c.id} style={styles.commentActivityFeedListItemBubbleCard}>
+                    <View style={styles.commentActivityFeedListItemBubbleCardHeaderFlexRow}>
+                      <Text style={styles.commentActivityFeedListItemBubbleCardAuthorNameString}>
+                        {c.authorUsername}
+                      </Text>
+                      <Text style={styles.commentActivityFeedListItemBubbleCardTimestampString}>
+                        {c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now"}
+                      </Text>
+                    </View>
+                    <Text style={styles.commentActivityFeedListItemBubbleCardBodyMarkdownMessageString}>
+                      {c.message}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
+          {/* RIGHT SIDEBAR: PROPERTIES ENGINE */}
+          <View style={styles.rightStructuralParameterMetadataColumnPropertyBoardStrip}>
+            <Text style={styles.sectionSmallCapHeadingLabel}>Properties Engine</Text>
+
+            {/* Assignees Selector */}
+            <View style={styles.propertyInspectorIndivCardItemBlockNode}>
+              <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Assignees Stack</Text>
+              <Text style={styles.propertyInspectorIndivCardItemBlockNodeValue}>
+                {selectedTask.assignees?.length > 0 ? selectedTask.assignees.join(", ") : "Unassigned"}
+              </Text>
+            </View>
+
+            {/* Priority Switcher */}
+            <View style={styles.propertyInspectorIndivCardItemBlockNode}>
+              <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Priority Class</Text>
+              <View style={{ flexDirection: "row", gap: wp(1), marginTop: hp(0.5) }}>
+                {(["low", "medium", "high"] as Task["priority"][]).map((pr) => (
+                  <TouchableOpacity
+                    key={pr}
+                    style={[
+                      styles.condensedInlineStatusBadgePill,
+                      selectedTask.priority === pr && {
+                        backgroundColor: "rgba(249,115,22,0.2)",
+                        borderColor: "#f97316",
+                        borderWidth: 1,
+                      },
+                    ]}
+                    onPress={() => updateTaskPriorityMutation.mutate({ taskId: selectedTask.id, priority: pr })}
+                  >
+                    <Text
+                      style={[
+                        styles.condensedInlineStatusBadgePillText,
+                        selectedTask.priority === pr && { color: "#f97316" },
+                      ]}
+                    >
+                      {pr.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Status Switcher */}
+            <View style={styles.propertyInspectorIndivCardItemBlockNode}>
+              <Text style={styles.propertyInspectorIndivCardItemBlockNodeLabel}>Workflow Status State</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: wp(1), marginTop: hp(0.5) }}>
+                {(["pending", "in-progress", "completed", "overdue"] as Task["status"][]).map((st) => (
+                  <TouchableOpacity
+                    key={st}
+                    style={[
+                      styles.condensedInlineStatusBadgePill,
+                      selectedTask.status === st && {
+                        backgroundColor: "rgba(35,134,54,0.2)",
+                        borderColor: "#238636",
+                        borderWidth: 1,
+                      },
+                    ]}
+                    onPress={() => updateTaskStatusMutation.mutate({ taskId: selectedTask.id, status: st })}
+                  >
+                    <Text
+                      style={[
+                        styles.condensedInlineStatusBadgePillText,
+                        selectedTask.status === st && { color: "#56d364" },
+                      ]}
+                    >
+                      {st.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Print Asset Action Button */}
+            <TouchableOpacity
+              style={styles.utilityFrameworkLauncherActionRowBtn}
+              onPress={() =>
+                Alert.alert("Generating PDF Matrix", `Exporting task ledger summary for #${selectedTask.id.substring(0, 6)}...`)
+              }
+            >
+              <Printer size={12} color="#c9d1d9" />
+              <Text style={styles.utilityFrameworkLauncherActionRowBtnText}>Print Asset PDF Documentation</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    )}
+
+  {/* Thumbnail Preview Grid for Comment Attachments */}
+{/* Thumbnail Preview Grid for Comment Attachments */}
+{commentAttachments.length > 0 && (
+  <View style={{ backgroundColor: colors.bgSecondary, paddingHorizontal: wp(3), paddingTop: hp(1), borderTopWidth: 1, borderTopColor: colors.border }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: wp(2) }}>
+      {commentAttachments.map((file, i) => {
+        const fileUri = getDisplayImageUrl(file.url, jwtToken);
+        return (
+          <View key={i} style={styles.previewThumbnailWrapper}>
+            {file.mimeType?.startsWith("image/") || fileUri ? (
+              <Image source={{ uri: fileUri! }} style={styles.previewThumbnailImage} />
+            ) : (
+              <View style={styles.previewThumbnailFallback}>
+                <FileText size={16} color="#8b949e" />
+                <Text style={styles.previewThumbnailFallbackText} numberOfLines={1}>{file.fileName}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.previewRemoveBadgeButton}
+              onPress={() => setCommentAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+            >
+              <X size={10} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+    </ScrollView>
+  </View>
+)}
+
+{/* Sticky Discussion Dock (Bottom Bar) */}
+<View style={styles.stickyDiscussionAccessoryComposerInputDockBar}>
+  {/* Video Recorder Trigger */}
+  <TouchableOpacity
+    style={styles.mediaCaptureTriggerTouchNodeBtn}
+    onPress={() => setIsVideoRecorderOpen(true)}
+  >
+    <Video size={16} color="#8b5cf6" />
+  </TouchableOpacity>
+
+  {/* File / Image Attachment Trigger */}
+  <TouchableOpacity
+    style={styles.mediaCaptureTriggerTouchNodeBtn}
+    onPress={async () => {
+      try {
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissionResult.granted) {
+          Alert.alert("Permission Required", "System photo library access authorization is required.");
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsMultipleSelection: true,
+          quality: 0.8,
+          base64: true,
+        });
+
+        if (result.canceled || !result.assets) return;
+
+        const processedFiles: FileObject[] = result.assets.map((asset) => {
+          const fileStamp = Date.now().toString().substring(6);
+          const inferredExt = asset.uri.split(".").pop() || "jpg";
+          return {
+            fileName: asset.fileName || `Attachment_${fileStamp}.${inferredExt}`,
+            url: asset.base64 ? `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}` : asset.uri,
+            mimeType: asset.mimeType || "image/jpeg",
+            size: asset.fileSize || 1024 * 100,
+          };
+        });
+
+        setCommentAttachments((prev) => [...prev, ...processedFiles]);
+      } catch (err) {
+        Alert.alert("System Exception", "An error occurred selecting files.");
+      }
+    }}
+  >
+    <Paperclip size={16} color="#58a6ff" />
+  </TouchableOpacity>
+
+  <TextInput
+    style={styles.composerDockInputFieldElement}
+    placeholder="Write a comment reply response..."
+    placeholderTextColor="#8b949e"
+    value={commentDraft}
+    onChangeText={emitTypingStatus}
+  />
+  <TouchableOpacity
+    style={styles.composerDockSendTouchActionNodeBtn}
+    onPress={handlePostComment}
+  >
+    <Send size={14} color="#fff" />
+  </TouchableOpacity>
+</View>
+  </KeyboardAvoidingView>
+</Modal>
 
       {/* CREATE PROJECT MODAL */}
       <Modal visible={isCreateProjectOpen} animationType="slide" presentationStyle="formSheet">
@@ -1638,9 +2453,6 @@ export default function MobileTasksScreen() {
                 <TouchableOpacity style={styles.webUploadMediaButton} onPress={() => launchNativeImagePickerPipeline("project-attachments")}>
                   <Paperclip size={12} color="#58a6ff" style={{ marginRight: wp(1) }} />
                   <Text style={styles.webUploadMediaButtonText}>+ Add Files/Images</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.webUploadMediaButton, { backgroundColor: "rgba(0,97,255,0.1)", borderColor: "#0061ff" }]} onPress={() => Alert.alert("Dropbox Connect", "Connecting API Cloud Hub...")}>
-                  <Text style={[styles.webUploadMediaButtonText, { color: "#0061ff" }]}>Dropbox</Text>
                 </TouchableOpacity>
               </View>
               
@@ -2063,21 +2875,37 @@ export default function MobileTasksScreen() {
         </View>
       </Modal>
 
-      <Modal visible={isExpenseListOpen} animationType="slide">
-        <View style={styles.fullscreenModalViewFrameContainer}>
-          <View style={styles.modalNavigationHeaderTopbarNavBar}>
-            <Text style={styles.modalNavigationHeaderTopbarNavBarTitleHeading}>Project Financial Ledgers Database</Text>
-            <TouchableOpacity onPress={() => setIsExpenseListOpen(false)}><X size={16} color="#fff" /></TouchableOpacity>
-          </View>
-          {selectedProject && <ExpenseSheetList projectId={selectedProject.id} />}
-        </View>
-      </Modal>
+     <Modal visible={isExpenseListOpen} animationType="slide">
+  <View style={styles.fullscreenModalViewFrameContainer}>
+    <View style={styles.modalNavigationHeaderTopbarNavBar}>
+      <Text style={styles.modalNavigationHeaderTopbarNavBarTitleHeading}>
+        Project Financial Ledgers
+      </Text>
+      <TouchableOpacity onPress={() => setIsExpenseListOpen(false)}>
+        <X size={18} color="#fff" />
+      </TouchableOpacity>
+    </View>
+    {selectedProject ? (
+      <ExpenseSheetList projectId={selectedProject.id} />
+    ) : null}
+  </View>
+</Modal>
 
-      <VideoRecorderModal
-        isOpen={isVideoRecorderOpen}
-        onClose={() => setIsVideoRecorderOpen(false)}
-        onSave={(file) => setCommentDraft(p => `${p} [Captured Video Attachment Segment: ${file.name}]`)}
-      />
+     <VideoRecorderModal
+  isOpen={isVideoRecorderOpen}
+  onClose={() => setIsVideoRecorderOpen(false)}
+  onSave={(file) => {
+    setCommentAttachments((prev) => [
+      ...prev,
+      {
+        fileName: file.name || "Recorded_Video.mp4",
+        url: file.uri,
+        mimeType: "video/mp4",
+        size: file.size || 1024 * 500,
+      },
+    ]);
+  }}
+/>
     </KeyboardAvoidingView>
   );
 }

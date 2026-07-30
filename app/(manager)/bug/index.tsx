@@ -6,35 +6,30 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  Modal,
-  Image,
-  ScrollView,
   ActivityIndicator,
   SafeAreaView,
-  Platform,
-  Dimensions,
-  KeyboardAvoidingView,
+  ScrollView,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import { usePathname } from "expo-router";
 import {
   Bug,
-  Upload,
-  X,
-  ZoomIn,
-  ChevronLeft,
-  ChevronRight,
   MapPin,
   User,
   Calendar,
   Layers,
   RefreshCw,
+  X,
+  AlertCircle,
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s, wp, hp, fs } from "@/util/styles";
+import { wp, hp, fs } from "@/util/styles";
 
-type BugStatus = "open" | "closed";
+import BugDashboardAnalytics from "@/components/bugs/BugDashboardAnalytics";
+import ReportBugModal from "@/components/bugs/ReportBugModal";
+import BugCollaborationModal from "@/components/bugs/BugCollaborationModal";
+
+type BugStatus = "open" | "closed" | string;
 
 type BugItem = {
   id: string;
@@ -44,488 +39,39 @@ type BugItem = {
   taskTitle?: string;
   createdByUsername?: string;
   createdByRole?: string;
+  assignedDeveloperName?: string;
   createdAt?: string;
   source?: { panel?: string; path?: string };
-  attachments?: { fileName?: string; url?: string; mimeType?: string; size?: number }[];
+  attachments?: { fileName?: string; url?: string }[];
 };
 
-type StatusFilter = "all" | "open" | "closed";
-
-const GRID_IMAGE_WIDTH = (wp(100) - wp(10)) / 2;
+type StatusFilter = "all" | "open" | "AWAITING_REPORTER_CONFIRMATION" | "closed";
 
 function toText(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-// Employs a robust absolute layout structure for secure path lookups
-function resolveAttachmentUrl(urlPath: string | undefined): string | null {
-  if (!urlPath || typeof urlPath !== "string" || urlPath.trim() === "") return null;
-  return urlPath;
-}
-
 function buildColors(uiTheme: any, isDark: boolean) {
   return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#F8FAFC"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#18181b" : "#FFFFFF"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#F4F4F5" : "#0F172A"),
-    textSecondary:   isDark ? "#A1A1AA" : "#475569",
-    textMuted:       isDark ? "#71717A" : "#64748B",
-    border:          isDark ? "#27272A" : "#E2E8F0",
-    borderLight:     isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9",
-    inputBg:         isDark ? "#09090b" : "#F1F5F9",
-    primary:         uiTheme.customColors?.primary || (isDark ? "#3b82f6" : "#0284c7"),
-    primaryBgLight:  "rgba(2, 132, 199, 0.1)",
-    primaryBorder:   "rgba(2, 132, 199, 0.25)",
-    golden:          uiTheme.customColors?.golden || "#B45309",
-    success:         isDark ? "#34D399" : "#16a34a",
-    danger:          isDark ? "#F87171" : "#ef4444",
-    dangerBg:        isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
-    dangerBorder:    isDark ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
-    badgeOpenBg:     isDark ? "rgba(56, 189, 248, 0.15)" : "#e0f2fe",
-    badgeOpenText:   isDark ? "#38bdf8" : "#0369a1",
-    badgeClosedBg:   isDark ? "rgba(113, 113, 122, 0.15)" : "#f1f5f9",
+    background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#09090b" : "#F8FAFC"),
+    cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#18181b" : "#FFFFFF"),
+    text: uiTheme.panelColors?.dashboardTextColor || (isDark ? "#F4F4F5" : "#0F172A"),
+    textSecondary: isDark ? "#A1A1AA" : "#475569",
+    textMuted: isDark ? "#71717A" : "#64748B",
+    border: isDark ? "#27272A" : "#E2E8F0",
+    inputBg: isDark ? "#09090b" : "#F1F5F9",
+    primary: uiTheme.customColors?.primary || (isDark ? "#3b82f6" : "#0284c7"),
+    primaryBgLight: "rgba(2, 132, 199, 0.1)",
+    primaryBorder: "rgba(2, 132, 199, 0.25)",
+    golden: uiTheme.customColors?.golden || "#B45309",
+    danger: isDark ? "#F87171" : "#ef4444",
+    dangerBg: isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
+    dangerBorder: isDark ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
+    badgeOpenBg: isDark ? "rgba(56, 189, 248, 0.15)" : "#e0f2fe",
+    badgeOpenText: isDark ? "#38bdf8" : "#0369a1",
+    badgeClosedBg: isDark ? "rgba(113, 113, 122, 0.15)" : "#f1f5f9",
     badgeClosedText: isDark ? "#a1a1aa" : "#475569",
-    overlayBg:       "rgba(0, 0, 0, 0.5)",
-    modalPanelBg:    isDark ? "#18181b" : "#ffffff",
-    previewBg:       isDark ? "#09090b" : "#f8fafc",
   };
-}
-
-function createStyles(colors: ReturnType<typeof buildColors>) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      paddingHorizontal: wp(4),
-      paddingTop: hp(1.5),
-      paddingBottom: hp(2),
-      backgroundColor: colors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    headerTitleContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    headerIcon: {
-      marginRight: wp(2),
-    },
-    headerTitle: {
-      fontSize: fs(5.5),
-      fontWeight: "800",
-      color: colors.text,
-      letterSpacing: -0.5,
-    },
-    headerSubtitle: {
-      fontSize: fs(3.2),
-      color: colors.textSecondary,
-      marginTop: hp(0.5),
-    },
-    actionRow: {
-      flexDirection: "row",
-      gap: wp(2),
-      marginTop: hp(1.5),
-    },
-    btn: {
-      height: hp(5),
-      borderRadius: wp(2),
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: wp(3),
-    },
-    btnOutline: {
-      backgroundColor: colors.cardBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    btnOutlineText: {
-      color: colors.text,
-      fontSize: fs(3.5),
-      fontWeight: "500",
-    },
-    btnPrimary: {
-      backgroundColor: colors.primary,
-    },
-    btnPrimaryText: {
-      color: "#ffffff",
-      fontSize: fs(3.5),
-      fontWeight: "500",
-    },
-    btnDanger: {
-      backgroundColor: colors.danger,
-    },
-    errorBanner: {
-      margin: wp(4),
-      padding: wp(3),
-      backgroundColor: colors.dangerBg,
-      borderRadius: wp(2),
-      borderWidth: 1,
-      borderColor: colors.dangerBorder,
-    },
-    errorText: {
-      color: colors.danger,
-      fontSize: fs(3.2),
-    },
-    searchCard: {
-      backgroundColor: colors.cardBg,
-      marginHorizontal: wp(4),
-      marginTop: hp(1.8),
-      padding: wp(3),
-      borderRadius: wp(3),
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    searchInput: {
-      height: hp(5),
-      backgroundColor: colors.inputBg,
-      borderRadius: wp(2),
-      paddingHorizontal: wp(3),
-      fontSize: fs(3.5),
-      color: colors.text,
-    },
-    tabsContainer: {
-      flexDirection: "row",
-      gap: wp(1.5),
-      marginTop: hp(1.2),
-      paddingBottom: hp(0.25),
-    },
-    tabButton: {
-      paddingHorizontal: wp(3),
-      paddingVertical: hp(0.75),
-      borderRadius: wp(1.5),
-      backgroundColor: colors.inputBg,
-    },
-    tabButtonActive: {
-      backgroundColor: colors.primary,
-    },
-    tabButtonText: {
-      fontSize: fs(3),
-      fontWeight: "500",
-      color: colors.textSecondary,
-    },
-    tabButtonTextActive: {
-      color: "#ffffff",
-    },
-    loaderContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    listContent: {
-      padding: wp(4),
-      gap: hp(1.5),
-    },
-    emptyContainer: {
-      paddingVertical: hp(5),
-      alignItems: "center",
-    },
-    emptyText: {
-      color: colors.textMuted,
-      fontSize: fs(3.5),
-      fontStyle: "italic",
-    },
-    bugCard: {
-      backgroundColor: colors.cardBg,
-      borderRadius: wp(3),
-      padding: wp(3.5),
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: hp(0.75),
-    },
-    cardHeaderRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    badge: {
-      paddingHorizontal: wp(2),
-      paddingVertical: hp(0.25),
-      borderRadius: wp(1),
-    },
-    badgeOpen: {
-      backgroundColor: colors.badgeOpenBg,
-    },
-    badgeClosed: {
-      backgroundColor: colors.badgeClosedBg,
-    },
-    badgeText: {
-      fontSize: fs(2.5),
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-    badgeTextOpen: {
-      color: colors.badgeOpenText,
-    },
-    badgeTextClosed: {
-      color: colors.badgeClosedText,
-    },
-    metaRowElement: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    metaRowText: {
-      fontSize: fs(2.8),
-      color: colors.textSecondary,
-    },
-    cardTitle: {
-      fontSize: fs(3.8),
-      fontWeight: "700",
-      color: colors.text,
-      lineHeight: fs(5),
-    },
-    taskBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.primaryBgLight,
-      alignSelf: "flex-start",
-      paddingHorizontal: wp(2),
-      paddingVertical: hp(0.4),
-      borderRadius: wp(1.5),
-      borderWidth: 1,
-      borderColor: colors.primaryBorder,
-    },
-    taskBadgeText: {
-      fontSize: fs(2.8),
-      fontWeight: "600",
-      color: colors.primary,
-    },
-    cardDesc: {
-      fontSize: fs(3.2),
-      color: colors.textSecondary,
-      lineHeight: fs(4.5),
-      marginTop: hp(0.25),
-    },
-    cardFooter: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
-      paddingTop: hp(1.2),
-      marginTop: hp(0.5),
-    },
-    footerUserData: {
-      fontSize: fs(2.8),
-      fontWeight: "600",
-      color: colors.text,
-    },
-    attachmentMiniIndicator: {
-      fontSize: fs(2.8),
-      color: colors.primary,
-      fontWeight: "600",
-      backgroundColor: colors.primaryBgLight,
-      alignSelf: "flex-start",
-      paddingHorizontal: wp(1.5),
-      paddingVertical: hp(0.25),
-      borderRadius: wp(1),
-      marginTop: hp(0.5),
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: colors.overlayBg,
-      justifyContent: "flex-end",
-    },
-    modalContent: {
-      backgroundColor: colors.modalPanelBg,
-      borderTopLeftRadius: wp(5),
-      borderTopRightRadius: wp(5),
-      maxHeight: "85%",
-      paddingBottom: Platform.OS === "ios" ? hp(4.2) : hp(3),
-    },
-    modalHeader: {
-      padding: wp(4.5),
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    modalTitle: {
-      fontSize: fs(4.2),
-      fontWeight: "700",
-      color: colors.text,
-    },
-    modalSubtitle: {
-      fontSize: fs(3),
-      color: colors.textMuted,
-      marginTop: hp(0.25),
-    },
-    modalBody: {
-      padding: wp(4),
-    },
-    descContainer: {
-      backgroundColor: colors.previewBg,
-      borderRadius: wp(2.5),
-      padding: wp(3),
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginTop: hp(1.5),
-    },
-    fullDescText: {
-      fontSize: fs(3.2),
-      color: colors.text,
-      lineHeight: fs(5),
-    },
-    sectionLabel: {
-      fontSize: fs(3.2),
-      fontWeight: "600",
-      color: colors.text,
-      marginBottom: hp(1),
-    },
-    imageGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: wp(2),
-    },
-    gridImageWrapper: {
-      width: GRID_IMAGE_WIDTH,
-      aspectRatio: 1.5,
-      borderRadius: wp(2),
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.border,
-      position: "relative",
-    },
-    gridImage: {
-      width: GRID_IMAGE_WIDTH,
-      height: "100%",
-    },
-    zoomOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0,0,0,0.15)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    modalFooter: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: wp(2),
-      paddingHorizontal: wp(4),
-      paddingTop: hp(1.5),
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    formGroup: {
-      marginBottom: hp(1.8),
-    },
-    formLabel: {
-      fontSize: fs(3),
-      fontWeight: "600",
-      color: colors.textSecondary,
-      textTransform: "uppercase",
-      marginBottom: hp(0.5),
-    },
-    formInput: {
-      height: hp(5),
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: wp(1.5),
-      paddingHorizontal: wp(2.5),
-      fontSize: fs(3.5),
-      color: colors.text,
-      backgroundColor: colors.cardBg,
-    },
-    formTextArea: {
-      height: hp(12),
-      paddingTop: hp(1),
-      textAlignVertical: "top",
-    },
-    pickerRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: wp(2),
-      paddingTop: hp(0.5),
-    },
-    previewImageContainer: {
-      width: wp(16),
-      height: wp(16),
-      borderRadius: wp(1.5),
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.border,
-      position: "relative",
-    },
-    previewImage: {
-      width: wp(16),
-      height: wp(16),
-    },
-    removeImageBadge: {
-      position: "absolute",
-      top: hp(0.25),
-      right: wp(0.5),
-      backgroundColor: "rgba(0,0,0,0.7)",
-      borderRadius: wp(2.5),
-      width: wp(4),
-      height: wp(4),
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    imagePickerButton: {
-      width: wp(16),
-      height: wp(16),
-      borderRadius: wp(1.5),
-      borderWidth: 2,
-      borderStyle: "dashed",
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: hp(0.25),
-      backgroundColor: colors.cardBg,
-    },
-    imagePickerText: {
-      fontSize: fs(2.2),
-      fontWeight: "500",
-      color: colors.textSecondary,
-    },
-    formError: {
-      fontSize: fs(3),
-      color: colors.danger,
-      fontWeight: "500",
-    },
-    formSuccess: {
-      fontSize: fs(3),
-      color: colors.success,
-      fontWeight: "500",
-    },
-    lightboxContainer: {
-      flex: 1,
-      backgroundColor: "#000000",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    lightboxImage: {
-      width: wp(100),
-      height: hp(80),
-    },
-    lightboxClose: {
-      position: "absolute",
-      top: Platform.OS === "ios" ? hp(6) : hp(2.5),
-      right: wp(5),
-      zIndex: 10,
-      padding: wp(2),
-      backgroundColor: "rgba(255,255,255,0.15)",
-      borderRadius: wp(5),
-    },
-    lightboxCounter: {
-      position: "absolute",
-      top: Platform.OS === "ios" ? hp(6.8) : hp(3.2),
-      color: "rgba(255,255,255,0.7)",
-      fontSize: fs(3.5),
-      fontWeight: "600",
-    },
-    lightboxNav: {
-      position: "absolute",
-      top: "50%",
-      transform: [{ translateY: -20 }],
-      zIndex: 10,
-      padding: wp(2),
-      backgroundColor: "rgba(255,255,255,0.1)",
-      borderRadius: wp(6),
-    },
-  });
 }
 
 export default function ManagerBugs() {
@@ -533,249 +79,157 @@ export default function ManagerBugs() {
   const activePath = usePathname();
   const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const [items, setItems] = useState<BugItem[]>([]);
+
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
 
-  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
-  const [viewOpen, setViewOpen] = useState(false);
-  const [selected, setSelected] = useState<BugItem | null>(null);
-  const [updating, setUpdating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const limit = 25;
 
-  const [submitOpen, setSubmitOpen] = useState(false);
-  const [submitTitle, setSubmitTitle] = useState("");
-  const [submitDesc, setSubmitDesc] = useState("");
-  const [submitFiles, setSubmitFiles] = useState<{ uri: string; base64: string; name: string; type: string; size: number }[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [collabOpen, setCollabOpen] = useState(false);
+  const [selectedBugId, setSelectedBugId] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    const res = await apiFetch<{ items?: any[] }>("/api/bugs");
-    const list = Array.isArray(res?.items) ? res.items : [];
-    const mapped: BugItem[] = list
-      .map((x: any) => ({
-        id: String(x.id || x._id || ""),
-        title: toText(x.title),
-        description: toText(x.description),
-        status: (x.status === "closed" ? "closed" : "open") as BugStatus,
-        taskTitle: toText(x.taskTitle),
-        createdByUsername: toText(x.createdByUsername),
-        createdByRole: toText(x.createdByRole),
-        createdAt: toText(x.createdAt),
-        source: x.source && typeof x.source === "object" ? x.source : undefined,
-        attachments: Array.isArray(x.attachments) ? x.attachments : [],
-      }))
-      .filter((x) => Boolean(x.id));
-    setItems(mapped);
-  }, []);
+  const load = useCallback(async (targetPage = page) => {
+    try {
+      setLoading(true);
+      setApiError(null); // Reset error state prior to fetching
+
+      const params = new URLSearchParams();
+      params.set("page", String(targetPage));
+      params.set("limit", String(limit));
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (q.trim()) params.set("q", q.trim());
+
+      const res = await apiFetch<{
+        items?: any[];
+        pagination?: { totalItems: number; totalPages: number; currentPage: number };
+      }>(`/bugs?${params.toString()}`);
+
+      const list = Array.isArray(res?.items) ? res.items : [];
+      const mapped: BugItem[] = list
+        .map((x: any) => ({
+          id: String(x.id || x._id || ""),
+          title: toText(x.title),
+          description: toText(x.description),
+          status: toText(x.status || "OPEN"),
+          taskTitle: toText(x.taskTitle),
+          createdByUsername: toText(x.createdByUsername),
+          createdByRole: toText(x.createdByRole),
+          assignedDeveloperName: toText(x.assignedDeveloperName),
+          createdAt: toText(x.createdAt),
+          source: x.source && typeof x.source === "object" ? x.source : undefined,
+          attachments: Array.isArray(x.attachments) ? x.attachments : [],
+        }))
+        .filter((x) => Boolean(x.id));
+
+      setItems(mapped);
+
+      if (res?.pagination) {
+        setTotalPages(res.pagination.totalPages || 1);
+        setTotalItems(res.pagination.totalItems || list.length);
+        setPage(res.pagination.currentPage || targetPage);
+      } else {
+        setTotalItems(list.length);
+        setTotalPages(1);
+      }
+
+      // Ensure error is explicitly removed once data successfully arrives
+      setApiError(null);
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : "Failed to load bugs");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, statusFilter, q]);
 
   useEffect(() => {
-    let mounted = true;
-    const initialize = async () => {
-      try {
-        setLoading(true);
-        setApiError(null);
-        await load();
-      } catch (e) {
-        if (!mounted) return;
-        setApiError(e instanceof Error ? e.message : "Failed to load bugs");
-      } finally {
-        if (!mounted) return;
-        setLoading(false);
-      }
-    };
-    initialize();
-    return () => { mounted = false; };
-  }, [load]);
+    void load(1);
+  }, [statusFilter, q]);
 
-  const filtered = useMemo(() => {
-    let list = items;
-    if (statusFilter !== "all") list = list.filter((b) => b.status === statusFilter);
-    const query = q.trim().toLowerCase();
-    if (!query) return list;
-    return list.filter((b) => {
-      const where = `${b.title} ${b.description} ${b.taskTitle || ""} ${b.createdByUsername || ""} ${b.source?.path || ""}`.toLowerCase();
-      return where.includes(query);
-    });
-  }, [items, q, statusFilter]);
-
-  const openCount = useMemo(() => items.filter((b) => b.status === "open").length, [items]);
-
-  const openBug = async (b: BugItem) => {
-    setSelected(b);
-    setViewOpen(true);
-    try {
-      const res = await apiFetch<{ item: BugItem }>(`/api/bugs/${encodeURIComponent(b.id)}`);
-      if (res?.item) setSelected((prev) => (prev?.id === b.id ? { ...prev, ...res.item } : prev));
-    } catch { 
-      // Safe boundary fallback
-    }
-  };
-
-  const updateStatus = async (next: BugStatus) => {
-    if (!selected) return;
-    try {
-      setUpdating(true);
-      const res = await apiFetch<{ item?: any }>(`/api/bugs/${encodeURIComponent(selected.id)}`, {
-        method: "PUT",
-        body: JSON.stringify({ status: next }),
-      });
-      const merged: BugItem = {
-        ...selected,
-        status: (res?.item?.status === "closed" ? "closed" : "open") as BugStatus,
-      };
-      setSelected(merged);
-      setItems((prev) => prev.map((x) => (x.id === merged.id ? { ...x, status: merged.status } : x)));
-    } catch (e) {
-      setApiError(e instanceof Error ? e.message : "Failed to update bug");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handlePickImage = async () => {
-    if (submitFiles.length >= 5) return;
-
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      setSubmitError("Permission to access camera roll is required.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      selectionLimit: 5 - submitFiles.length,
-      base64: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets) {
-      const selectedImages = result.assets.map((asset) => {
-        const filename = asset.uri.split("/").pop() || "upload.jpg";
-        const extension = filename.split(".").pop();
-        const mimeType = asset.mimeType || `image/${extension === "png" ? "png" : "jpeg"}`;
-        return {
-          uri: asset.uri,
-          base64: `data:${mimeType};base64,${asset.base64 || ""}`,
-          name: filename,
-          type: mimeType,
-          size: asset.fileSize || 0,
-        };
-      });
-      setSubmitFiles((p) => [...p, ...selectedImages].slice(0, 5));
-    }
-  };
-
-  const removeFile = (i: number) => {
-    setSubmitFiles((p) => p.filter((_, idx) => idx !== i));
-  };
-
-  const resetSubmit = () => {
-    setSubmitTitle("");
-    setSubmitDesc("");
-    setSubmitFiles([]);
-    setSubmitError(null);
-    setSubmitSuccess(null);
-  };
-
-  const handleSubmit = async () => {
-    if (!submitTitle.trim() || !submitDesc.trim()) {
-      setSubmitError("Title and description are required.");
-      return;
-    }
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const attachments = submitFiles.map((f) => ({
-        fileName: f.name,
-        url: f.base64,
-        mimeType: f.type,
-        size: f.size,
-      }));
-
-      await apiFetch("/api/bugs", {
-        method: "POST",
-        body: JSON.stringify({
-          title: submitTitle.trim(),
-          description: submitDesc.trim(),
-          attachments,
-          source: { 
-            panel: "manager", 
-            path: `Mobile App (${Platform.OS}) - ${activePath || "/manager/bugs"}` 
-          },
-        }),
-      });
-
-      setSubmitSuccess("Your bug report has been sent successfully!");
-      await load();
-      setTimeout(() => {
-        setSubmitOpen(false);
-        resetSubmit();
-      }, 1200);
-    } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Failed to submit.");
-    } finally {
-      setSubmitting(false);
-    }
+  const openBug = (b: BugItem) => {
+    setSelectedBugId(b.id);
+    setCollabOpen(true);
   };
 
   const statusTabs = useMemo((): { label: string; value: StatusFilter }[] => [
-    { label: `All (${items.length})`, value: "all" },
-    { label: `Open (${openCount})`, value: "open" },
-    { label: `Closed (${items.length - openCount})`, value: "closed" },
-  ], [items.length, openCount]);
+    { label: "Open", value: "open" },
+    { label: "Awaiting Verify", value: "AWAITING_REPORTER_CONFIRMATION" },
+    { label: "Closed", value: "closed" },
+    { label: "All", value: "all" },
+  ], []);
 
   return (
-    <SafeAreaView style={s(styles.container)}>
-      <View style={s(styles.header)}>
-        <View style={s(styles.headerTitleContainer)}>
-          <Bug size={fs(6)} color={colors.golden} style={s(styles.headerIcon)} />
-          <Text style={s(styles.headerTitle)}>Bug Reports</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View style={styles.headerTitleContainer}>
+          <Bug size={fs(5)} color={colors.golden} style={{ marginRight: wp(2) }} />
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Bug Reports</Text>
         </View>
-        <Text style={s(styles.headerSubtitle)}>
-          {openCount > 0 ? `${openCount} open bug${openCount !== 1 ? "s" : ""}.` : "No open bugs."}
+        <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+          Total {totalItems} bug report{totalItems !== 1 ? "s" : ""} found.
         </Text>
-        <View style={s(styles.actionRow)}>
-          <TouchableOpacity style={s([styles.btn, styles.btnOutline, { flex: 1 }])} onPress={() => void load()}>
-            <RefreshCw size={fs(3.5)} color={colors.text} style={s({ marginRight: wp(1.5) })} />
-            <Text style={s(styles.btnOutlineText)}>Refresh</Text>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnOutline, { borderColor: colors.border, backgroundColor: colors.cardBg }]}
+            onPress={() => void load(1)}
+            disabled={loading}
+          >
+            <RefreshCw size={fs(3.5)} color={colors.text} style={{ marginRight: wp(1.5) }} />
+            <Text style={[styles.btnOutlineText, { color: colors.text }]}>Refresh</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s([styles.btn, styles.btnPrimary, { flex: 1.3 }])} onPress={() => { resetSubmit(); setSubmitOpen(true); }}>
-            <Text style={s(styles.btnPrimaryText)}>+ Report Bug</Text>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary, { backgroundColor: colors.primary }]}
+            onPress={() => setReportOpen(true)}
+          >
+            <Text style={styles.btnPrimaryText}>+ Report Bug</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {apiError && (
-        <View style={s(styles.errorBanner)}>
-          <Text style={s(styles.errorText)}>{apiError}</Text>
+      <BugDashboardAnalytics />
+
+      {/* Render error banner ONLY when NOT loading and an error exists */}
+      {!loading && apiError && items.length == 0 && (
+        <View style={[styles.errorBanner, { backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder }]}>
+          <View style={styles.errorContent}>
+            <AlertCircle size={fs(3.8)} color={colors.danger} style={{ marginRight: wp(2) }} />
+            <Text style={[styles.errorText, { color: colors.danger }]}>{apiError}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setApiError(null)} style={styles.dismissBtn}>
+            <X size={fs(3.5)} color={colors.danger} />
+          </TouchableOpacity>
         </View>
       )}
 
-      <View style={s(styles.searchCard)}>
+      <View style={[styles.searchCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
         <TextInput
           placeholder="Search bugs..."
           placeholderTextColor={colors.textMuted}
-          style={s(styles.searchInput)}
+          style={[styles.searchInput, { backgroundColor: colors.inputBg, color: colors.text }]}
           value={q}
           onChangeText={setQ}
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s(styles.tabsContainer)}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
           {statusTabs.map((tab) => {
             const isActive = statusFilter === tab.value;
             return (
               <TouchableOpacity
                 key={tab.value}
                 onPress={() => setStatusFilter(tab.value)}
-                style={s([styles.tabButton, isActive && styles.tabButtonActive])}
+                style={[
+                  styles.tabButton,
+                  { backgroundColor: isActive ? colors.primary : colors.inputBg },
+                ]}
               >
-                <Text style={s([styles.tabButtonText, isActive && styles.tabButtonTextActive])}>
+                <Text style={[styles.tabButtonText, { color: isActive ? "#ffffff" : colors.textSecondary }]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -785,261 +239,314 @@ export default function ManagerBugs() {
       </View>
 
       {loading ? (
-        <View style={s(styles.loaderContainer)}>
+        <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={s(styles.listContent)}
+          contentContainerStyle={styles.listContent}
           ListEmptyComponent={
-            <View style={s(styles.emptyContainer)}>
-              <Text style={s(styles.emptyText)}>No bugs found.</Text>
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No bugs found.</Text>
             </View>
           }
           renderItem={({ item: b }) => {
             const isOpen = b.status !== "closed";
             return (
-              <TouchableOpacity style={s(styles.bugCard)} onPress={() => openBug(b)}>
-                <View style={s(styles.cardHeaderRow)}>
-                  <View style={s([styles.badge, isOpen ? styles.badgeOpen : styles.badgeClosed])}>
-                    <Text style={s([styles.badgeText, isOpen ? styles.badgeTextOpen : styles.badgeTextClosed])}>
-                      {isOpen ? "Open" : "Closed"}
+              <TouchableOpacity
+                style={[styles.bugCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
+                onPress={() => openBug(b)}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={[styles.badge, { backgroundColor: isOpen ? colors.badgeOpenBg : colors.badgeClosedBg }]}>
+                    <Text style={[styles.badgeText, { color: isOpen ? colors.badgeOpenText : colors.badgeClosedText }]}>
+                      {b.status}
                     </Text>
                   </View>
-                  <View style={s(styles.metaRowElement)}>
-                    <MapPin size={fs(3)} color={colors.textMuted} style={s({ marginRight: wp(0.75) })} />
-                    <Text style={s(styles.metaRowText)} numberOfLines={1}>
-                      {b.source?.path || b.source?.panel || "System"}
+                  <View style={styles.metaRowElement}>
+                    <MapPin size={fs(3)} color={colors.textMuted} style={{ marginRight: wp(0.75) }} />
+                    <Text style={[styles.metaRowText, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {b.source?.path || "System"}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={s(styles.cardTitle)}>{b.title}</Text>
-                
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{b.title}</Text>
+
                 {b.taskTitle ? (
-                  <View style={s(styles.taskBadge)}>
-                    <Layers size={fs(2.8)} color={colors.primary} style={s({ marginRight: wp(1) })} />
-                    <Text style={s(styles.taskBadgeText)} numberOfLines={1}>Task: {b.taskTitle}</Text>
+                  <View style={[styles.taskBadge, { backgroundColor: colors.primaryBgLight, borderColor: colors.primaryBorder }]}>
+                    <Layers size={fs(2.8)} color={colors.primary} style={{ marginRight: wp(1) }} />
+                    <Text style={[styles.taskBadgeText, { color: colors.primary }]} numberOfLines={1}>
+                      Task: {b.taskTitle}
+                    </Text>
                   </View>
                 ) : null}
 
-                <Text style={s(styles.cardDesc)} numberOfLines={2}>{b.description}</Text>
+                <Text style={[styles.cardDesc, { color: colors.textSecondary }]} numberOfLines={2}>
+                  {b.description}
+                </Text>
 
-                <View style={s(styles.cardFooter)}>
-                  <View style={s(styles.metaRowElement)}>
-                    <User size={fs(3)} color={colors.textMuted} style={s({ marginRight: wp(1) })} />
-                    <Text style={s(styles.footerUserData)}>
+                <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+                  <View style={styles.metaRowElement}>
+                    <User size={fs(3)} color={colors.textMuted} style={{ marginRight: wp(1) }} />
+                    <Text style={[styles.footerUserData, { color: colors.text }]}>
                       {b.createdByUsername || "Anonymous"}
-                      {b.createdByRole ? ` (${b.createdByRole})` : ""}
                     </Text>
                   </View>
-                  <View style={s(styles.metaRowElement)}>
-                    <Calendar size={fs(3)} color={colors.textMuted} style={s({ marginRight: wp(1) })} />
-                    <Text style={s(styles.metaRowText)}>
+                  <View style={styles.metaRowElement}>
+                    <Calendar size={fs(3)} color={colors.textMuted} style={{ marginRight: wp(1) }} />
+                    <Text style={[styles.metaRowText, { color: colors.textSecondary }]}>
                       {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "-"}
                     </Text>
                   </View>
                 </View>
-                {b.attachments && b.attachments.length > 0 ? (
-                  <Text style={s(styles.attachmentMiniIndicator)}>📎 {b.attachments.length} Attachment(s)</Text>
-                ) : null}
               </TouchableOpacity>
             );
           }}
         />
       )}
 
-      <Modal visible={viewOpen} animationType="slide" transparent={true} onRequestClose={() => setViewOpen(false)}>
-        <View style={s(styles.modalOverlay)}>
-          <View style={s(styles.modalContent)}>
-            <View style={s(styles.modalHeader)}>
-              <Text style={s(styles.modalTitle)} numberOfLines={2}>{selected?.title || "Bug Details"}</Text>
-              <Text style={s(styles.modalSubtitle)}>
-                {selected?.source?.path || selected?.source?.panel || "No source data"}
-              </Text>
-            </View>
-
-            <ScrollView style={s(styles.modalBody)} showsVerticalScrollIndicator={true}>
-              <View style={s(styles.cardHeaderRow)}>
-                <View style={s([styles.badge, selected?.status !== "closed" ? styles.badgeOpen : styles.badgeClosed])}>
-                  <Text style={s([styles.badgeText, selected?.status !== "closed" ? styles.badgeTextOpen : styles.badgeTextClosed])}>
-                    {selected?.status === "closed" ? "Closed" : "Open"}
-                  </Text>
-                </View>
-                {selected?.createdByUsername ? (
-                  <Text style={s(styles.metaRowText)}>
-                    By {selected.createdByUsername} {selected.createdByRole ? `(${selected.createdByRole})` : ""}
-                  </Text>
-                ) : null}
-              </View>
-
-              {selected?.taskTitle ? (
-                <View style={s([styles.taskBadge, { marginTop: hp(1.2) }])}>
-                  <Text style={s({ fontSize: fs(3), fontWeight: "600", color: colors.primary })}>Linked Task: {selected.taskTitle}</Text>
-                </View>
-              ) : null}
-
-              <View style={s(styles.descContainer)}>
-                <Text style={s(styles.fullDescText)}>{selected?.description}</Text>
-              </View>
-
-              {selected?.attachments && selected.attachments.length > 0 ? (
-                <View style={s({ marginTop: hp(2) })}>
-                  <Text style={s(styles.sectionLabel)}>Attachments ({selected.attachments.length})</Text>
-                  <View style={s(styles.imageGrid)}>
-                    {selected.attachments.map((att, i) => {
-                      const src = resolveAttachmentUrl(att.url);
-                      if (!src) return null;
-                      
-                      const allUrls = selected.attachments!
-                        .map(a => resolveAttachmentUrl(a.url))
-                        .filter((u): u is string => u !== null);
-                      
-                      return (
-                        <TouchableOpacity key={i} style={s(styles.gridImageWrapper)} onPress={() => setLightbox({ urls: allUrls, index: i })}>
-                          <Image source={{ uri: src }} style={s(styles.gridImage)} />
-                          <View style={s(styles.zoomOverlay)}>
-                            <ZoomIn size={fs(4)} color="#ffffff" />
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-            </ScrollView>
-
-            <View style={s(styles.modalFooter)}>
-              <TouchableOpacity style={s([styles.btn, styles.btnOutline])} onPress={() => setViewOpen(false)} disabled={updating}>
-                <Text style={s(styles.btnOutlineText)}>Close</Text>
-              </TouchableOpacity>
-              {selected?.status === "closed" ? (
-                <TouchableOpacity style={s([styles.btn, styles.btnPrimary])} onPress={() => void updateStatus("open")} disabled={updating}>
-                  <Text style={s(styles.btnPrimaryText)}>Reopen</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={s([styles.btn, styles.btnDanger])} onPress={() => void updateStatus("closed")} disabled={updating}>
-                  <Text style={s(styles.btnPrimaryText)}>Mark Closed</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
+      {totalPages > 1 && (
+        <View style={[styles.paginationBar, { borderTopColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.pageBtn, { borderColor: colors.border }]}
+            onPress={() => void load(page - 1)}
+            disabled={page <= 1 || loading}
+          >
+            <Text style={[styles.pageBtnText, { color: colors.text }]}>Previous</Text>
+          </TouchableOpacity>
+          <Text style={[styles.pageInfoText, { color: colors.textSecondary }]}>
+            Page {page} of {totalPages}
+          </Text>
+          <TouchableOpacity
+            style={[styles.pageBtn, { borderColor: colors.border }]}
+            onPress={() => void load(page + 1)}
+            disabled={page >= totalPages || loading}
+          >
+            <Text style={[styles.pageBtnText, { color: colors.text }]}>Next</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      )}
 
-      <Modal visible={submitOpen} animationType="slide" transparent={true} onRequestClose={() => setSubmitOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s(styles.modalOverlay)}>
-          <View style={s(styles.modalContent)}>
-            <View style={s(styles.modalHeader)}>
-              <View style={s(styles.headerTitleContainer)}>
-                <Bug size={fs(4.5)} color={colors.primary} style={s({ marginRight: wp(1.5) })} />
-                <Text style={s(styles.modalTitle)}>Report a Bug</Text>
-              </View>
-              <Text style={s(styles.modalSubtitle)}>Describe the issue you encountered. Screenshots are helpful.</Text>
-            </View>
+      <BugCollaborationModal
+        bugId={selectedBugId}
+        open={collabOpen}
+        onOpenChange={setCollabOpen}
+        onBugUpdated={() => void load()}
+      />
 
-            <ScrollView style={s(styles.modalBody)}>
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Title <Text style={s({ color: colors.danger })}>*</Text></Text>
-                <TextInput
-                  placeholder="Brief summary of the issue"
-                  placeholderTextColor={colors.textMuted}
-                  style={s(styles.formInput)}
-                  value={submitTitle}
-                  onChangeText={setSubmitTitle}
-                />
-              </View>
-
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Description <Text style={s({ color: colors.danger })}>*</Text></Text>
-                <TextInput
-                  placeholder="Steps to reproduce, expected vs actual behavior..."
-                  placeholderTextColor={colors.textMuted}
-                  multiline={true}
-                  numberOfLines={4}
-                  style={s([styles.formInput, styles.formTextArea])}
-                  value={submitDesc}
-                  onChangeText={setSubmitDesc}
-                />
-              </View>
-
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Screenshots (up to 5)</Text>
-                <View style={s(styles.pickerRow)}>
-                  {submitFiles.map((file, i) => (
-                    <View key={i} style={s(styles.previewImageContainer)}>
-                      <Image source={{ uri: file.uri }} style={s(styles.previewImage)} />
-                      <TouchableOpacity style={s(styles.removeImageBadge)} onPress={() => removeFile(i)}>
-                        <X size={fs(2.5)} color="#ffffff" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {submitFiles.length < 5 ? (
-                    <TouchableOpacity style={s(styles.imagePickerButton)} onPress={handlePickImage}>
-                      <Upload size={fs(4.5)} color={colors.textSecondary} />
-                      <Text style={s(styles.imagePickerText)}>Add</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              </View>
-
-              {submitError && <Text style={s(styles.formError)}>{submitError}</Text>}
-              {submitSuccess && <Text style={s(styles.formSuccess)}>{submitSuccess}</Text>}
-            </ScrollView>
-
-            <View style={s(styles.modalFooter)}>
-              <TouchableOpacity style={s([styles.btn, styles.btnOutline])} onPress={() => { resetSubmit(); setSubmitOpen(false); }} disabled={submitting}>
-                <Text style={s(styles.btnOutlineText)}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s([styles.btn, styles.btnPrimary])} onPress={() => void handleSubmit()} disabled={submitting}>
-                <Text style={s(styles.btnPrimaryText)}>{submitting ? "Submitting..." : "Submit Report"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {lightbox ? (
-        <Modal visible={true} transparent={true} animationType="fade">
-          <View style={s(styles.lightboxContainer)}>
-            <TouchableOpacity style={s(styles.lightboxClose)} onPress={() => setLightbox(null)}>
-              <X size={fs(6)} color="#ffffff" />
-            </TouchableOpacity>
-
-            {lightbox.urls.length > 1 ? (
-              <Text style={s(styles.lightboxCounter)}>
-                {lightbox.index + 1} / {lightbox.urls.length}
-              </Text>
-            ) : null}
-
-            {lightbox.urls.length > 1 && lightbox.index > 0 ? (
-              <TouchableOpacity
-                style={s([styles.lightboxNav, { left: wp(4) }])}
-                onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index - 1 } : null)}
-              >
-                <ChevronLeft size={fs(7)} color="#ffffff" />
-              </TouchableOpacity>
-            ) : null}
-
-            <Image
-              source={{ uri: lightbox.urls[lightbox.index] }}
-              style={s(styles.lightboxImage)}
-              resizeMode="contain"
-            />
-
-            {lightbox.urls.length > 1 && lightbox.index < lightbox.urls.length - 1 ? (
-              <TouchableOpacity
-                style={s([styles.lightboxNav, { right: wp(4) }])}
-                onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index + 1 } : null)}
-              >
-                <ChevronRight size={fs(7)} color="#ffffff" />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </Modal>
-      ) : null}
+      <ReportBugModal
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        onSuccess={() => void load(1)}
+        defaultSourcePanel="manager"
+      />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: wp(4),
+    paddingTop: hp(1.5),
+    paddingBottom: hp(2),
+    borderBottomWidth: 1,
+  },
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: fs(5),
+    fontWeight: "800",
+  },
+  headerSubtitle: {
+    fontSize: fs(3),
+    marginTop: hp(0.5),
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: wp(2),
+    marginTop: hp(1.5),
+  },
+  btn: {
+    height: hp(4.5),
+    borderRadius: wp(2),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: wp(3),
+  },
+  btnOutline: {
+    flex: 1,
+    borderWidth: 1,
+  },
+  btnOutlineText: {
+    fontSize: fs(3.2),
+    fontWeight: "600",
+  },
+  btnPrimary: {
+    flex: 1.3,
+  },
+  btnPrimaryText: {
+    color: "#ffffff",
+    fontSize: fs(3.2),
+    fontWeight: "600",
+  },
+  errorBanner: {
+    marginHorizontal: wp(4),
+    marginTop: hp(1),
+    marginBottom: hp(1),
+    padding: wp(3),
+    borderRadius: wp(2),
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  errorContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  errorText: {
+    fontSize: fs(3),
+    fontWeight: "500",
+    flex: 1,
+  },
+  dismissBtn: {
+    padding: wp(1),
+    marginLeft: wp(2),
+  },
+  searchCard: {
+    marginHorizontal: wp(4),
+    padding: wp(3),
+    borderRadius: wp(2.5),
+    borderWidth: 1,
+    marginBottom: hp(1),
+  },
+  searchInput: {
+    height: hp(4.5),
+    borderRadius: wp(1.5),
+    paddingHorizontal: wp(3),
+    fontSize: fs(3.2),
+  },
+  tabsContainer: {
+    flexDirection: "row",
+    gap: wp(1.5),
+    marginTop: hp(1),
+  },
+  tabButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(0.6),
+    borderRadius: wp(1.5),
+  },
+  tabButtonText: {
+    fontSize: fs(2.8),
+    fontWeight: "600",
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listContent: {
+    paddingHorizontal: wp(4),
+    paddingBottom: hp(2),
+    gap: hp(1.2),
+  },
+  emptyContainer: {
+    paddingVertical: hp(5),
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: fs(3.5),
+    fontStyle: "italic",
+  },
+  bugCard: {
+    borderRadius: wp(2.5),
+    padding: wp(3.5),
+    borderWidth: 1,
+    gap: hp(0.6),
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  badge: {
+    paddingHorizontal: wp(2),
+    paddingVertical: hp(0.2),
+    borderRadius: wp(1),
+  },
+  badgeText: {
+    fontSize: fs(2.3),
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  metaRowElement: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  metaRowText: {
+    fontSize: fs(2.8),
+  },
+  cardTitle: {
+    fontSize: fs(3.5),
+    fontWeight: "700",
+  },
+  taskBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: wp(2),
+    paddingVertical: hp(0.3),
+    borderRadius: wp(1),
+    borderWidth: 1,
+  },
+  taskBadgeText: {
+    fontSize: fs(2.6),
+    fontWeight: "600",
+  },
+  cardDesc: {
+    fontSize: fs(3),
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    paddingTop: hp(1),
+    marginTop: hp(0.5),
+  },
+  footerUserData: {
+    fontSize: fs(2.8),
+    fontWeight: "600",
+  },
+  paginationBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: wp(4),
+    paddingVertical: hp(1.2),
+    borderTopWidth: 1,
+  },
+  pageBtn: {
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(0.8),
+    borderRadius: wp(1.5),
+    borderWidth: 1,
+  },
+  pageBtnText: {
+    fontSize: fs(2.8),
+    fontWeight: "600",
+  },
+  pageInfoText: {
+    fontSize: fs(2.8),
+    fontWeight: "600",
+  },
+});

@@ -23,7 +23,7 @@ function ManagerLayoutContent_() {
           contentStyle: { backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#f8fafc' }
         }} />
       </View>
-
+ 
       <ManagerFixedSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)} 

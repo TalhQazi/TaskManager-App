@@ -43,12 +43,10 @@ interface Employee {
   name: string;
   initials: string;
   email: string;
-  role: string;
-  department: string;
+  role?: string;
+  department?: string;
   status: string;
   avatarUrl?: string;
-  milestoneLevel?: string;
-  milestoneLabel?: string;
   current_status?: "AVAILABLE" | "LUNCH" | "BREAK";
   lunch_start_time?: string | null;
   lunch_expected_end?: string | null;
@@ -139,521 +137,89 @@ function buildColors(uiTheme: any) {
 
 function createStyles(colors: ReturnType<typeof buildColors>) {
   return StyleSheet.create({
-    viewport: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    headerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingTop: -16,
-      marginBottom: 14,
-    },
-    pageHeaderBlock: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      flex: 1,
-    },
-    backBtnItem: {
-      padding: 6,
-      borderRadius: 8,
-    },
-    pageTitle: {
-      fontSize: 20,
-      fontWeight: "900",
-      color: colors.text,
-    },
-    pageSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    newConversationBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.primary,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: 10,
-      gap: 6,
-    },
-    newConversationBtnText: {
-      color: "#ffffff",
-      fontSize: 12,
-      fontWeight: "700",
-    },
-    statusBadgeLabel: {
-      paddingHorizontal: 6,
-      paddingVertical: 1,
-      borderRadius: 4,
-      borderWidth: 1,
-      fontSize: 9,
-      fontWeight: "600",
-    },
-    filterTabsScroll: {
-      paddingHorizontal: 16,
-      marginBottom: 12,
-      gap: 8,
-    },
-    filterTabCapsule: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 14,
-      height: 32,
-      borderRadius: 16,
-      borderWidth: 1,
-      gap: 4,
-    },
-    filterTabCapsuleText: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    searchCardFrame: {
-      marginHorizontal: 16,
-      backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 10,
-      marginBottom: 14,
-    },
-    searchBarContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    searchBarInputControl: {
-      flex: 1,
-      color: colors.text,
-      fontSize: 13,
-      height: 36,
-      padding: 0,
-    },
-    conversationsListContainer: {
-      marginHorizontal: 16,
-      backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    sectionChronologicalHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: "rgba(0,0,0,0.15)",
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      gap: 6,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    sectionChronologicalHeaderText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: colors.textSecondary,
-      textTransform: "uppercase",
-    },
-    fallbackEmptyContainer: {
-      padding: 40,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    fallbackEmptyHeadingText: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: colors.text,
-      marginTop: 12,
-      textAlign: "center",
-    },
-    fallbackEmptySubtext: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: "center",
-      marginTop: 6,
-      lineHeight: 18,
-      maxWidth: 280,
-    },
-    fallbackEmptyActionBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.primary,
-      paddingVertical: 10,
-      paddingHorizontal: 20,
-      borderRadius: 10,
-      gap: 8,
-      marginTop: 20,
-    },
-    fallbackEmptyActionBtnText: {
-      color: "#ffffff",
-      fontSize: 14,
-      fontWeight: "700",
-    },
-    conversationRowItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 14,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      gap: 12,
-    },
-    avatarWrapperContainer: {
-      position: "relative",
-    },
-    avatarFrameCircle: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarImageElement: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-    },
-    avatarTextFallback: {
-      fontSize: 14,
-      fontWeight: "700",
-    },
-    avatarOnlineStatusDot: {
-      position: "absolute",
-      bottom: 0,
-      right: 0,
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      borderWidth: 2,
-      borderColor: colors.cardBg,
-    },
-    unreadCounterBadge: {
-      position: "absolute",
-      top: -4,
-      right: -4,
-      backgroundColor: colors.danger,
-      minWidth: 18,
-      height: 18,
-      borderRadius: 9,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 4,
-    },
-    unreadCounterBadgeText: {
-      color: "#ffffff",
-      fontSize: 9,
-      fontWeight: "900",
-    },
-    conversationRowMetaColumn: {
-      flex: 1,
-    },
-    conversationRowTopLine: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    conversationNameFlexBlock: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      flex: 1,
-    },
-    conversationProfileNameText: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    conversationTimestampText: {
-      fontSize: 10,
-      color: colors.textSecondary,
-    },
-    conversationSnippetText: {
-      fontSize: 12,
-      marginTop: 4,
-    },
-    conversationActionStripRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      marginLeft: 4,
-    },
-    conversationActionIconBtn: {
-      padding: 6,
-      borderRadius: 8,
-    },
-    chatViewportContainer: {
-      flex: 1,
-      marginHorizontal: 16,
-      backgroundColor: colors.cardBg,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-      marginBottom: 16,
-    },
-    chatMessagesScrollArea: {
-      flex: 1,
-      padding: 12,
-    },
-    chatMessagesScrollContent: {
-      gap: 12,
-      paddingBottom: 24,
-    },
-    chatEmptyTimelineBlock: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 64,
-    },
-    chatEmptyTimelineTextPrimary: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: colors.text,
-      marginTop: 12,
-    },
-    chatEmptyTimelineTextSecondary: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 4,
-    },
-    messageBubbleWrapperFlex: {
-      flexDirection: "row",
-      gap: 8,
-      width: "100%",
-    },
-    messageAvatarStubCircle: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    messageAvatarStubText: {
-      fontSize: 9,
-      fontWeight: "700",
-    },
-    messageBubbleBodyCard: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 14,
-      maxWidth: "76%",
-    },
-    messageBubbleAttachmentPreviewBtn: {
-      marginBottom: 6,
-      borderRadius: 8,
-      overflow: "hidden",
-    },
-    messageBubbleAttachmentImageElement: {
-      width: 140,
-      height: 140,
-    },
-    messageBubbleAttachmentFileLinkBtnText: {
-      fontSize: 13,
-      textDecorationLine: "underline",
-      marginBottom: 4,
-    },
-    messageBubbleContentText: {
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    messageBubbleMetadataRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      gap: 4,
-      marginTop: 2,
-    },
-    messageBubbleTimeText: {
-      fontSize: 9,
-    },
-    chatInputDockFooter: {
-      borderTopWidth: 1,
-      borderColor: colors.border,
-      padding: 10,
-      backgroundColor: colors.panelHeader,
-    },
-    chatInputRowFlexControls: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    chatInputAttachmentTriggerBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.background,
-    },
-    chatInputTextInputField: {
-      flex: 1,
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      color: colors.text,
-      fontSize: 13,
-      minHeight: 36,
-      maxHeight: 80,
-    },
-    chatInputSendActionBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: colors.primary,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    modalOverlayMask: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    modalContentBoxContainer: {
-      width: width * 0.92,
-      backgroundColor: colors.background,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      maxHeight: "80%",
-      overflow: "hidden",
-    },
-    modalHeaderPane: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: 16,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.panelHeader,
-    },
-    modalHeaderTitleText: {
-      fontSize: 16,
-      fontWeight: "800",
-      color: colors.text,
-    },
-    modalSearchWrapperBlock: {
-      padding: 12,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    modalSelectorScrollArea: {
-      padding: 8,
-    },
-    employeeSelectableRowBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 10,
-      borderRadius: 10,
-      gap: 12,
-      marginBottom: 4,
-    },
-    employeeInfoColumnBlock: {
-      flex: 1,
-    },
-    employeeMetaIdentityRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    employeeIdentityNameText: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    employeeIdentityEmailText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 1,
-    },
-    employeeBadgesRowContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: 4,
-    },
-    employeeDepartmentBadge: {
-      backgroundColor: colors.border,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    employeeDepartmentBadgeText: {
-      fontSize: 10,
-      color: colors.text,
-    },
-    employeeStatusBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      borderWidth: 1,
-    },
-    employeeStatusBadgeText: {
-      fontSize: 10,
-    },
-    employeePickerFallbackBlock: {
-      padding: 32,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    employeePickerFallbackTextPrimary: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-      marginTop: 8,
-    },
-    employeePickerFallbackTextSecondary: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    lightboxPreviewImageElement: {
-      width: "100%",
-      height: width * 0.8,
-      borderRadius: 8,
-    },
-    quickEmojiBarDock: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingHorizontal: 12,
-      paddingBottom: 6,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      marginBottom: 6,
-    },
-    quickEmojiItemBtn: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    quickEmojiItemBtnText: {
-      fontSize: 16,
-    },
-    statsClusterGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      paddingHorizontal: 16,
-      gap: 10,
-      marginBottom: 16,
-    },
-    loadingBoxArea: {
-      padding: 32,
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "row",
-      gap: 8,
-    },
-    loadingBoxText: {
-      color: colors.textSecondary,
-      fontSize: 13,
-    }
+    viewport: { flex: 1, backgroundColor: colors.background },
+    headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, marginBottom: 14 },
+    pageHeaderBlock: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+    backBtnItem: { padding: 6, borderRadius: 8 },
+    pageTitle: { fontSize: 20, fontWeight: "900", color: colors.text },
+    pageSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+    newConversationBtn: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, gap: 6 },
+    newConversationBtnText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+    filterTabsScroll: { paddingHorizontal: 16, marginBottom: 12 },
+    filterTabCapsule: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, height: 32, borderRadius: 16, borderWidth: 1, gap: 6 },
+    filterTabCapsuleText: { fontSize: 12, fontWeight: "600" },
+    searchCardFrame: { marginHorizontal: 16, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 10, marginBottom: 14 },
+    searchBarContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
+    searchBarInputControl: { flex: 1, color: colors.text, fontSize: 13, height: 36, padding: 0 },
+    conversationsListContainer: { marginHorizontal: 16, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 16 },
+    sectionChronologicalHeader: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.15)", paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderColor: colors.border },
+    sectionChronologicalHeaderText: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, textTransform: "uppercase" },
+    fallbackEmptyContainer: { padding: 40, alignItems: "center", justifyContent: "center" },
+    fallbackEmptyHeadingText: { fontSize: 18, fontWeight: "800", color: colors.text, marginTop: 12, textAlign: "center" },
+    fallbackEmptySubtext: { fontSize: 13, color: colors.textSecondary, textAlign: "center", marginTop: 6, lineHeight: 18, maxWidth: 280 },
+    fallbackEmptyActionBtn: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10, gap: 8, marginTop: 20 },
+    fallbackEmptyActionBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+    conversationRowItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderColor: colors.border, gap: 12 },
+    avatarWrapperContainer: { position: "relative" },
+    avatarFrameCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.border, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    avatarImageElement: { width: 44, height: 44, borderRadius: 22 },
+    avatarTextFallback: { fontSize: 14, fontWeight: "700" },
+    avatarOnlineStatusDot: { position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.cardBg },
+    unreadCounterBadge: { position: "absolute", top: -4, right: -4, backgroundColor: colors.danger, minWidth: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+    unreadCounterBadgeText: { color: "#ffffff", fontSize: 9, fontWeight: "900" },
+    conversationRowMetaColumn: { flex: 1 },
+    conversationRowTopLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    conversationNameFlexBlock: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
+    conversationProfileNameText: { fontSize: 14, fontWeight: "700", color: colors.text },
+    conversationTimestampText: { fontSize: 10, color: colors.textSecondary },
+    conversationSnippetText: { fontSize: 12, marginTop: 4 },
+    conversationActionStripRow: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 4 },
+    conversationActionIconBtn: { padding: 6, borderRadius: 8 },
+    chatViewportContainer: { flex: 1, marginHorizontal: 16, backgroundColor: colors.cardBg, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 16 },
+    chatMessagesScrollArea: { flex: 1, padding: 12 },
+    chatMessagesScrollContent: { gap: 12, paddingBottom: 24 },
+    chatEmptyTimelineBlock: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 64 },
+    chatEmptyTimelineTextPrimary: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 12 },
+    chatEmptyTimelineTextSecondary: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+    messageBubbleWrapperFlex: { flexDirection: "row", gap: 8, width: "100%" },
+    messageAvatarStubCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.border, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    messageAvatarStubText: { fontSize: 9, fontWeight: "700" },
+    messageBubbleBodyCard: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, maxWidth: "76%" },
+    messageBubbleAttachmentPreviewBtn: { marginBottom: 6, borderRadius: 8, overflow: "hidden" },
+    messageBubbleAttachmentImageElement: { width: 140, height: 140 },
+    messageBubbleAttachmentFileLinkBtnText: { fontSize: 13, textDecorationLine: "underline", marginBottom: 4 },
+    messageBubbleContentText: { fontSize: 13, lineHeight: 18 },
+    messageBubbleMetadataRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 2 },
+    messageBubbleTimeText: { fontSize: 9 },
+    chatInputDockFooter: { borderTopWidth: 1, borderColor: colors.border, padding: 10, backgroundColor: colors.panelHeader },
+    chatInputRowFlexControls: { flexDirection: "row", alignItems: "center", gap: 8 },
+    chatInputAttachmentTriggerBtn: { width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+    chatInputTextInputField: { flex: 1, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, color: colors.text, fontSize: 13, minHeight: 36, maxHeight: 80 },
+    chatInputSendActionBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+    modalOverlayMask: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
+    modalContentBoxContainer: { width: width * 0.92, backgroundColor: colors.background, borderRadius: 16, borderWidth: 1, borderColor: colors.border, maxHeight: "80%", overflow: "hidden" },
+    modalHeaderPane: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.panelHeader },
+    modalHeaderTitleText: { fontSize: 16, fontWeight: "800", color: colors.text },
+    modalSearchWrapperBlock: { padding: 12, borderBottomWidth: 1, borderColor: colors.border },
+    modalSelectorScrollArea: { padding: 8 },
+    employeeSelectableRowBtn: { flexDirection: "row", alignItems: "center", padding: 10, borderRadius: 10, gap: 12, marginBottom: 4 },
+    employeeInfoColumnBlock: { flex: 1 },
+    employeeIdentityNameText: { fontSize: 14, fontWeight: "700", color: colors.text },
+    employeeIdentityEmailText: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+    employeeBadgesRowContainer: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+    employeeDepartmentBadge: { backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    employeeDepartmentBadgeText: { fontSize: 10, color: colors.text },
+    employeeStatusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1 },
+    employeeStatusBadgeText: { fontSize: 10 },
+    employeePickerFallbackBlock: { padding: 32, alignItems: "center", justifyContent: "center" },
+    employeePickerFallbackTextPrimary: { fontSize: 14, fontWeight: "700", color: colors.text, marginTop: 8 },
+    employeePickerFallbackTextSecondary: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+    lightboxPreviewImageElement: { width: "100%", height: width * 0.8, borderRadius: 8 },
+    quickEmojiBarDock: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12, paddingBottom: 6, borderBottomWidth: 1, borderColor: colors.border, marginBottom: 6 },
+    quickEmojiItemBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+    quickEmojiItemBtnText: { fontSize: 16 },
+    loadingBoxArea: { padding: 32, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+    loadingBoxText: { color: colors.textSecondary, fontSize: 13 }
   });
 }
 
@@ -663,6 +229,9 @@ export default function Messages() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const queryClient = useQueryClient();
+  const { user, token } = useAuth() as any;
+  const currentUser = user?.fullName?.trim() || user?.username?.trim() || "";
+
   const [view, setView] = useState<"list" | "conversation">("list");
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -673,13 +242,25 @@ export default function Messages() {
     return () => clearInterval(timer);
   }, []);
 
+  const getResolvedAvatarUri = useCallback((avatarRaw?: string) => {
+    if (!avatarRaw) return null;
+    let url = avatarRaw;
+    if (url.startsWith("/uploads/avatars/")) {
+      url = url.replace("/uploads/avatars/", "/api/s3-proxy/avatars/");
+    }
+    if (!url.startsWith("http") && !url.startsWith("data:")) {
+      url = `https://task.se7eninc.com${url.startsWith("/") ? "" : "/"}${url}`;
+    }
+    let finalUrl = toProxiedUrl(url) || url;
+    if (token && !finalUrl.includes("token=")) {
+      finalUrl += `${finalUrl.includes("?") ? "&" : "?"}token=${token}`;
+    }
+    return finalUrl;
+  }, [token]);
+
   const getAvatarRingStyles = (empStatus: string | undefined) => {
-    if (empStatus === "LUNCH") {
-      return { borderWidth: 2.5, borderColor: colors.lunch };
-    }
-    if (empStatus === "BREAK") {
-      return { borderWidth: 2.5, borderColor: colors.break };
-    }
+    if (empStatus === "LUNCH") return { borderWidth: 2.5, borderColor: colors.lunch };
+    if (empStatus === "BREAK") return { borderWidth: 2.5, borderColor: colors.break };
     return {};
   };
 
@@ -688,7 +269,6 @@ export default function Messages() {
     let dotBg = colors.success;
     if (empStatus === "LUNCH") dotBg = colors.lunch;
     if (empStatus === "BREAK") dotBg = colors.break;
-
     return <View style={s([styles.avatarOnlineStatusDot, { backgroundColor: dotBg }])} />;
   };
 
@@ -703,8 +283,7 @@ export default function Messages() {
         const sSec = Math.floor((diff % 60000) / 1000);
         return `On Lunch since ${timeStr} (${m}m ${sSec}s remaining)`;
       }
-      const overdue = Math.floor(-diff / 60000);
-      return `Overdue Lunch since ${timeStr} (${overdue}m overdue)`;
+      return `Overdue Lunch since ${timeStr} (${Math.floor(-diff / 60000)}m overdue)`;
     }
     if (emp.current_status === "BREAK" && emp.break_start_time) {
       const start = new Date(emp.break_start_time).getTime();
@@ -716,8 +295,7 @@ export default function Messages() {
         const sSec = Math.floor((diff % 60000) / 1000);
         return `On Break since ${timeStr} (${m}m ${sSec}s remaining)`;
       }
-      const overdue = Math.floor(-diff / 60000);
-      return `Overdue Break since ${timeStr} (${overdue}m overdue)`;
+      return `Overdue Break since ${timeStr} (${Math.floor(-diff / 60000)}m overdue)`;
     }
     return emp.department || "No department";
   };
@@ -752,8 +330,6 @@ export default function Messages() {
   };
 
   const { socket } = useSocket();
-  const { user } = useAuth();
-  const currentUser = user?.fullName?.trim() || user?.username?.trim() || "";
 
   const employeesQuery = useQuery({
     queryKey: ["employees"],
@@ -761,7 +337,7 @@ export default function Messages() {
       const res = await apiFetch<{ items: Employee[] }>("/api/employees");
       return res.items;
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes cache
+    staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
   });
 
@@ -771,14 +347,15 @@ export default function Messages() {
       const res = await apiFetch<{ items?: any[] }>(
         `/api/messages/conversations/${encodeURIComponent(currentUser)}`
       );
-      return (res.items ?? []).map((c) => ({
+      const rawItems = Array.isArray(res) ? res : (res.items ?? []);
+      return rawItems.map((c) => ({
         employee: c.employee,
         lastMessage: c.lastMessage ? normalizeMessage(c.lastMessage) : null,
-        unreadCount: c.unreadCount,
+        unreadCount: c.unreadCount || 0,
       }));
     },
     enabled: Boolean(currentUser),
-    staleTime: 1000 * 30, // 30 seconds cache (prevents 1s ticker re-fetches)
+    staleTime: 1000 * 30,
     refetchOnWindowFocus: false,
   });
 
@@ -792,9 +369,7 @@ export default function Messages() {
       );
       const msgs = res.items ?? [];
       setConversationMessages(
-        msgs
-          .map(normalizeMessage)
-          .sort((a, b) => a.id.localeCompare(b.id))
+        msgs.map(normalizeMessage).sort((a, b) => a.id.localeCompare(b.id))
       );
     } catch {
       setConversationMessages([]);
@@ -862,9 +437,7 @@ export default function Messages() {
         body: JSON.stringify({ sender, recipient: currentUser }),
       });
       await queryClient.invalidateQueries({ queryKey: ["conversations", currentUser] });
-    } catch {
-      // Bypassed
-    }
+    } catch {}
   };
 
   useEffect(() => {
@@ -904,16 +477,6 @@ export default function Messages() {
         });
       });
 
-      queryClient.setQueryData<Employee[]>(["employees"], (old) => {
-        if (!old) return old;
-        return old.map((emp) => {
-          if (emp.id === payload.userId || emp.name === payload.name) {
-            return { ...emp, ...payload };
-          }
-          return emp;
-        });
-      });
-
       setSelectedEmployee((prev) => {
         if (prev && (prev.id === payload.userId || prev.name === payload.name)) {
           return { ...prev, ...payload };
@@ -930,7 +493,7 @@ export default function Messages() {
     if (view !== "conversation" || !selectedEmployee) return;
     const interval = setInterval(() => {
       loadConversationMessages(selectedEmployee.name);
-    }, 10000); // Poll every 10s instead of 4s to reduce server strain
+    }, 10000);
     return () => clearInterval(interval);
   }, [view, selectedEmployee?.name, loadConversationMessages]);
 
@@ -942,9 +505,9 @@ export default function Messages() {
     const q = searchQuery.toLowerCase();
     return conversations.filter(
       (conv) =>
-        conv.employee.name.toLowerCase().includes(q) ||
-        conv.employee.email.toLowerCase().includes(q) ||
-        conv.employee.department.toLowerCase().includes(q)
+        conv.employee?.name?.toLowerCase().includes(q) ||
+        conv.employee?.email?.toLowerCase().includes(q) ||
+        conv.employee?.department?.toLowerCase().includes(q)
     );
   }, [conversations, searchQuery]);
 
@@ -953,9 +516,9 @@ export default function Messages() {
     const q = employeeSearchQuery.toLowerCase();
     return employees.filter(
       (emp) =>
-        emp.name.toLowerCase().includes(q) ||
-        emp.email.toLowerCase().includes(q) ||
-        emp.department.toLowerCase().includes(q)
+        emp.name?.toLowerCase().includes(q) ||
+        emp.email?.toLowerCase().includes(q) ||
+        emp.department?.toLowerCase().includes(q)
     );
   }, [employees, employeeSearchQuery]);
 
@@ -1006,6 +569,7 @@ export default function Messages() {
   };
 
   const formatMessageTime = (timestamp: string) => {
+    if (!timestamp) return "";
     const date = new Date(timestamp);
     const now = new Date();
     if (date.toDateString() === now.toDateString()) {
@@ -1036,8 +600,8 @@ export default function Messages() {
               </TouchableOpacity>
               <View style={s(styles.avatarWrapperContainer)}>
                 <View style={s([styles.avatarFrameCircle, getAvatarRingStyles(selectedEmployee.current_status)])}>
-                  {selectedEmployee.avatarUrl ? (
-                    <Image source={{ uri: toProxiedUrl(selectedEmployee.avatarUrl) }} style={s(styles.avatarImageElement)} />
+                  {getResolvedAvatarUri(selectedEmployee.avatarUrl) ? (
+                    <Image source={{ uri: getResolvedAvatarUri(selectedEmployee.avatarUrl)! }} style={s(styles.avatarImageElement)} />
                   ) : (
                     <Text style={s([styles.avatarTextFallback, { color: colors.primary }])}>{getInitials(selectedEmployee.name)}</Text>
                   )}
@@ -1145,14 +709,15 @@ export default function Messages() {
                       const empId = conv.employee.id || conv.employee._id || "";
                       const isArchived = archivedConversations.has(empId);
                       const isBookmarked = bookmarkedConversations.has(empId);
+                      const avatarUri = getResolvedAvatarUri(conv.employee.avatarUrl);
 
                       return (
                         <View key={empId} style={s(styles.conversationRowItem)}>
                           <TouchableOpacity style={s({ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 })} onPress={() => startConversation(conv.employee)}>
                             <View style={s(styles.avatarWrapperContainer)}>
                               <View style={s([styles.avatarFrameCircle, getAvatarRingStyles(conv.employee.current_status)])}>
-                                {conv.employee.avatarUrl ? (
-                                  <Image source={{ uri: toProxiedUrl(conv.employee.avatarUrl) }} style={s(styles.avatarImageElement)} />
+                                {avatarUri ? (
+                                  <Image source={{ uri: avatarUri }} style={s(styles.avatarImageElement)} />
                                 ) : (
                                   <Text style={s([styles.avatarTextFallback, { color: colors.primary }])}>{getInitials(conv.employee.name)}</Text>
                                 )}
@@ -1225,14 +790,15 @@ export default function Messages() {
                 const attachmentUrl = msg.attachment?.url || "";
                 const attachmentName = msg.attachment?.fileName || "Attachment";
                 const isImage = msg.attachment?.mimeType?.startsWith("image/") || false;
+                const selectedEmpAvatarUri = getResolvedAvatarUri(selectedEmployee.avatarUrl);
 
                 return (
                   <View key={msg.id} style={s([styles.messageBubbleWrapperFlex, { flexDirection: isMe ? "row-reverse" : "row" }])}>
                     {showAvatar && !isMe ? (
                       <View style={s(styles.avatarWrapperContainer)}>
                         <View style={s([styles.messageAvatarStubCircle, getAvatarRingStyles(selectedEmployee.current_status)])}>
-                          {selectedEmployee.avatarUrl ? (
-                            <Image source={{ uri: toProxiedUrl(selectedEmployee.avatarUrl) }} style={{ width: 24, height: 24, borderRadius: 12 }} />
+                          {selectedEmpAvatarUri ? (
+                            <Image source={{ uri: selectedEmpAvatarUri }} style={{ width: 24, height: 24, borderRadius: 12 }} />
                           ) : (
                             <Text style={s([styles.messageAvatarStubText, { color: colors.primary }])}>{getInitials(msg.sender)}</Text>
                           )}
@@ -1246,7 +812,7 @@ export default function Messages() {
                       {!!attachmentUrl && (
                         isImage ? (
                           <TouchableOpacity style={s(styles.messageBubbleAttachmentPreviewBtn)} onPress={() => setPreview({ url: attachmentUrl, fileName: attachmentName })}>
-                            <Image source={{ uri: toProxiedUrl(attachmentUrl) }} style={s(styles.messageBubbleAttachmentImageElement)} resizeMode="cover" />
+                            <Image source={{ uri: getResolvedAvatarUri(attachmentUrl) || attachmentUrl }} style={s(styles.messageBubbleAttachmentImageElement)} resizeMode="cover" />
                           </TouchableOpacity>
                         ) : (
                           <TouchableOpacity onPress={() => Share.share({ message: attachmentUrl })}>
@@ -1344,34 +910,37 @@ export default function Messages() {
             </View>
 
             <ScrollView contentContainerStyle={s(styles.modalSelectorScrollArea)}>
-              {filteredEmployees.map((emp) => (
-                <TouchableOpacity key={emp.id || emp._id} style={s(styles.employeeSelectableRowBtn)} onPress={() => startConversation(emp)}>
-                  <View style={s(styles.avatarWrapperContainer)}>
-                    <View style={s([styles.avatarFrameCircle, getAvatarRingStyles(emp.current_status), { width: 36, height: 36 }])}>
-                      {emp.avatarUrl ? (
-                        <Image source={{ uri: toProxiedUrl(emp.avatarUrl) }} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                      ) : (
-                        <Text style={s([styles.avatarTextFallback, { color: colors.primary, fontSize: 12 }])}>{getInitials(emp.name)}</Text>
-                      )}
-                    </View>
-                    {getAvatarDotClassAndStyle(emp.current_status, emp.status === "active")}
-                  </View>
-                  <View style={s(styles.employeeInfoColumnBlock)}>
-                    <Text style={s(styles.employeeIdentityNameText)} numberOfLines={1}>{emp.name}</Text>
-                    <Text style={s(styles.employeeIdentityEmailText)} numberOfLines={1}>{emp.email}</Text>
-                    <View style={s(styles.employeeBadgesRowContainer)}>
-                      <View style={s(styles.employeeDepartmentBadge)}>
-                        <Text style={s(styles.employeeDepartmentBadgeText)}>{emp.department || "General Team"}</Text>
+              {filteredEmployees.map((emp) => {
+                const empAvatarUri = getResolvedAvatarUri(emp.avatarUrl);
+                return (
+                  <TouchableOpacity key={emp.id || emp._id} style={s(styles.employeeSelectableRowBtn)} onPress={() => startConversation(emp)}>
+                    <View style={s(styles.avatarWrapperContainer)}>
+                      <View style={s([styles.avatarFrameCircle, getAvatarRingStyles(emp.current_status), { width: 36, height: 36 }])}>
+                        {empAvatarUri ? (
+                          <Image source={{ uri: empAvatarUri }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                        ) : (
+                          <Text style={s([styles.avatarTextFallback, { color: colors.primary, fontSize: 12 }])}>{getInitials(emp.name)}</Text>
+                        )}
                       </View>
-                      <View style={s([styles.employeeStatusBadge, { borderColor: emp.status === "active" ? colors.success : colors.textSecondary }])}>
-                        <Text style={s([styles.employeeStatusBadgeText, { color: emp.status === "active" ? colors.success : colors.textSecondary }])}>
-                          {emp.status}
-                        </Text>
+                      {getAvatarDotClassAndStyle(emp.current_status, emp.status === "active")}
+                    </View>
+                    <View style={s(styles.employeeInfoColumnBlock)}>
+                      <Text style={s(styles.employeeIdentityNameText)} numberOfLines={1}>{emp.name}</Text>
+                      <Text style={s(styles.employeeIdentityEmailText)} numberOfLines={1}>{emp.email}</Text>
+                      <View style={s(styles.employeeBadgesRowContainer)}>
+                        <View style={s(styles.employeeDepartmentBadge)}>
+                          <Text style={s(styles.employeeDepartmentBadgeText)}>{emp.department || "General Team"}</Text>
+                        </View>
+                        <View style={s([styles.employeeStatusBadge, { borderColor: emp.status === "active" ? colors.success : colors.textSecondary }])}>
+                          <Text style={s([styles.employeeStatusBadgeText, { color: emp.status === "active" ? colors.success : colors.textSecondary }])}>
+                            {emp.status}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
 
               {filteredEmployees.length === 0 && (
                 <View style={s(styles.employeePickerFallbackBlock)}>
@@ -1403,7 +972,7 @@ export default function Messages() {
             </View>
             <View style={{ padding: 12, alignItems: "center", backgroundColor: "#000" }}>
               {preview && (
-                <Image source={{ uri: toProxiedUrl(preview.url) }} style={s(styles.lightboxPreviewImageElement)} resizeMode="contain" />
+                <Image source={{ uri: getResolvedAvatarUri(preview.url) || preview.url }} style={s(styles.lightboxPreviewImageElement)} resizeMode="contain" />
               )}
             </View>
           </View>

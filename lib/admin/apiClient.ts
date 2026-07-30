@@ -298,7 +298,7 @@ export const apiFetch_ = async <T,>(urlSuffix: string = "", init?: RequestInit):
 /**
  * apiFetch: Automatically resolves paths needing custom /employees routing or direct root access.
  */
-export const apiFetch = async <T,>(urlSuffix: string = "", init?: RequestInit): Promise<T> => {
+export const apiFetchOld = async <T,>(urlSuffix: string = "", init?: RequestInit): Promise<T> => {
   let endpoint = urlSuffix;
 
   if (endpoint.startsWith("/api/")) {
@@ -316,6 +316,48 @@ export const apiFetch = async <T,>(urlSuffix: string = "", init?: RequestInit): 
 
   const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const cleanEndpoint = finalEndpoint.replace(/\/+/g, '/').replace(/\/+$/, '');
+
+  const response = await apiRequest<T>(cleanEndpoint, init);
+  return response.data;
+};
+
+export type ExtendedRequestInit = RequestInit & {
+  timeoutMs?: number;
+};
+
+export const apiFetch = async <T,>(
+  urlSuffix: string = "",
+  init?: ExtendedRequestInit
+): Promise<T> => {
+  let endpoint = urlSuffix;
+
+  // 1. Strip leading /api if present
+  if (endpoint.startsWith("/api/")) {
+    endpoint = endpoint.replace(/^\/api/, "");
+  } 
+  // 2. Whitelist check (Add root non-employee routes here)
+  else if (
+    !endpoint.includes("asset-library") && 
+    !endpoint.includes("brand-kits") &&
+    !endpoint.startsWith("/bugs") &&
+    !endpoint.startsWith("bugs") &&
+    !endpoint.startsWith("/onboarding") &&
+    !endpoint.startsWith("onboarding") &&
+    !endpoint.startsWith("/employees") && 
+    !endpoint.startsWith("employees")
+  ) {
+    const cleanSuffix = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+    endpoint = `/employees${cleanSuffix}`;
+  }
+
+  // 3. Separate pathname from query string before cleaning slashes
+  const [pathname, queryString] = endpoint.split("?");
+
+  const finalPathname = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const cleanPath = finalPathname.replace(/\/+/g, '/').replace(/\/+$/, '');
+
+  // Recombine path with query string (if present)
+  const cleanEndpoint = queryString ? `${cleanPath}?${queryString}` : cleanPath;
 
   const response = await apiRequest<T>(cleanEndpoint, init);
   return response.data;

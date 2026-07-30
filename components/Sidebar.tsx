@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   TouchableWithoutFeedback,
   Modal,
   Platform,
+  Image,
 } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
@@ -33,16 +34,20 @@ import {
   FileText,
   MapPin,
   Calendar1,
-  Image,
+  Image as ImageIcon,
   Book,
   Settings,
   Clock10,
   Settings2,
   Brain,
   ClipboardCheck,
+  Timer,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { apiRequest } from '@/services/api';
+import { toProxiedUrlUpload, initToken } from '@/util/toProxiedUrl';
+import { useQuery } from '@tanstack/react-query';
 import { s, wp, hp, fs } from '@/util/styles';
 
 const SIDEBAR_WIDTH = Math.min(320, wp(75));
@@ -62,18 +67,18 @@ const MENU_ITEMS: MenuItem[] = [
   { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
   { label: 'EOD Reports', route: '/(tabs)/eod-reports', icon: ClipboardCheck },
   { icon: Calendar1, label: 'Event', route: '/(tabs)/event' },
-  { icon: Image, label: 'Images', route: '/(tabs)/images' },
+  { icon: ImageIcon, label: 'Images', route: '/(tabs)/images' },
   { label: 'Leave Requests', route: '/(tabs)/leaverequest', icon: Calendar }, 
   
   { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' }, 
   { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
   { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' }, 
   { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
- { label: 'Personal Notes', route: '/(tabs)/knowledgehub', icon: Book },
+  { label: 'Personal Notes', route: '/(tabs)/knowledgehub', icon: Book },
   { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
   { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shopping-lists' },
   { label: 'Theme Engine', route: '/(tabs)/theme-engine', icon: Settings },
-  { label: 'Time Logs', route: '/(tabs)/time-logs', icon: Clock10 },
+  { icon: Timer, label: 'Time Logs', route: '/(tabs)/time-logs', icon: Clock10 }, // Note: fixed variable reference if any
   { icon: Car, label: 'Travel Calendar', route: '/(tabs)/travelcalender' },
   { icon: Settings2, label: 'Setting', route: '/(tabs)/setting' }
 ];
@@ -90,6 +95,47 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
+
+  const [tokenReady, setTokenReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      await initToken();
+      setTokenReady(true);
+    })();
+  }, []);
+
+  const { data: userSettings } = useQuery({
+    queryKey: ['userSettingsSidebar'],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest<{ item?: any }>('/settings');
+        return res.data;
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const avatarUrl = useMemo(() => {
+    let avatarRaw = userSettings?.item?.avatarDataUrl || userSettings?.item?.avatarUrl || null;
+    if (!avatarRaw) return null;
+   
+    if (avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")) {
+      return avatarRaw;
+    }
+    
+    if (avatarRaw.startsWith("/uploads/avatars/")) {
+      avatarRaw = avatarRaw.replace("/uploads/avatars/", "/api/s3-proxy/avatars/");
+    }
+    
+    return `https://task.se7eninc.com${avatarRaw}`;
+  }, [userSettings]);
+
+  const resolvedAvatarUri = useMemo(() => {
+    if (!avatarUrl) return null;
+    return tokenReady ? toProxiedUrlUpload(avatarUrl) : null;
+  }, [avatarUrl, tokenReady]);
 
   const effectiveWidth = Math.min(320, Math.max(240, Math.floor(width * 0.82)));
   const slideAnim = useRef(new Animated.Value(isLargeScreen ? 0 : -effectiveWidth)).current;
@@ -198,9 +244,13 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
 
       <View style={s(styles.userCard)}>
         <View style={s(styles.avatarContainer)}>
-          <Text style={s(styles.avatarText)}>
-            {user?.fullName?.charAt(0)?.toUpperCase() ?? 'E'}
-          </Text>
+          {resolvedAvatarUri ? (
+            <Image source={{ uri: resolvedAvatarUri }} style={s(styles.avatarImage)} />
+          ) : (
+            <Text style={s(styles.avatarText)}>
+              {user?.fullName?.charAt(0)?.toUpperCase() ?? 'E'}
+            </Text>
+          )}
         </View>
         <View style={s(styles.userInfo)}>
           <Text style={s(styles.userName)} numberOfLines={1}>
@@ -388,6 +438,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#133767',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   avatarText: {
     fontSize: fs(4),
