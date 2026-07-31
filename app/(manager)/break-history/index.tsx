@@ -13,6 +13,7 @@ import {
   Platform,
   Image
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   Coffee, 
   Clock, 
@@ -30,10 +31,12 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
-import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
+import { apiFetch } from "@/lib/admin/apiClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 
 interface BreakSession {
   id: string;
@@ -45,12 +48,13 @@ interface BreakSession {
   durationMinutes: number;
   isLate: boolean;
   exceededMinutes: number;
-  avatar: string;
+  avatar?: string;
 }
 
 interface WeeklyStat {
   employeeId: string;
   employeeName: string;
+  avatar?: string;
   totalLunchMinutes: number;
   totalBreakMinutes: number;
   lunchSessionsCount: number;
@@ -62,10 +66,99 @@ interface WeeklyStat {
 interface LiveStatus {
   _id: string;
   name: string;
+  avatar?: string;
   current_status: "AVAILABLE" | "LUNCH" | "BREAK" | "OFFLINE";
   lunch_start_time: string | null;
   lunch_expected_end: string | null;
   break_start_time: string | null;
+}
+
+function getInitials(name: string) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  const first = parts[0]?.[0] ?? "?";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "?" : "";
+  return (first + last).toUpperCase();
+}
+
+function UserAvatar({
+  url,
+  name,
+  size,
+  style,
+  textStyle,
+  jwtToken,
+}: {
+  url?: string | null;
+  name: string;
+  size: number;
+  style?: any;
+  textStyle?: any;
+  jwtToken?: string | null;
+}) {
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [url, jwtToken]);
+
+  const imageSource = useMemo(() => {
+    if (!url || typeof url !== "string" || !url.trim()) return null;
+
+    let finalUrl = url.trim();
+
+    if (
+      finalUrl.startsWith("data:") ||
+      finalUrl.startsWith("file://") ||
+      finalUrl.startsWith("content://")
+    ) {
+      return { uri: finalUrl };
+    }
+
+    if (finalUrl.startsWith("/uploads/")) {
+      finalUrl = finalUrl.replace("/uploads/", "/api/s3-proxy/");
+    } else if (finalUrl.startsWith("uploads/")) {
+      finalUrl = finalUrl.replace("uploads/", "/api/s3-proxy/");
+    } else if (!finalUrl.startsWith("/api/s3-proxy/") && !finalUrl.startsWith("http")) {
+      finalUrl = `/api/s3-proxy/${finalUrl.replace(/^\//, "")}`;
+    }
+
+    if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+      finalUrl = `https://task.se7eninc.com${finalUrl.startsWith("/") ? finalUrl : `/${finalUrl}`}`;
+    }
+
+    try {
+      const proxied = toProxiedUrl(finalUrl);
+      if (proxied && proxied.includes("token=")) {
+        finalUrl = proxied;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    if (jwtToken && !finalUrl.includes("token=")) {
+      const separator = finalUrl.includes("?") ? "&" : "?";
+      finalUrl = `${finalUrl}${separator}token=${jwtToken}`;
+    }
+
+    return {
+      uri: finalUrl,
+      headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : undefined,
+    };
+  }, [url, jwtToken]);
+
+  if (imageSource && !imageError) {
+    return (
+      <Image
+        source={imageSource}
+        style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
+        resizeMode="cover"
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+
+  return <Text style={textStyle}>{getInitials(name)}</Text>;
 }
 
 function buildColors(uiTheme: any, isDark: boolean) {
@@ -93,7 +186,7 @@ function buildColors(uiTheme: any, isDark: boolean) {
     successBorder:      isDark ? "rgba(46, 125, 50, 0.3)" : "#FEE2E2",
     danger:             isDark ? "#F87171" : "#C62828",
     dangerBg:           isDark ? "rgba(198, 40, 40, 0.15)" : "#FEF2F2",
-    dangerBorder:       isDark ? "rgba(198, 40, 40, 0.3)" : "#FEE2E2",
+    dangerBorder:       isDark ? "rgba(198, 40, 40, 0.3)" : "#FEF2F2",
     avatarBg:           isDark ? "#27272A" : "#E2E8F0",
     overlayBg:          "rgba(15, 23, 42, 0.6)",
     modalPanelBg:       isDark ? "#18181b" : "#FFFFFF",
@@ -313,6 +406,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       borderColor: colors.border,
       justifyContent: 'center',
       alignItems: 'center',
+      overflow: 'hidden',
     },
     avatarInitials: {
       color: colors.text,
@@ -447,6 +541,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       backgroundColor: colors.avatarBg,
       justifyContent: 'center',
       alignItems: 'center',
+      overflow: 'hidden',
     },
     avatarMiniText: {
       color: colors.textMuted,
@@ -641,8 +736,12 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 }
 
 export default function BreakTrackingScreen() {
+  const { user } = useAuth();
   const { socket } = useSocket();
   const { uiTheme } = useTheme();
+
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+
   const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -670,6 +769,42 @@ export default function BreakTrackingScreen() {
   
   const [, setTick] = useState(0);
 
+  // Retrieve Authentication Token
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        await initToken();
+        let token =
+          (user as any)?.token ||
+          (user as any)?.accessToken ||
+          (user as any)?.jwt;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) =>
+            /token|jwt|auth|session/i.test(k)
+          );
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === "string" && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error("Failed to load token in BreakTrackingScreen:", err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [user]);
+
   const fetchData = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
@@ -683,7 +818,6 @@ export default function BreakTrackingScreen() {
       const historyRes = await apiFetch<{ sessions: BreakSession[]; weeklyStats: WeeklyStat[] }>(historyUrl);
       const liveRes = await apiFetch<{ items: LiveStatus[] }>("/api/team/statuses");
       
-      console.log(historyRes);
       setSessions(historyRes?.sessions || []);
       setWeeklyStats(historyRes?.weeklyStats || []);
       setLiveStatuses(liveRes?.items || []);
@@ -733,7 +867,8 @@ export default function BreakTrackingScreen() {
             current_status: data.current_status,
             lunch_start_time: data.lunch_start_time,
             lunch_expected_end: data.lunch_expected_end,
-            break_start_time: data.break_start_time
+            break_start_time: data.break_start_time,
+            avatar: data.avatar || updated[index].avatar,
           };
           return updated;
         } else {
@@ -743,7 +878,8 @@ export default function BreakTrackingScreen() {
             current_status: data.current_status,
             lunch_start_time: data.lunch_start_time,
             lunch_expected_end: data.lunch_expected_end,
-            break_start_time: data.break_start_time
+            break_start_time: data.break_start_time,
+            avatar: data.avatar,
           }];
         }
       });
@@ -763,16 +899,6 @@ export default function BreakTrackingScreen() {
     const min = m % 60;
     if (h > 0) return `${h}h ${min}m`;
     return `${min}m`;
-  };
-
-  const getInitials = (name: string) => {
-    return String(name || "")
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase())
-      .join("")
-      .slice(0, 2);
   };
 
   const getLiveDurationSeconds = (startTimeStr: string | null) => {
@@ -973,7 +1099,14 @@ export default function BreakTrackingScreen() {
                     <View key={emp._id || String(index)} style={s(styles.stopwatchRowPlate)}>
                       <View style={s(styles.leftMetaInline)}>
                         <View style={s(styles.avatarCircle)}>
-                          <Text style={s(styles.avatarInitials)}>{getInitials(emp.name)}</Text>
+                          <UserAvatar
+                            url={emp.avatar}
+                            name={emp.name}
+                            size={wp(8)}
+                            style={{ borderRadius: wp(4) }}
+                            textStyle={s(styles.avatarInitials)}
+                            jwtToken={jwtToken}
+                          />
                         </View>
                         <View style={s({ marginLeft: wp(2.5), maxWidth: wp(40) })}>
                           <Text style={s(styles.empPlateName)} numberOfLines={1}>{emp.name}</Text>
@@ -1047,20 +1180,20 @@ export default function BreakTrackingScreen() {
                   return (
                     <View key={sItem.id || String(idx)} style={s(styles.tableBodyDataRow)}>
                       <View style={s([styles.tableCellAlign, { width: wp(35) }])}>
-                       <View style={s(styles.avatarMiniCircle)}>
-                      {sItem.avatar && sItem.avatar.trim() !== "" ? (
-                        <Image 
-                          source={{ uri: sItem.avatar }} 
-                          style={s({ width: wp(6.5), height: wp(6.5), borderRadius: wp(3.25) })} 
-                        />
-                      ) : (
-                        <Text style={s(styles.avatarMiniText)}>{getInitials(sItem.employeeName)}</Text>
-                      )}
-                    </View>
+                        <View style={s(styles.avatarMiniCircle)}>
+                          <UserAvatar
+                            url={sItem.avatar}
+                            name={sItem.employeeName}
+                            size={wp(6.5)}
+                            style={{ borderRadius: wp(3.25) }}
+                            textStyle={s(styles.avatarMiniText)}
+                            jwtToken={jwtToken}
+                          />
+                        </View>
                         <View style={s({ marginLeft: wp(2), flex: 1 })}>
                           <Text style={s(styles.cellEmpPrimaryText)} numberOfLines={1}>
-                            
-                            {sItem.employeeName}</Text>
+                            {sItem.employeeName}
+                          </Text>
                           <Text style={s(styles.cellEmpSubText)}>{dateStr}</Text>
                         </View>
                       </View>
@@ -1120,7 +1253,14 @@ export default function BreakTrackingScreen() {
                   <View style={s(styles.statBlockTopMetaRow)}>
                     <View style={s(styles.leftMetaInline)}>
                       <View style={s(styles.avatarCircle)}>
-                        <Text style={s(styles.avatarInitials)}>{getInitials(stat.employeeName)}</Text>
+                        <UserAvatar
+                          url={stat.avatar}
+                          name={stat.employeeName}
+                          size={wp(8)}
+                          style={{ borderRadius: wp(4) }}
+                          textStyle={s(styles.avatarInitials)}
+                          jwtToken={jwtToken}
+                        />
                       </View>
                       <Text style={s(styles.statBlockEmpName)}>{stat.employeeName}</Text>
                     </View>

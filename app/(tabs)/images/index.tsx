@@ -11,6 +11,7 @@ import {
   Image,
   SafeAreaView,
   StatusBar,
+  Dimensions,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
@@ -30,7 +31,10 @@ import {
 } from "lucide-react-native";
 import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { s, wp, hp, fs } from "@/util/styles";
+
+const { width, height } = Dimensions.get("window");
 
 interface FolderNode {
   id: string;
@@ -69,6 +73,38 @@ interface Paginated<T> {
   totalPages: number;
 }
 
+function ImageWithLoader({
+  uri,
+  style,
+  resizeMode = "cover",
+  indicatorColor = "#3b82f6",
+}: {
+  uri: string;
+  style: any;
+  resizeMode?: "cover" | "contain" | "stretch" | "center";
+  indicatorColor?: string;
+}) {
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <View style={styles.imageLoaderWrapper}>
+      {loading && (
+        <View style={styles.imageLoaderContainer}>
+          <ActivityIndicator size="small" color={indicatorColor} />
+        </View>
+      )}
+      <Image
+        source={{ uri }}
+        style={style}
+        resizeMode={resizeMode}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onError={() => setLoading(false)}
+      />
+    </View>
+  );
+}
+
 function flattenFolders(tree: FolderNode[], out: FolderNode[] = []): FolderNode[] {
   for (const n of tree) {
     out.push(n);
@@ -96,7 +132,8 @@ export default function EmployeeAssetLibraryScreen({
   description?: string;
 }) {
   const { uiTheme } = useTheme();
-  
+  const { token } = useAuth() as any;
+
   const isLightTheme = useMemo(() => {
     return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   }, [uiTheme]);
@@ -123,6 +160,24 @@ export default function EmployeeAssetLibraryScreen({
   const [showSortPicker, setShowSortPicker] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const resolveUrlWithToken = useMemo(() => {
+    return (rawUrl?: string) => {
+      if (!rawUrl) return "";
+      let url = rawUrl;
+      if (url.startsWith("/uploads/")) {
+        url = url.replace("/uploads/", "/api/s3-proxy/");
+      }
+      if (!url.startsWith("http") && !url.startsWith("data:")) {
+        url = `https://task.se7eninc.com${url.startsWith("/") ? "" : "/"}${url}`;
+      }
+      let finalUrl = toProxiedUrl(url) || url;
+      if (token && !finalUrl.includes("token=")) {
+        finalUrl += `${finalUrl.includes("?") ? "&" : "?"}token=${token}`;
+      }
+      return finalUrl;
+    };
+  }, [token]);
+
   const foldersQuery = useQuery({
     queryKey: ["asset-library", "folders", "employee", moduleName],
     queryFn: async () => {
@@ -143,25 +198,20 @@ export default function EmployeeAssetLibraryScreen({
       params.set("page", String(page));
       params.set("limit", String(limit));
       const qs = params.toString() ? `?${params.toString()}` : "";
-      
+
       const res = await apiFetch<Paginated<Asset>>(`/api/asset-library/assets${qs}`);
-      
+
       if (res?.items) {
-        res.items = await Promise.all(
-          res.items.map(async (item) => {
-            const rawThumb = item.urlThumbnail || item.attachment?.url || "";
-            const rawPreview = item.attachment?.url || "";
-            
-            const resolvedThumb = rawThumb ? await toProxiedUrl(rawThumb) : "";
-            const resolvedPreview = rawPreview ? await toProxiedUrl(rawPreview) : "";
-            
-            return {
-              ...item,
-              resolvedThumb: resolvedThumb || rawThumb,
-              resolvedPreview: resolvedPreview || rawPreview,
-            };
-          })
-        );
+        res.items = res.items.map((item) => {
+          const rawThumb = item.urlThumbnail || item.attachment?.url || "";
+          const rawPreview = item.attachment?.url || item.urlPreview || "";
+
+          return {
+            ...item,
+            resolvedThumb: resolveUrlWithToken(rawThumb),
+            resolvedPreview: resolveUrlWithToken(rawPreview),
+          };
+        });
       }
       return res;
     },
@@ -181,13 +231,12 @@ export default function EmployeeAssetLibraryScreen({
         { method: "POST" }
       );
 
-      const resolvedUrl = await toProxiedUrl(res.url);
-      const safeUrl = resolvedUrl || res.url;
+      const safeUrl = resolveUrlWithToken(res.url);
       const targetFilename = res.fileName || asset.attachment?.fileName || "asset";
       const localUri = `${FileSystem.documentDirectory}${Date.now()}_${targetFilename}`;
 
       const downloadResult = await FileSystem.downloadAsync(safeUrl, localUri);
-      
+
       if (downloadResult.status === 200) {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(downloadResult.uri, { mimeType: asset.attachment?.mimeType || asset.mimeType });
@@ -201,8 +250,7 @@ export default function EmployeeAssetLibraryScreen({
   };
 
   const copyToClipboard = async (urlStr: string) => {
-    const resolvedUrl = await toProxiedUrl(urlStr);
-    const link = resolvedUrl || urlStr;
+    const link = resolveUrlWithToken(urlStr);
     if (link) {
       await Clipboard.setStringAsync(link);
     }
@@ -277,7 +325,7 @@ export default function EmployeeAssetLibraryScreen({
         <View style={s([styles.card, { backgroundColor: cardBg, borderColor: border }])}>
           <View style={s([styles.cardHeader, { backgroundColor: headerBg, borderBottomColor: border, flexDirection: "column", gap: hp(1.2) }])}>
             <Text style={s([styles.cardTitle, { color: tintColor }])}>Assets</Text>
-            
+
             <View style={s(styles.controlsRow)}>
               <TouchableOpacity style={s([styles.pickerTrigger, { backgroundColor: inputBg, borderColor: border }])} onPress={() => setShowTypePicker(true)}>
                 <Text style={s([styles.pickerText, { color: tintColor }])}>{typeFilter === "" ? "All Types" : typeFilter.toUpperCase()}</Text>
@@ -325,7 +373,12 @@ export default function EmployeeAssetLibraryScreen({
                     >
                       <View style={s([styles.imagePlaceholderBox, { backgroundColor: inputBg }])}>
                         {isImage && a.resolvedThumb ? (
-                          <Image source={{ uri: a.resolvedThumb }} style={s(styles.gridImage)} resizeMode="cover" />
+                          <ImageWithLoader
+                            uri={a.resolvedThumb}
+                            style={s(styles.gridImage)}
+                            resizeMode="cover"
+                            indicatorColor={primaryColor}
+                          />
                         ) : (
                           <View style={s(styles.fallbackIconCenter)}>
                             {mime === "application/pdf" ? <FileText color={mutedText} size={fs(7)} /> : <ImageIcon color={mutedText} size={fs(7)} />}
@@ -334,7 +387,10 @@ export default function EmployeeAssetLibraryScreen({
                         <TouchableOpacity
                           activeOpacity={0.6}
                           style={s(styles.floatingCopyLink)}
-                          onPress={() => copyToClipboard(a.attachment?.url || "")}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(a.attachment?.url || "");
+                          }}
                         >
                           <LinkIcon color="#ffffff" size={fs(3)} />
                         </TouchableOpacity>
@@ -375,6 +431,7 @@ export default function EmployeeAssetLibraryScreen({
         </View>
       </ScrollView>
 
+      {/* Type Filter Bottom Sheet Picker */}
       <Modal visible={showTypePicker} transparent animationType="slide">
         <TouchableOpacity style={s(styles.modalOverlay)} activeOpacity={1} onPress={() => setShowTypePicker(false)}>
           <View style={s([styles.bottomSheetContainer, { backgroundColor: cardBg, borderTopColor: border }])}>
@@ -396,6 +453,7 @@ export default function EmployeeAssetLibraryScreen({
         </TouchableOpacity>
       </Modal>
 
+      {/* Sort Filter Bottom Sheet Picker */}
       <Modal visible={showSortPicker} transparent animationType="slide">
         <TouchableOpacity style={s(styles.modalOverlay)} activeOpacity={1} onPress={() => setShowSortPicker(false)}>
           <View style={s([styles.bottomSheetContainer, { backgroundColor: cardBg, borderTopColor: border }])}>
@@ -420,86 +478,96 @@ export default function EmployeeAssetLibraryScreen({
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={Boolean(preview)} animationType="fade" transparent={false}>
-        <SafeAreaView style={s([styles.previewViewContainer, { backgroundColor: bg }])}>
-          <StatusBar barStyle={isLightTheme ? "dark-content" : "light-content"} backgroundColor={cardBg} />
-          <View style={s([styles.previewHeaderBar, { backgroundColor: cardBg, borderBottomColor: border }])}>
-            <Text style={s([styles.previewHeaderTitle, { color: tintColor }])} numberOfLines={1}>
-              {preview?.originalFilename || preview?.attachment?.fileName || "Asset Viewer"}
-            </Text>
-            <TouchableOpacity onPress={() => setPreview(null)} style={s(styles.closeModalHitbox)}>
-              <X color={tintColor} size={fs(5.5)} />
-            </TouchableOpacity>
-          </View>
+      {/* Web-Style Asset Details & Lightbox Preview Modal */}
+      <Modal visible={Boolean(preview)} animationType="fade" transparent={true}>
+        <View style={s(styles.webLightboxBackdrop)}>
+          <View style={s([styles.webLightboxBox, { backgroundColor: cardBg, borderColor: border }])}>
+            {/* Header / Title Bar */}
+            <View style={s([styles.previewHeaderBar, { backgroundColor: headerBg, borderBottomColor: border }])}>
+              <Text style={s([styles.previewHeaderTitle, { color: tintColor }])} numberOfLines={1}>
+                {preview?.originalFilename || preview?.attachment?.fileName || "Asset Details"}
+              </Text>
+              <TouchableOpacity onPress={() => setPreview(null)} style={s(styles.closeModalHitbox)}>
+                <X color={tintColor} size={fs(5.5)} />
+              </TouchableOpacity>
+            </View>
 
-          {preview ? (
-            <ScrollView contentContainerStyle={s({ padding: wp(4) })} showsVerticalScrollIndicator={false}>
-              <View style={s([styles.lightboxDisplayCard, { backgroundColor: isLightTheme ? "#f1f5f9" : "#141416", borderColor: border }])}>
-                {(() => {
-                  const mime = preview.attachment?.mimeType || preview.mimeType || "";
-                  const isImage = mime.startsWith("image/");
+            {preview ? (
+              <ScrollView contentContainerStyle={s({ padding: wp(4) })} showsVerticalScrollIndicator={false}>
+                <View style={s([styles.lightboxDisplayCard, { backgroundColor: isLightTheme ? "#f1f5f9" : "#141416", borderColor: border }])}>
+                  {(() => {
+                    const mime = preview.attachment?.mimeType || preview.mimeType || "";
+                    const isImage = mime.startsWith("image/");
 
-                  if (isImage && preview.resolvedPreview) {
-                    return <Image source={{ uri: preview.resolvedPreview }} style={s(styles.lightboxImage)} resizeMode="contain" />;
-                  }
-                  return (
-                    <View style={s(styles.unsupportedPlaceholder)}>
-                      {mime === "application/pdf" ? <FileText color={mutedText} size={fs(12)} /> : <ImageIcon color={mutedText} size={fs(12)} />}
-                      <Text style={s([styles.unsupportedText, { color: mutedText }])}>File type preview is best viewed directly post download.</Text>
+                    if (isImage && preview.resolvedPreview) {
+                      return (
+                        <ImageWithLoader
+                          uri={preview.resolvedPreview}
+                          style={s(styles.lightboxImage)}
+                          resizeMode="contain"
+                          indicatorColor={primaryColor}
+                        />
+                      );
+                    }
+                    return (
+                      <View style={s(styles.unsupportedPlaceholder)}>
+                        {mime === "application/pdf" ? <FileText color={mutedText} size={fs(12)} /> : <ImageIcon color={mutedText} size={fs(12)} />}
+                        <Text style={s([styles.unsupportedText, { color: mutedText }])}>File type preview is best viewed directly post download.</Text>
+                      </View>
+                    );
+                  })()}
+                </View>
+
+                <View style={s(styles.actionButtonsContainer)}>
+                  <TouchableOpacity style={s([styles.secondaryActionBtn, { borderColor: border, backgroundColor: isLightTheme ? "#ffffff" : "#1c1c1f" }])} onPress={() => copyToClipboard(preview.attachment?.url || "")}>
+                    <Text style={s([styles.secondaryActionText, { color: tintColor }])}>Copy Asset Link</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={s([styles.primaryActionBtn, { backgroundColor: primaryColor }])} disabled={isDownloading} onPress={() => downloadAsset(preview)}>
+                    {isDownloading ? <ActivityIndicator size="small" color="#ffffff" /> : <Download color="#ffffff" size={fs(4)} />}
+                    <Text style={s(styles.primaryActionText)}>{isDownloading ? "Downloading..." : "Download File"}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={s([styles.detailsCardBlock, { backgroundColor: cardBg, borderColor: border }])}>
+                  <Text style={s([styles.detailsHeading, { color: tintColor, borderBottomColor: border }])}>Asset Specific Metadata Properties</Text>
+                  <View style={s(styles.metadataGridRow)}>
+                    <Text style={s([styles.metaLabel, { color: mutedText }])}>File String:</Text>
+                    <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.originalFilename || preview.attachment?.fileName || "—"}</Text>
+                  </View>
+                  <View style={s(styles.metadataGridRow)}>
+                    <Text style={s([styles.metaLabel, { color: mutedText }])}>Mime Configuration:</Text>
+                    <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.mimeType || preview.attachment?.mimeType || "—"}</Text>
+                  </View>
+                  <View style={s(styles.metadataGridRow)}>
+                    <Text style={s([styles.metaLabel, { color: mutedText }])}>Computed Weight Size:</Text>
+                    <Text style={s([styles.metaValue, { color: tintColor }])}>{formatBytes(preview.sizeBytes || preview.attachment?.size)}</Text>
+                  </View>
+                  {preview.width && preview.height ? (
+                    <View style={s(styles.metadataGridRow)}>
+                      <Text style={s([styles.metaLabel, { color: mutedText }])}>Dimensions Grid:</Text>
+                      <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.width} × {preview.height} px</Text>
                     </View>
-                  );
-                })()}
-              </View>
-
-              <View style={s(styles.actionButtonsContainer)}>
-                <TouchableOpacity style={s([styles.secondaryActionBtn, { borderColor: border, backgroundColor: isLightTheme ? "#ffffff" : "#1c1c1f" }])} onPress={() => copyToClipboard(preview.attachment?.url || "")}>
-                  <Text style={s([styles.secondaryActionText, { color: tintColor }])}>Copy Asset Link</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={s([styles.primaryActionBtn, { backgroundColor: primaryColor }])} disabled={isDownloading} onPress={() => downloadAsset(preview)}>
-                  {isDownloading ? <ActivityIndicator size="small" color="#ffffff" /> : <Download color="#ffffff" size={fs(4)} />}
-                  <Text style={s(styles.primaryActionText)}>{isDownloading ? "Downloading..." : "Download File"}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={s([styles.detailsCardBlock, { backgroundColor: cardBg, borderColor: border }])}>
-                <Text style={s([styles.detailsHeading, { color: tintColor, borderBottomColor: border }])}>Asset Specific Metadata Properties</Text>
-                <View style={s(styles.metadataGridRow)}>
-                  <Text style={s([styles.metaLabel, { color: mutedText }])}>File String:</Text>
-                  <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.originalFilename || preview.attachment?.fileName || "—"}</Text>
+                  ) : null}
+                  {preview.folderId ? (
+                    <View style={s(styles.metadataGridRow)}>
+                      <Text style={s([styles.metaLabel, { color: mutedText }])}>Assigned Folder Target:</Text>
+                      <Text style={s([styles.metaValue, { color: tintColor }])}>
+                        {allFolders.find((f) => f.id === preview.folderId)?.name || "—"}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {Boolean(preview.tags?.length) ? (
+                    <View style={s(styles.metadataGridRow)}>
+                      <Text style={s([styles.metaLabel, { color: mutedText }])}>Keywords Tags:</Text>
+                      <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.tags?.join(", ")}</Text>
+                    </View>
+                  ) : null}
                 </View>
-                <View style={s(styles.metadataGridRow)}>
-                  <Text style={s([styles.metaLabel, { color: mutedText }])}>Mime Configuration:</Text>
-                  <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.mimeType || preview.attachment?.mimeType || "—"}</Text>
-                </View>
-                <View style={s(styles.metadataGridRow)}>
-                  <Text style={s([styles.metaLabel, { color: mutedText }])}>Computed Weight Size:</Text>
-                  <Text style={s([styles.metaValue, { color: tintColor }])}>{formatBytes(preview.sizeBytes || preview.attachment?.size)}</Text>
-                </View>
-                {preview.width && preview.height ? (
-                  <View style={s(styles.metadataGridRow)}>
-                    <Text style={s([styles.metaLabel, { color: mutedText }])}>Dimensions Grid:</Text>
-                    <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.width} × {preview.height} px</Text>
-                  </View>
-                ) : null}
-                {preview.folderId ? (
-                  <View style={s(styles.metadataGridRow)}>
-                    <Text style={s([styles.metaLabel, { color: mutedText }])}>Assigned Folder Target:</Text>
-                    <Text style={s([styles.metaValue, { color: tintColor }])}>
-                      {allFolders.find((f) => f.id === preview.folderId)?.name || "—"}
-                    </Text>
-                  </View>
-                ) : null}
-                {Boolean(preview.tags?.length) ? (
-                  <View style={s(styles.metadataGridRow)}>
-                    <Text style={s([styles.metaLabel, { color: mutedText }])}>Keywords Tags:</Text>
-                    <Text style={s([styles.metaValue, { color: tintColor }])}>{preview.tags?.join(", ")}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </ScrollView>
-          ) : null}
-        </SafeAreaView>
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -534,7 +602,7 @@ const styles = StyleSheet.create({
   imagePlaceholderBox: { width: "100%", aspectRatio: 1, justifyContent: "center", alignItems: "center", position: "relative" },
   gridImage: { width: "100%", height: "100%" },
   fallbackIconCenter: { alignItems: "center", justifyContent: "center" },
-  floatingCopyLink: { position: "absolute", right: wp(1.5), top: hp(0.8), width: wp(6), height: wp(6), borderRadius: wp(3), backgroundColor: "#00000090", justifyContent: "center", alignItems: "center" },
+  floatingCopyLink: { position: "absolute", right: wp(1.5), top: hp(0.8), width: wp(6), height: wp(6), borderRadius: wp(3), backgroundColor: "#00000090", justifyContent: "center", alignItems: "center", zIndex: 5 },
   gridItemFooter: { padding: wp(2), borderTopWidth: 1 },
   assetTitleText: { fontSize: fs(3), fontWeight: "500" },
   assetSizeText: { fontSize: fs(2.5), marginTop: hp(0.3) },
@@ -550,12 +618,15 @@ const styles = StyleSheet.create({
   sheetHeading: { fontSize: fs(3.8), fontWeight: "600", marginBottom: hp(1.5) },
   sheetItem: { paddingVertical: hp(1.8), borderBottomWidth: 1 },
   sheetItemText: { fontSize: fs(3.5) },
-  previewViewContainer: { flex: 1 },
-  previewHeaderBar: { height: hp(7.5), paddingHorizontal: wp(4), borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  webLightboxBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", alignItems: "center", padding: wp(3) },
+  webLightboxBox: { width: width * 0.95, maxHeight: height * 0.9, borderRadius: wp(3), borderWidth: 1, overflow: "hidden" },
+  previewHeaderBar: { height: hp(6.5), paddingHorizontal: wp(4), borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   previewHeaderTitle: { fontSize: fs(3.8), fontWeight: "600", width: "80%" },
   closeModalHitbox: { width: wp(9), height: wp(9), justifyContent: "center", alignItems: "center" },
-  lightboxDisplayCard: { width: "100%", height: hp(40), borderWidth: 1, borderRadius: wp(2), justifyContent: "center", alignItems: "center", overflow: "hidden", marginBottom: hp(2) },
+  lightboxDisplayCard: { width: "100%", height: hp(35), borderWidth: 1, borderRadius: wp(2), justifyContent: "center", alignItems: "center", overflow: "hidden", marginBottom: hp(2) },
   lightboxImage: { width: "100%", height: "100%" },
+  imageLoaderWrapper: { width: "100%", height: "100%", position: "relative", justifyContent: "center", alignItems: "center" },
+  imageLoaderContainer: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center", zIndex: 1 },
   unsupportedPlaceholder: { padding: wp(6), alignItems: "center" },
   unsupportedText: { fontSize: fs(3), textAlign: "center", marginTop: hp(1.5), maxWidth: "80%" },
   actionButtonsContainer: { flexDirection: "row", gap: wp(2.5), marginBottom: hp(2.5) },
@@ -567,5 +638,5 @@ const styles = StyleSheet.create({
   detailsHeading: { fontSize: fs(3.5), fontWeight: "600", borderBottomWidth: 1, paddingBottom: hp(0.8) },
   metadataGridRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: hp(0.3) },
   metaLabel: { fontSize: fs(3), fontWeight: "500" },
-  metaValue: { fontSize: fs(3), maxWidth: "60%", textAlign: "right" }
+  metaValue: { fontSize: fs(3), maxWidth: "60%", textAlign: "right" },
 });
