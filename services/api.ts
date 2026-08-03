@@ -10,6 +10,9 @@ export const API_BASE_URL_IMAGE = 'https://task.se7eninc.com';
 
 
 //export const API_BASE_URL = 'http://192.168.31.130:5002/api';
+//export const API_BASE_URL_IMAGE = 'http://192.168.31.130:5002';
+
+
 //export const API_BASE_URL = 'http://192.168.0.100:5002/api';
  
 export function getApiBaseUrl(): string {

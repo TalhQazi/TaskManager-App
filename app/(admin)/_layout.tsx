@@ -15,7 +15,7 @@ export default function AdminLayout() {
   const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
 
   return (
-    <View style={styles.root} key={uiTheme.theme}>
+    <View style={styles.root}>
       <AdminHeader
         onMenuPress={() => setSidebarOpen(true)}
       />

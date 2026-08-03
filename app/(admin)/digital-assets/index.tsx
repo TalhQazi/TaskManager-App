@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,153 +6,190 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  Platform
+  Platform,
+  useWindowDimensions,
+  Alert
 } from "react-native";
 import * as Print from "expo-print";
 import { Printer, Globe, FolderPlus, Share2, Mail } from "lucide-react-native";
+import { ActiveWebsites } from "@/components/digitalassets/ActiveWebsites";
 import { FutureWebsites } from "@/components/digitalassets/FutureWebsites";
 import { SocialMediaAccounts } from "@/components/digitalassets/SocialMediaAccounts";
 import { EmailAccounts } from "@/components/digitalassets/EmailAccounts";
-import ActiveWebsites from "@/components/digitalassets/ActiveWebsites";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
 
 type TabKey = "active-websites" | "future-websites" | "social-media" | "email-accounts";
 
+interface TabConfig {
+  id: TabKey;
+  label: string;
+  cardTitle: string;
+  icon: React.ElementType;
+}
+
 export default function DigitalAssetsMobile() {
-  const themeContext = useTheme() as any;
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const [activeTab, setActiveTab] = useState<TabKey>("active-websites");
+  const { uiTheme } = useTheme() as any;
 
-  const activeColors = useMemo(() => {
-    const uiTheme = themeContext?.uiTheme;
-    const isDark = uiTheme?.theme === "dark" || uiTheme?.theme === "metallic-elite";
+  const isDark =
+    uiTheme?.theme === "dark" ||
+    uiTheme?.theme === "metallic-elite" ||
+    uiTheme?.panelColors?.dashboardTextColor === "#ffffff" ||
+    uiTheme?.panelColors?.dashboardTextColor === "#f4f4f5";
 
+  const colors = useMemo(() => {
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#090a0f" : "#f8fafc"),
       surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
-      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
-      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"),
-      surfaceVariant: isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
-      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#ffffff" : "#0f172a"),
+      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.1)" : "#e2e8f0"),
+      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9"),
+      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
       textMuted: isDark ? "#94a3b8" : "#64748b",
-      textLight: isDark ? "#64748b" : "#94a3b8",
       primary: uiTheme?.customColors?.primary || "#0072FF",
       primaryLight: isDark ? "rgba(0, 114, 255, 0.15)" : "#eff6ff",
     };
-  }, [themeContext]);
+  }, [uiTheme, isDark]);
 
-  const tabsRegistry = [
-    { id: "active-websites" as TabKey, label: "Active", icon: Globe },
-    { id: "future-websites" as TabKey, label: "Future", icon: FolderPlus },
-    { id: "social-media" as TabKey, label: "Socials", icon: Share2 },
-    { id: "email-accounts" as TabKey, label: "Emails", icon: Mail },
-  ];
+  const tabs: TabConfig[] = useMemo(
+    () => [
+      { id: "active-websites", label: "Active Websites", cardTitle: "Active Websites", icon: Globe },
+      { id: "future-websites", label: "Future Websites", cardTitle: "Future Websites", icon: FolderPlus },
+      { id: "social-media", label: "Social Media", cardTitle: "Social Media Accounts", icon: Share2 },
+      { id: "email-accounts", label: "Email Accounts", cardTitle: "Email Accounts", icon: Mail },
+    ],
+    []
+  );
 
-  const handleSystemPrint = async () => {
+  const handlePrint = useCallback(async () => {
     try {
-      const htmlReportMarkup = `
+      const htmlContent = `
+        <!DOCTYPE html>
         <html>
           <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <style>
-              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 24px; color: #0f172a; }
-              h1 { font-size: 28px; margin-bottom: 4px; font-weight: bold; }
-              p.desc { color: #64748b; font-size: 14px; margin-bottom: 24px; }
-              .section-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; page-break-inside: avoid; }
-              .card-title { font-size: 18px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 24px; color: #0f172a; }
+              h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+              p.sub { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+              .section { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; page-break-inside: avoid; }
+              .section-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
             </style>
           </head>
           <body>
-            <h1>Digital Assets Report</h1>
-            <p class="desc">Comprehensive snapshot log summarizing asset infrastructure nodes.</p>
-            
-            <div class="section-card">
-              <div class="card-title">Active Websites</div>
-              <p>Asset list details appended via ActiveWebsites component matrix.</p>
-            </div>
-            <div class="section-card">
-              <div class="card-title">Future Websites</div>
-              <p>Asset list details appended via FutureWebsites component matrix.</p>
-            </div>
-            <div class="section-card">
-              <div class="card-title">Social Media Accounts</div>
-              <p>Asset list details appended via SocialMediaAccounts component matrix.</p>
-            </div>
-            <div class="section-card">
-              <div class="card-title">Email Accounts</div>
-              <p>Asset list details appended via EmailAccounts component matrix.</p>
-            </div>
+            <h1>Digital Assets</h1>
+            <p class="sub">Manage websites, domains, and social media accounts</p>
+            <div class="section"><div class="section-title">Active Websites</div></div>
+            <div class="section"><div class="section-title">Future Websites</div></div>
+            <div class="section"><div class="section-title">Social Media Accounts</div></div>
+            <div class="section"><div class="section-title">Email Accounts</div></div>
           </body>
         </html>
       `;
-
-      await Print.printAsync({
-        html: htmlReportMarkup,
-      });
-    } catch (error) {
-      console.error(error);
+      await Print.printAsync({ html: htmlContent });
+    } catch (error: any) {
+      Alert.alert("Print Error", error?.message || "Unable to print report.");
     }
-  };
+  }, []);
+
+  const currentTabConfig = useMemo(() => {
+    return tabs.find((t) => t.id === activeTab) || tabs[0];
+  }, [tabs, activeTab]);
 
   const renderTabContent = () => {
-    switch (activeTab) {
-      case "active-websites":
-        return <ActiveWebsites />;
-      case "future-websites":
-        return <FutureWebsites />;
-      case "social-media":
-        return <SocialMediaAccounts />;
-      case "email-accounts":
-        return <EmailAccounts />;
-      default:
-        return null;
+    try {
+      switch (activeTab) {
+        case "active-websites":
+          return ActiveWebsites ? <ActiveWebsites /> : null;
+        case "future-websites":
+          return FutureWebsites ? <FutureWebsites /> : null;
+        case "social-media":
+          return SocialMediaAccounts ? <SocialMediaAccounts /> : null;
+        case "email-accounts":
+          return EmailAccounts ? <EmailAccounts /> : null;
+        default:
+          return null;
+      }
+    } catch (err: any) {
+      return (
+        <View style={{ padding: 16, alignItems: "center" }}>
+          <Text style={{ color: "#ef4444", fontSize: 13, fontWeight: "600" }}>
+            Failed to render tab content: {err?.message || "Invalid Component"}
+          </Text>
+        </View>
+      );
     }
-  };
-
-  const getActiveTabTitle = () => {
-    return tabsRegistry.find(t => t.id === activeTab)?.label + " Directory";
   };
 
   return (
-    <SafeAreaView style={[s(styles.safeContainer), { backgroundColor: activeColors.background }]}>
-      <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false}>
-        
-        <View style={s(styles.headerBlock)}>
-          <View style={s(styles.titleWrapper)}>
-            <Text style={[s(styles.headerTitle), { color: activeColors.text }]}>Digital Assets</Text>
-            <Text style={[s(styles.headerSubtitle), { color: activeColors.textMuted }]}>
-              Manage corporate websites, domain extensions, and digital accounts.
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: isTablet ? 24 : 16 }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextGroup}>
+            <Text
+              style={[
+                styles.title,
+                { color: colors.text, fontSize: isTablet ? 28 : isSmallScreen ? 20 : 24 }
+              ]}
+            >
+              Digital Assets
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+              Manage websites, domains, and social media accounts
             </Text>
           </View>
-          
-          <TouchableOpacity 
-            style={[s(styles.printActionBtn), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]} 
-            onPress={handleSystemPrint} 
+
+          <TouchableOpacity
+            style={[styles.printButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={handlePrint}
             activeOpacity={0.7}
           >
-            <Printer size={15} color={activeColors.text} />
-            <Text style={[s(styles.printActionBtnText), { color: activeColors.text }]}>Print</Text>
+            <Printer size={15} color={colors.text} />
+            <Text style={[styles.printButtonText, { color: colors.text }]}>Print Report</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[s(styles.tabBarRowWrapper), { borderBottomColor: activeColors.borderLight }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s(styles.tabScrollInsideFlex)}>
-            {tabsRegistry.map((tab) => {
-              const TabIcon = tab.icon;
+        <View style={[styles.tabBarWrapper, { borderBottomColor: colors.borderLight }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabScrollContainer}
+          >
+            {tabs.map((tab) => {
+              const IconComponent = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <TouchableOpacity
                   key={tab.id}
                   style={[
-                    s(styles.tabTriggerItem), 
-                    { backgroundColor: activeColors.surface, borderColor: activeColors.border },
-                    isActive && [s(styles.tabTriggerItemActive), { borderColor: activeColors.primary, backgroundColor: activeColors.primaryLight }]
+                    styles.tabTrigger,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    isActive && {
+                      borderColor: colors.primary,
+                      backgroundColor: colors.primaryLight,
+                    },
                   ]}
                   onPress={() => setActiveTab(tab.id)}
                   activeOpacity={0.8}
                 >
-                  <TabIcon size={14} color={isActive ? activeColors.primary : activeColors.textMuted} />
-                  <Text style={[s(styles.tabTriggerText), { color: activeColors.textMuted }, isActive && [s(styles.tabTriggerTextActive), { color: activeColors.primary }]]}>
+                  <IconComponent size={14} color={isActive ? colors.primary : colors.textMuted} />
+                  <Text
+                    style={[
+                      styles.tabTriggerText,
+                      { color: colors.textMuted },
+                      isActive && [styles.tabTriggerTextActive, { color: colors.primary }],
+                    ]}
+                  >
                     {tab.label}
                   </Text>
                 </TouchableOpacity>
@@ -161,50 +198,47 @@ export default function DigitalAssetsMobile() {
           </ScrollView>
         </View>
 
-        <View style={[s(styles.contentDisplayCard), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-          <View style={[s(styles.cardHeaderFlex), { borderBottomColor: activeColors.borderLight }]}>
-            <Text style={[s(styles.cardTitleText), { color: activeColors.text }]}>{getActiveTabTitle()}</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.cardHeader, { borderBottomColor: colors.borderLight }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              {currentTabConfig.cardTitle}
+            </Text>
           </View>
-          <View style={s(styles.cardContentBodyContainer)}>
-            {renderTabContent()}
-          </View>
+          <View style={styles.cardBody}>{renderTabContent()}</View>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeContainer: { 
-    flex: 1 
+  safeArea: {
+    flex: 1,
   },
-  scrollContainer: { 
-    paddingBottom: 32 
+  scrollContent: {
+    paddingTop: 20,
+    paddingBottom: 32,
   },
-  headerBlock: {
+  headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    marginBottom: 16,
-    gap: 12
+    marginBottom: 20,
+    gap: 12,
   },
-  titleWrapper: { 
-    flex: 1 
+  headerTextGroup: {
+    flex: 1,
   },
-  headerTitle: { 
-    fontSize: 24, 
-    fontWeight: "bold", 
-    letterSpacing: -0.5 
+  title: {
+    fontWeight: "700",
+    letterSpacing: -0.5,
   },
-  headerSubtitle: { 
-    fontSize: 13, 
-    marginTop: 4, 
-    lineHeight: 18 
+  subtitle: {
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
   },
-  printActionBtn: {
+  printButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -213,59 +247,71 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2 },
-      android: { elevation: 1 }
-    })
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  printActionBtnText: { 
-    fontSize: 13, 
-    fontWeight: "600" 
+  printButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
-  tabBarRowWrapper: { 
-    marginBottom: 16, 
-    borderBottomWidth: 1 
+  tabBarWrapper: {
+    marginBottom: 16,
+    borderBottomWidth: 1,
   },
-  tabScrollInsideFlex: { 
-    paddingHorizontal: 16, 
-    gap: 8, 
-    paddingBottom: 10 
+  tabScrollContainer: {
+    gap: 8,
+    paddingBottom: 10,
   },
-  tabTriggerItem: {
+  tabTrigger: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1
+    borderWidth: 1,
   },
-  tabTriggerItemActive: {},
-  tabTriggerText: { 
-    fontSize: 13, 
-    fontWeight: "500" 
+  tabTriggerText: {
+    fontSize: 13,
+    fontWeight: "500",
   },
-  tabTriggerTextActive: { 
-    fontWeight: "600" 
+  tabTriggerTextActive: {
+    fontWeight: "600",
   },
-  contentDisplayCard: {
-    marginHorizontal: 16,
+  card: {
     borderRadius: 12,
     borderWidth: 1,
     overflow: "hidden",
     ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4 },
-      android: { elevation: 1 }
-    })
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  cardHeaderFlex: { 
-    padding: 16, 
-    borderBottomWidth: 1 
+  cardHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
-  cardTitleText: { 
-    fontSize: 15, 
-    fontWeight: "600" 
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
   },
-  cardContentBodyContainer: { 
-    padding: 16 
-  }
+  cardBody: {
+    padding: 16,
+  },
 });
