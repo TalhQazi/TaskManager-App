@@ -77,7 +77,7 @@ import {
   NotebookTabs,
   AlertCircle,
   Speaker,
-  Workflow,
+  Workflow,Heal
 } from 'lucide-react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,6 +164,7 @@ const MENU_ITEMS = [
     icon: Landmark,
     path: '/(admin)/companies',
   },
+ 
   {
     id: 8,
     label: 'Company Information',
@@ -362,6 +363,14 @@ const MENU_ITEMS = [
     icon: Mail,
     path: '/(admin)/system-email-settings',
     superAdminOnly: true,
+  },
+   {
+    
+    id: 700,
+    label: 'System Health',
+    icon: Shield,
+    path: '/(admin)/health',
+
   },
   {
     id: 34,

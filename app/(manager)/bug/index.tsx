@@ -167,7 +167,7 @@ export default function ManagerBugs() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
           <Bug size={fs(5)} color={colors.golden} style={{ marginRight: wp(2) }} />
           <Text style={[styles.headerTitle, { color: colors.text }]}>Bug Reports</Text>
@@ -192,9 +192,12 @@ export default function ManagerBugs() {
             <Text style={styles.btnPrimaryText}>+ Report Bug</Text>
           </TouchableOpacity>
         </View>
+        <View style={{ marginTop: hp(1) }}>
+        <BugDashboardAnalytics />
+        </View>
       </View>
 
-      <BugDashboardAnalytics />
+      
 
       {/* Render error banner ONLY when NOT loading and an error exists */}
       {!loading && apiError && items.length == 0 && (

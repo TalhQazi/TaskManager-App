@@ -13,8 +13,8 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
-import { format } from "date-fns";
-import { Calendar as CalendarIcon, MapPin, DollarSign, Eye, X } from "lucide-react-native";
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
+import { Calendar as CalendarIcon, MapPin, DollarSign, Eye, X, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { travelCalendarApi, TravelCalendar, TravelCalendarFilters } from "@/lib/admin/travelCalendar";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
@@ -30,6 +30,11 @@ export default function EmployeeTravelCalendar() {
   const [selectedCalendar, setSelectedCalendar] = useState<TravelCalendar | null>(null);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+
+  // Calendar Picker States
+  const [showStartCalendar, setShowStartCalendar] = useState(false);
+  const [showEndCalendar, setShowEndCalendar] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   const isLightTheme = useMemo(() => {
     return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
@@ -91,6 +96,39 @@ export default function EmployeeTravelCalendar() {
     }
   };
 
+  const renderMonthDays = (selectedDateStr: string | undefined, onSelect: (dateStr: string) => void) => {
+    const monthStart = startOfMonth(calendarMonth);
+    const monthEnd = endOfMonth(calendarMonth);
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    return (
+      <View style={s(styles.calendarGridContainer)}>
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+          <Text key={day} style={s([styles.calendarDayHeaderLabel, { color: mutedText }])}>{day}</Text>
+        ))}
+        {days.map((day) => {
+          const formattedStr = format(day, "yyyy-MM-dd");
+          const isSelected = selectedDateStr === formattedStr;
+
+          return (
+            <TouchableOpacity
+              key={formattedStr}
+              style={s([
+                styles.calendarDayCell,
+                isSelected && { backgroundColor: primaryColor },
+              ])}
+              onPress={() => onSelect(formattedStr)}
+            >
+              <Text style={s([styles.calendarDayCellText, { color: isSelected ? "#ffffff" : tintColor }])}>
+                {format(day, "d")}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
   if (loading && travelCalendars.length === 0) {
     return (
       <View style={s([styles.centerFallback, { backgroundColor: bg }])}>
@@ -118,24 +156,28 @@ export default function EmployeeTravelCalendar() {
           <View style={s(styles.filtersContainer)}>
             <View style={s(styles.filterInputBlock)}>
               <Text style={s([styles.inputLabel, { color: tintColor }])}>Start Date</Text>
-              <TextInput
-                style={s([styles.inputElement, { color: tintColor, backgroundColor: bg, borderColor: border }])}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={mutedText}
-                value={filters.startDate || ""}
-                onChangeText={(text) => setFilters({ ...filters, startDate: text })}
-              />
+              <TouchableOpacity
+                style={s([styles.dropdownTrigger, { backgroundColor: bg, borderColor: border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }])}
+                onPress={() => setShowStartCalendar(true)}
+              >
+                <Text style={s([styles.dropdownValue, { color: filters.startDate ? tintColor : mutedText }])}>
+                  {filters.startDate || "YYYY-MM-DD"}
+                </Text>
+                <CalendarIcon size={fs(3.5)} color={mutedText} />
+              </TouchableOpacity>
             </View>
 
             <View style={s(styles.filterInputBlock)}>
               <Text style={s([styles.inputLabel, { color: tintColor }])}>End Date</Text>
-              <TextInput
-                style={s([styles.inputElement, { color: tintColor, backgroundColor: bg, borderColor: border }])}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={mutedText}
-                value={filters.endDate || ""}
-                onChangeText={(text) => setFilters({ ...filters, endDate: text })}
-              />
+              <TouchableOpacity
+                style={s([styles.dropdownTrigger, { backgroundColor: bg, borderColor: border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }])}
+                onPress={() => setShowEndCalendar(true)}
+              >
+                <Text style={s([styles.dropdownValue, { color: filters.endDate ? tintColor : mutedText }])}>
+                  {filters.endDate || "YYYY-MM-DD"}
+                </Text>
+                <CalendarIcon size={fs(3.5)} color={mutedText} />
+              </TouchableOpacity>
             </View>
 
             <View style={s(styles.filterInputBlock)}>
@@ -227,6 +269,66 @@ export default function EmployeeTravelCalendar() {
         </View>
       </ScrollView>
 
+      {/* Start Date Calendar Modal */}
+      <Modal visible={showStartCalendar} transparent animationType="fade" onRequestClose={() => setShowStartCalendar(false)}>
+        <TouchableOpacity style={s(styles.pickerBackdrop)} activeOpacity={1} onPress={() => setShowStartCalendar(false)}>
+          <View style={s([styles.pickerMenu, { backgroundColor: isLightTheme ? cardBg : "#121214" }])}>
+            <View style={s(styles.calendarModalHeaderRow)}>
+              <Text style={s([styles.pickerMenuTitle, { color: tintColor, marginBottom: 0 }])}>Select Start Date</Text>
+              <View style={s(styles.monthNavRow)}>
+                <TouchableOpacity onPress={() => setCalendarMonth(subMonths(calendarMonth, 1))} style={s(styles.monthNavBtn)}>
+                  <ChevronLeft size={fs(4)} color={tintColor} />
+                </TouchableOpacity>
+                <Text style={s([styles.monthTitleText, { color: tintColor }])}>{format(calendarMonth, "MMMM yyyy")}</Text>
+                <TouchableOpacity onPress={() => setCalendarMonth(addMonths(calendarMonth, 1))} style={s(styles.monthNavBtn)}>
+                  <ChevronRight size={fs(4)} color={tintColor} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {renderMonthDays(filters.startDate, (dateStr) => {
+              setFilters({ ...filters, startDate: dateStr });
+              setShowStartCalendar(false);
+            })}
+            <TouchableOpacity
+              style={s([styles.clearDateBtn, { borderColor: border }])}
+              onPress={() => { setFilters({ ...filters, startDate: undefined }); setShowStartCalendar(false); }}
+            >
+              <Text style={s([styles.clearDateText, { color: tintColor }])}>Clear Start Date</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* End Date Calendar Modal */}
+      <Modal visible={showEndCalendar} transparent animationType="fade" onRequestClose={() => setShowEndCalendar(false)}>
+        <TouchableOpacity style={s(styles.pickerBackdrop)} activeOpacity={1} onPress={() => setShowEndCalendar(false)}>
+          <View style={s([styles.pickerMenu, { backgroundColor: isLightTheme ? cardBg : "#121214" }])}>
+            <View style={s(styles.calendarModalHeaderRow)}>
+              <Text style={s([styles.pickerMenuTitle, { color: tintColor, marginBottom: 0 }])}>Select End Date</Text>
+              <View style={s(styles.monthNavRow)}>
+                <TouchableOpacity onPress={() => setCalendarMonth(subMonths(calendarMonth, 1))} style={s(styles.monthNavBtn)}>
+                  <ChevronLeft size={fs(4)} color={tintColor} />
+                </TouchableOpacity>
+                <Text style={s([styles.monthTitleText, { color: tintColor }])}>{format(calendarMonth, "MMMM yyyy")}</Text>
+                <TouchableOpacity onPress={() => setCalendarMonth(addMonths(calendarMonth, 1))} style={s(styles.monthNavBtn)}>
+                  <ChevronRight size={fs(4)} color={tintColor} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {renderMonthDays(filters.endDate, (dateStr) => {
+              setFilters({ ...filters, endDate: dateStr });
+              setShowEndCalendar(false);
+            })}
+            <TouchableOpacity
+              style={s([styles.clearDateBtn, { borderColor: border }])}
+              onPress={() => { setFilters({ ...filters, endDate: undefined }); setShowEndCalendar(false); }}
+            >
+              <Text style={s([styles.clearDateText, { color: tintColor }])}>Clear End Date</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={showViewDialog} transparent animationType="slide" onRequestClose={() => setShowViewDialog(false)}>
         <View style={s(styles.modalOverlay)}>
           <View style={s([styles.modalSheet, { backgroundColor: cardBg }])}>
@@ -307,7 +409,7 @@ export default function EmployeeTravelCalendar() {
 
       <Modal visible={showStatusPicker} transparent animationType="fade" onRequestClose={() => setShowStatusPicker(false)}>
         <TouchableOpacity style={s(styles.pickerBackdrop)} activeOpacity={1} onPress={() => setShowStatusPicker(false)}>
-          <View style={s([styles.pickerMenu, { backgroundColor: cardBg }])}>
+          <View style={s([styles.pickerMenu, { backgroundColor: isLightTheme ? cardBg : "#121214" }])}>
             <Text style={s([styles.pickerMenuTitle, { color: tintColor }])}>Select Status</Text>
             
             <TouchableOpacity
@@ -346,7 +448,6 @@ const styles = StyleSheet.create({
   filtersContainer: { gap: hp(1.5) },
   filterInputBlock: { gap: hp(0.5) },
   inputLabel: { fontSize: fs(3), fontWeight: "600" },
-  inputElement: { height: hp(4.8), borderWidth: 1, borderRadius: wp(2), paddingHorizontal: wp(3), fontSize: fs(3.2) },
   dropdownTrigger: { height: hp(4.8), borderWidth: 1, borderRadius: wp(2), paddingHorizontal: wp(3), justifyContent: "center" },
   dropdownValue: { fontSize: fs(3.2), fontWeight: "500" },
   listStack: { gap: hp(1.5) },
@@ -367,7 +468,7 @@ const styles = StyleSheet.create({
   emptyContainer: { borderRadius: wp(3), borderWidth: 1, padding: wp(8), alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontSize: fs(3.8), fontWeight: "700" },
   emptySubtitle: { fontSize: fs(3.2), textAlign: "center", marginTop: hp(0.25) },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
   modalSheet: { borderTopLeftRadius: wp(5), borderTopRightRadius: wp(5), maxHeight: height * 0.8 },
   modalHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: wp(4), borderBottomWidth: 1 },
   modalTitleText: { fontSize: fs(4), fontWeight: "700" },
@@ -381,9 +482,19 @@ const styles = StyleSheet.create({
   propertyValue: { fontSize: fs(3.2), fontWeight: "600", marginTop: hp(0.25) },
   sectionBlock: { gap: hp(0.25) },
   sectionBodyText: { fontSize: fs(3.2), lineHeight: fs(4.5) },
-  pickerBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  pickerMenu: { borderTopLeftRadius: wp(4), borderTopRightRadius: wp(4), padding: wp(4), maxHeight: height * 0.4 },
+  pickerBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end" },
+  pickerMenu: { borderTopLeftRadius: wp(4), borderTopRightRadius: wp(4), padding: wp(4), maxHeight: height * 0.6 },
   pickerMenuTitle: { fontSize: fs(3.8), fontWeight: "700", marginBottom: hp(1.5), textAlign: "center" },
   pickerOptionItem: { paddingVertical: hp(1.5), borderBottomWidth: 1, alignItems: "center" },
   pickerOptionText: { fontSize: fs(3.5), fontWeight: "600" },
+  calendarModalHeaderRow: { marginBottom: hp(1.5) },
+  monthNavRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: hp(1) },
+  monthNavBtn: { padding: wp(1.5) },
+  monthTitleText: { fontSize: fs(3.5), fontWeight: "700" },
+  calendarGridContainer: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", paddingVertical: hp(1) },
+  calendarDayHeaderLabel: { width: wp(12), textAlign: "center", fontSize: fs(2.8), fontWeight: "700", marginBottom: hp(1) },
+  calendarDayCell: { width: wp(12), height: wp(12), justifyContent: "center", alignItems: "center", borderRadius: wp(2), marginBottom: hp(0.5) },
+  calendarDayCellText: { fontSize: fs(3.2), fontWeight: "600" },
+  clearDateBtn: { marginTop: hp(1.5), paddingVertical: hp(1.2), borderWidth: 1, borderRadius: wp(2), alignItems: "center" },
+  clearDateText: { fontSize: fs(3.2), fontWeight: "600" },
 });

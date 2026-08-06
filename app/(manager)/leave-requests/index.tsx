@@ -363,7 +363,7 @@ function createStyles(
       padding: wp(4.2),
       borderBottomWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.panelHeader,
+      backgroundColor:colors.cardBg,
     },
     modalHeaderTitle: {
       fontSize: wp(3.8),

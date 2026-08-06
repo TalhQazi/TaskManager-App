@@ -12,11 +12,16 @@ import {
   SafeAreaView,
   StatusBar,
   Dimensions,
+  Alert,
+  Linking,
+  Platform,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import * as WebBrowser from "expo-web-browser";
+import * as MediaLibrary from "expo-media-library";
 import {
   ChevronRight,
   Download,
@@ -203,7 +208,8 @@ export default function EmployeeAssetLibraryScreen({
 
       if (res?.items) {
         res.items = res.items.map((item) => {
-          const rawThumb = item.urlThumbnail || item.attachment?.url || "";
+          // Prioritize attachment.url (matching Web)
+          const rawThumb = item.attachment?.url || item.urlThumbnail || "";
           const rawPreview = item.attachment?.url || item.urlPreview || "";
 
           return {
@@ -223,36 +229,139 @@ export default function EmployeeAssetLibraryScreen({
   const totalPages = assetsQuery.data?.totalPages ?? 1;
   const total = assetsQuery.data?.total ?? assets.length;
 
-  const downloadAsset = async (asset: Asset) => {
+  const downloadAsset_ = async (asset: Asset) => {
     try {
       setIsDownloading(true);
-      const res = await apiFetch<{ url: string; fileName: string }>(
-        `/api/asset-library/assets/${encodeURIComponent(asset.id)}/download`,
-        { method: "POST" }
-      );
 
-      const safeUrl = resolveUrlWithToken(res.url);
-      const targetFilename = res.fileName || asset.attachment?.fileName || "asset";
-      const localUri = `${FileSystem.documentDirectory}${Date.now()}_${targetFilename}`;
+      let targetUrl = "";
 
-      const downloadResult = await FileSystem.downloadAsync(safeUrl, localUri);
-
-      if (downloadResult.status === 200) {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloadResult.uri, { mimeType: asset.attachment?.mimeType || asset.mimeType });
+      // 1. Try fetching fresh download URL from POST endpoint
+      try {
+        const assetId = asset.id || (asset as any)._id;
+        if (assetId) {
+          const res = await apiFetch<{ url: string; fileName: string }>(
+            `/api/asset-library/assets/${encodeURIComponent(assetId)}/download`,
+            { method: "POST" }
+          );
+          if (res?.url) {
+            targetUrl = resolveUrlWithToken(res.url);
+          }
         }
+      } catch (err) {
+        console.warn("POST /download endpoint skipped, falling back to resolved preview:", err);
       }
-    } catch (error) {
-      console.error(error);
+
+      // 2. Fallback to the working modal image preview URL if endpoint returned empty or failed
+      if (!targetUrl || targetUrl.includes("1782942948992-65stat7")) {
+        targetUrl = asset.resolvedPreview || asset.resolvedThumb || resolveUrlWithToken(asset.attachment?.url || asset.urlPreview);
+      }
+
+      if (!targetUrl) {
+        Alert.alert("Download Error", "Could not resolve a valid download URL.");
+        return;
+      }
+
+      // 3. System browser handoff (Chrome / Safari)
+      const canOpen = await Linking.canOpenURL(targetUrl);
+      if (canOpen) {
+        await Linking.openURL(targetUrl);
+      } else {
+        await WebBrowser.openBrowserAsync(targetUrl);
+      }
+    } catch (error: any) {
+      console.error("Download Failed:", error);
+      Alert.alert("Download Error", error?.message || "Failed to download asset.");
     } finally {
       setIsDownloading(false);
     }
   };
 
+const downloadAsset = async (asset: Asset) => {
+  try {
+    setIsDownloading(true);
+
+    let targetUrl = "";
+    try {
+      const assetId = asset.id || (asset as any)._id;
+      if (assetId) {
+        const res = await apiFetch<{ url: string; fileName: string }>(
+          `/api/asset-library/assets/${encodeURIComponent(assetId)}/download`,
+          { method: "POST" }
+        );
+        if (res?.url) {
+          targetUrl = resolveUrlWithToken(res.url);
+        }
+      }
+    } catch (err) {
+      console.warn("POST /download endpoint skipped, using resolved preview:", err);
+    }
+
+    if (!targetUrl || targetUrl.includes("1782942948992-65stat7")) {
+      targetUrl = asset.resolvedPreview || asset.resolvedThumb || resolveUrlWithToken(asset.attachment?.url || asset.urlPreview);
+    }
+
+    if (!targetUrl) {
+      Alert.alert("Download Error", "Could not resolve a valid download URL.");
+      return;
+    }
+
+    let filename = asset.attachment?.fileName || asset.originalFilename || "downloaded_asset";
+    const mime = asset.attachment?.mimeType || asset.mimeType || "image/jpeg";
+    
+    if (!filename.includes(".")) {
+      if (mime.includes("png")) filename += ".png";
+      else if (mime.includes("pdf")) filename += ".pdf";
+      else filename += ".jpg";
+    }
+
+    filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const localUri = `${FileSystem.documentDirectory}${Date.now()}_${filename}`;
+
+    const response = await fetch(targetUrl);
+    if (!response.ok) {
+      throw new Error(`Server returned status code ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const reader = new FileReader();
+
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1] || result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    await FileSystem.writeAsStringAsync(localUri, base64Data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // Trigger native save/share sheet (No native manifest permissions required)
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(localUri, {
+        mimeType: mime,
+        dialogTitle: `Save ${filename}`,
+        UTI: mime,
+      });
+    } else {
+      Alert.alert("Error", "Sharing / saving is not available on this device.");
+    }
+  } catch (error: any) {
+    console.error("Download Error:", error);
+    Alert.alert("Download Error", error?.message || "Failed to download asset.");
+  } finally {
+    setIsDownloading(false);
+  }
+};
+
   const copyToClipboard = async (urlStr: string) => {
     const link = resolveUrlWithToken(urlStr);
     if (link) {
       await Clipboard.setStringAsync(link);
+      Alert.alert("Copied", "Asset link copied to clipboard!");
     }
   };
 
@@ -389,7 +498,7 @@ export default function EmployeeAssetLibraryScreen({
                           style={s(styles.floatingCopyLink)}
                           onPress={(e) => {
                             e.stopPropagation();
-                            copyToClipboard(a.attachment?.url || "");
+                            copyToClipboard(a.attachment?.url || a.resolvedPreview || "");
                           }}
                         >
                           <LinkIcon color="#ffffff" size={fs(3)} />
@@ -481,7 +590,7 @@ export default function EmployeeAssetLibraryScreen({
       {/* Web-Style Asset Details & Lightbox Preview Modal */}
       <Modal visible={Boolean(preview)} animationType="fade" transparent={true}>
         <View style={s(styles.webLightboxBackdrop)}>
-          <View style={s([styles.webLightboxBox, { backgroundColor: cardBg, borderColor: border }])}>
+          <View style={s([styles.webLightboxBox, { backgroundColor: 'black', borderColor: border }])}>
             {/* Header / Title Bar */}
             <View style={s([styles.previewHeaderBar, { backgroundColor: headerBg, borderBottomColor: border }])}>
               <Text style={s([styles.previewHeaderTitle, { color: tintColor }])} numberOfLines={1}>
@@ -519,7 +628,7 @@ export default function EmployeeAssetLibraryScreen({
                 </View>
 
                 <View style={s(styles.actionButtonsContainer)}>
-                  <TouchableOpacity style={s([styles.secondaryActionBtn, { borderColor: border, backgroundColor: isLightTheme ? "#ffffff" : "#1c1c1f" }])} onPress={() => copyToClipboard(preview.attachment?.url || "")}>
+                  <TouchableOpacity style={s([styles.secondaryActionBtn, { borderColor: border, backgroundColor: isLightTheme ? "#ffffff" : "#1c1c1f" }])} onPress={() => copyToClipboard(preview.attachment?.url || preview.resolvedPreview || "")}>
                     <Text style={s([styles.secondaryActionText, { color: tintColor }])}>Copy Asset Link</Text>
                   </TouchableOpacity>
 

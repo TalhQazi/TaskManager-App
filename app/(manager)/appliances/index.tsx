@@ -166,9 +166,9 @@ type CreateApplianceValues = z.infer<typeof createApplianceSchema>;
 
 function buildColors(uiTheme: any, isDark: boolean) {
   return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#f8fafc"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#18181b" : "#ffffff"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#fafafa" : "#0f172a"),
+    background:     uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#f8fafc"),
+    cardBg:         uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#18181b" : "#ffffff"),
+    text:           uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#fafafa" : "#0f172a"),
     textSecondary:   isDark ? "#71717a" : "#475569",
     textMuted:       isDark ? "#a1a1aa" : "#64748b",
     border:          isDark ? "#27272a" : "#e2e8f0",
@@ -651,41 +651,55 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       marginBottom: 4,
     },
     photoPickerContainerBox: {
-      flexDirection: "row",
+      flexDirection: "column",
       alignItems: "center",
       backgroundColor: colors.cardBg,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 6,
-      padding: 8,
-      gap: 12,
+      padding: 10,
+      gap: 10,
     },
     formMediaAssetPreviewImage: {
-      width: 48,
-      height: 48,
-      borderRadius: 4,
+      width: "100%",
+      height: 140,
+      borderRadius: 6,
       backgroundColor: colors.border,
     },
     formMediaAssetPlaceholderBox: {
-      width: 48,
-      height: 48,
-      borderRadius: 4,
+      width: "100%",
+      height: 100,
+      borderRadius: 6,
       backgroundColor: colors.border,
       alignItems: "center",
       justifyContent: "center",
     },
     formSelectMediaButtonTrigger: {
-      flex: 1,
-      backgroundColor: colors.border,
-      borderRadius: 4,
-      height: 34,
+      width: "100%",
+      backgroundColor: colors.primary,
+      borderRadius: 6,
+      height: 38,
       justifyContent: "center",
       alignItems: "center",
     },
     formSelectMediaButtonText: {
-      color: colors.text,
+      color: "#000000",
       fontSize: 12,
-      fontWeight: "500",
+      fontWeight: "600",
+      paddingHorizontal: 8,
+    },
+    formRemoveMediaButtonTrigger: {
+      width: "100%",
+      backgroundColor: colors.outBg,
+      borderRadius: 6,
+      height: 38,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    formRemoveMediaButtonText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: "600",
       paddingHorizontal: 8,
     },
     formActionSubmitBtn: {
@@ -715,7 +729,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 }
 
 export default function Appliances() {
- 
+  
   const queryClient = useQueryClient();
   const { uiTheme } = useTheme();
 
@@ -885,6 +899,12 @@ export default function Appliances() {
     } catch (error) {
       Alert.alert("Error", "Failed to acquire photo asset.");
     }
+  };
+
+  const handleRemoveDocument = (isEdit: boolean) => {
+    const targetForm = isEdit ? editForm : form;
+    targetForm.setValue("tagPhotoFileName", "");
+    targetForm.setValue("tagPhotoDataUrl", "");
   };
 
   const openEditMode = (appliance: Appliance) => {
@@ -1238,7 +1258,7 @@ export default function Appliances() {
                   <>
                     <Text style={s(styles.sectionFormGroupTitle)}>Commercial Parameters</Text>
                     <View style={s(styles.specGrid)}>
-                      <View style={s(styles.specColumn)}><Text style={s(styles.specLabel)}>Stock Keeping SKU</Text><Text style={s(specValue)}>{selectedAppliance.sku || "—"}</Text></View>
+                      <View style={s(styles.specColumn)}><Text style={s(styles.specLabel)}>Stock Keeping SKU</Text><Text style={s(styles.specValue)}>{selectedAppliance.sku || "—"}</Text></View>
                       <View style={s(styles.specColumn)}><Text style={s(styles.specLabel)}>Acquisition Cost</Text><Text style={s(styles.specValue)}>${selectedAppliance.costPrice}</Text></View>
                     </View>
                     <View style={s(styles.specGrid)}>
@@ -1474,16 +1494,23 @@ export default function Appliances() {
 
             <Text style={s(styles.formInputLabel)}>Hardware Tag Photo File Verification</Text>
             <Controller
-              control={form.control}
+              control={form.control} 
               name="tagPhotoFileName"
               render={({ field: { value } }) => (
                 <View style={s(styles.photoPickerContainerBox)}>
                   {form.watch("tagPhotoDataUrl") ? (
-                    <Image source={{ uri: form.watch("tagPhotoDataUrl") }} style={s(styles.formMediaAssetPreviewImage)} />
+                    <>
+                      <Image source={{ uri: form.watch("tagPhotoDataUrl")! }} style={s(styles.formMediaAssetPreviewImage)} resizeMode="cover" />
+                      <Pressable style={s(styles.formRemoveMediaButtonTrigger)} onPress={() => handleRemoveDocument(false)}>
+                        <Text style={s(styles.formRemoveMediaButtonText)}>Remove Photo</Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <View style={s(styles.formMediaAssetPlaceholderBox)}>
                       <FileImage size={24} color={colors.textSecondary} />
-                      <Text style={s({ color: colors.textSecondary, fontSize: 12, marginTop: 4 })}>No Active Photo Asset Uploaded</Text>
+                      <Text style={s({ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: "center" })}>
+                        No Active Photo Asset Uploaded
+                      </Text>
                     </View>
                   )}
                   <Pressable style={s(styles.formSelectMediaButtonTrigger)} onPress={() => handlePickDocument(false)}>
@@ -1501,7 +1528,7 @@ export default function Appliances() {
               {createApplianceMutation.isPending ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
-                <Text style={s(styles.formActionSubmitBtnText)}>Authorize Database Provisioning</Text>
+                <Text style={s(styles.formActionSubmitBtnText)}>Create Record</Text>
               )}
             </Pressable>
           </ScrollView>
@@ -1716,7 +1743,12 @@ export default function Appliances() {
               render={({ field: { value } }) => (
                 <View style={s(styles.photoPickerContainerBox)}>
                   {editForm.watch("tagPhotoDataUrl") ? (
-                    <Image source={{ uri: editForm.watch("tagPhotoDataUrl") }} style={s(styles.formMediaAssetPreviewImage)} />
+                    <>
+                      <Image source={{ uri: editForm.watch("tagPhotoDataUrl")! }} style={s(styles.formMediaAssetPreviewImage)} resizeMode="cover" />
+                      <Pressable style={s(styles.formRemoveMediaButtonTrigger)} onPress={() => handleRemoveDocument(true)}>
+                        <Text style={s(styles.formRemoveMediaButtonText)}>Remove Photo</Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <View style={s(styles.formMediaAssetPlaceholderBox)}>
                       <FileImage size={24} color={colors.textSecondary} />
