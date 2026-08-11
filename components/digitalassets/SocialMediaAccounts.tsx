@@ -11,9 +11,9 @@ import {
   SafeAreaView,
   Alert,
   Linking,
-  Platform,
-  Clipboard
+  Platform
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/services/api";
 import { 
@@ -31,7 +31,6 @@ import {
   ExternalLink
 } from "lucide-react-native";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
 
 interface SocialMediaAccount {
   _id: string;
@@ -104,9 +103,10 @@ export function SocialMediaAccounts() {
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#090a0f" : "#f8fafc"),
       surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
-      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
-      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"),
+      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.12)" : "#e2e8f0"),
+      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9"),
       surfaceVariant: isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
+      inputBg: isDark ? "#0f172a" : "#ffffff",
       text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#ffffff" : "#0f172a"),
       textMuted: isDark ? "#94a3b8" : "#64748b",
       textLight: isDark ? "#64748b" : "#94a3b8",
@@ -120,7 +120,7 @@ export function SocialMediaAccounts() {
       successBorder: isDark ? "rgba(34, 197, 94, 0.3)" : "#bbf7d0",
       purple: isDark ? "#a855f7" : "#4f46e5",
       purpleLight: isDark ? "rgba(168, 85, 247, 0.15)" : "#f5f3ff",
-      overlay: isDark ? "rgba(0, 0, 0, 0.6)" : "rgba(15, 23, 42, 0.4)",
+      overlay: isDark ? "rgba(0, 0, 0, 0.75)" : "rgba(15, 23, 42, 0.5)",
     };
   }, [themeContext]);
 
@@ -251,9 +251,9 @@ export function SocialMediaAccounts() {
     }
   };
 
-  const triggerClipboardCopy = (text: string, label: string) => {
+  const triggerClipboardCopy = async (text: string, label: string) => {
     if (!text) return;
-    Clipboard.setString(text);
+    await Clipboard.setStringAsync(text);
     setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2000);
   };
@@ -345,121 +345,137 @@ export function SocialMediaAccounts() {
         )}
       </ScrollView>
 
-      <Modal visible={isFormOpen} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalScrollFormContainer}>
-          <View style={styles.modalSheetFormHeader}>
-            <Text style={styles.modalSheetFormTitle}>{selectedAccount ? "Update Matrix Identity" : "Map New Platform Boundary"}</Text>
-            <TouchableOpacity onPress={() => setIsFormOpen(false)} style={styles.closeSheetCircleButton}>
-              <X size={16} color={activeColors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={styles.innerFormKeyboardPadding} keyboardShouldPersistTaps="handled">
-            <View style={styles.formInputSectionSpace}>
-              
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Social Platform Core Engine *</Text>
-                <TouchableOpacity style={styles.formCustomSelectPickerTrigger} onPress={() => setPlatformPickerOpen(true)}>
-                  <Text style={styles.formCustomSelectPickerValueText}>{formData.platform || "Select platform target network"}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Associated Enterprise Brand</Text>
-                <TextInput
-                  style={styles.formInputBlock}
-                  placeholder="e.g., Nootech Production Engine"
-                  placeholderTextColor={activeColors.textMuted}
-                  value={formData.brand}
-                  onChangeText={(val) => setFormData({ ...formData, brand: val })}
-                />
-              </View>
-
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Target Base Account Profile URL</Text>
-                <TextInput
-                  style={styles.formInputBlock}
-                  placeholder="https://instagram.com/workspace"
-                  placeholderTextColor={activeColors.textMuted}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                  value={formData.url}
-                  onChangeText={(val) => setFormData({ ...formData, url: val })}
-                />
-              </View>
-
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Account Username / Handler *</Text>
-                <TextInput
-                  style={styles.formInputBlock}
-                  placeholder="e.g., dev_ops_admin"
-                  placeholderTextColor={activeColors.textMuted}
-                  autoCapitalize="none"
-                  value={formData.username}
-                  onChangeText={(val) => setFormData({ ...formData, username: val, accountHandle: val })}
-                />
-              </View>
-
-              <View style={styles.twoColumnInlineInputRow}>
-                <View style={styles.flexOne}>
-                  <Text style={styles.formInputLabel}>Login Registered Email</Text>
-                  <TextInput
-                    style={styles.formInputBlock}
-                    placeholder="vault@domain.in"
-                    placeholderTextColor={activeColors.textMuted}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    value={formData.accountEmail}
-                    onChangeText={(val) => setFormData({ ...formData, accountEmail: val })}
-                  />
-                </View>
-                <View style={styles.flexOne}>
-                  <Text style={styles.formInputLabel}>Passphrase Cipher</Text>
-                  <TextInput
-                    style={styles.formInputBlock}
-                    placeholder="🔑 Safe token string"
-                    placeholderTextColor={activeColors.textMuted}
-                    autoCapitalize="none"
-                    value={formData.password}
-                    onChangeText={(val) => setFormData({ ...formData, password: val })}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Directory Operations Status</Text>
-                <TouchableOpacity style={styles.formCustomSelectPickerTrigger} onPress={() => setStatusPickerOpen(true)}>
-                  <Text style={styles.formCustomSelectPickerValueText}>{formData.status}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputContainerUnit}>
-                <Text style={styles.formInputLabel}>Internal Strategic Notes</Text>
-                <TextInput
-                  style={[styles.formInputBlock, styles.formInputTextAreaBlock]}
-                  placeholder="Write programmatic logic, configurations, recovery protocols..."
-                  placeholderTextColor={activeColors.textMuted}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                  value={formData.notes}
-                  onChangeText={(val) => setFormData({ ...formData, notes: val })}
-                />
-              </View>
-            </View>
-
-            <View style={styles.formActionSubmissionSectionRow}>
-              <TouchableOpacity style={styles.formCancelDismissBtn} onPress={() => setIsFormOpen(false)}>
-                <Text style={styles.formCancelDismissBtnText}>Dismiss</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.formSubmitActionBtn} onPress={handleSave} disabled={isSubmitting}>
-                {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.formSubmitActionBtnText}>Sync Profile</Text>}
+      {/* REGISTER / EDIT SOCIAL MODAL */}
+      <Modal visible={isFormOpen} animationType="slide" transparent={true} onRequestClose={() => setIsFormOpen(false)}>
+        <View style={styles.modalOverlayContainer}>
+          <SafeAreaView style={styles.modalContentCard}>
+            <View style={styles.modalSheetFormHeader}>
+              <Text style={styles.modalSheetFormTitle}>{selectedAccount ? "Update Matrix Identity" : "Map New Platform Boundary"}</Text>
+              <TouchableOpacity onPress={() => setIsFormOpen(false)} style={styles.closeSheetCircleButton}>
+                <X size={18} color={activeColors.text} />
               </TouchableOpacity>
             </View>
-          </ScrollView>
-        </SafeAreaView>
+
+            <ScrollView contentContainerStyle={styles.innerFormKeyboardPadding} keyboardShouldPersistTaps="handled">
+              <View style={styles.formInputSectionSpace}>
+                
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Social Platform Core Engine *</Text>
+                  <TouchableOpacity style={styles.formCustomSelectPickerTrigger} onPress={() => setPlatformPickerOpen(true)}>
+                    <Text style={styles.formCustomSelectPickerValueText}>{formData.platform || "Select platform target network"}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Associated Enterprise Brand</Text>
+                  <View style={styles.inputWrapperContainer}>
+                    <TextInput
+                      style={styles.formInputFieldInside}
+                      placeholder="e.g., Nootech Production Engine"
+                      placeholderTextColor={activeColors.textMuted}
+                      value={formData.brand}
+                      onChangeText={(val) => setFormData({ ...formData, brand: val })}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Target Base Account Profile URL</Text>
+                  <View style={styles.inputWrapperContainer}>
+                    <TextInput
+                      style={styles.formInputFieldInside}
+                      placeholder="https://instagram.com/workspace"
+                      placeholderTextColor={activeColors.textMuted}
+                      autoCapitalize="none"
+                      keyboardType="url"
+                      value={formData.url}
+                      onChangeText={(val) => setFormData({ ...formData, url: val })}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Account Username / Handler *</Text>
+                  <View style={styles.inputWrapperContainer}>
+                    <TextInput
+                      style={styles.formInputFieldInside}
+                      placeholder="e.g., dev_ops_admin"
+                      placeholderTextColor={activeColors.textMuted}
+                      autoCapitalize="none"
+                      value={formData.username}
+                      onChangeText={(val) => setFormData({ ...formData, username: val, accountHandle: val })}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.twoColumnInlineInputRow}>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.formInputLabel}>Login Registered Email</Text>
+                    <View style={styles.inputWrapperContainer}>
+                      <TextInput
+                        style={styles.formInputFieldInside}
+                        placeholder="vault@domain.in"
+                        placeholderTextColor={activeColors.textMuted}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        value={formData.accountEmail}
+                        onChangeText={(val) => setFormData({ ...formData, accountEmail: val })}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.formInputLabel}>Passphrase Cipher</Text>
+                    <View style={styles.inputWrapperContainer}>
+                      <TextInput
+                        style={styles.formInputFieldInside}
+                        placeholder="🔑 Safe token string"
+                        placeholderTextColor={activeColors.textMuted}
+                        autoCapitalize="none"
+                        value={formData.password}
+                        onChangeText={(val) => setFormData({ ...formData, password: val })}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Directory Operations Status</Text>
+                  <TouchableOpacity style={styles.formCustomSelectPickerTrigger} onPress={() => setStatusPickerOpen(true)}>
+                    <Text style={styles.formCustomSelectPickerValueText}>{formData.status}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputContainerUnit}>
+                  <Text style={styles.formInputLabel}>Internal Strategic Notes</Text>
+                  <View style={[styles.inputWrapperContainer, styles.inputWrapperTextArea]}>
+                    <TextInput
+                      style={[styles.formInputFieldInside, styles.formInputTextAreaInside]}
+                      placeholder="Write programmatic logic, configurations, recovery protocols..."
+                      placeholderTextColor={activeColors.textMuted}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                      value={formData.notes}
+                      onChangeText={(val) => setFormData({ ...formData, notes: val })}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formActionSubmissionSectionRow}>
+                <TouchableOpacity style={styles.formCancelDismissBtn} onPress={() => setIsFormOpen(false)}>
+                  <Text style={styles.formCancelDismissBtnText}>Dismiss</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.formSubmitActionBtn} onPress={handleSave} disabled={isSubmitting}>
+                  {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.formSubmitActionBtnText}>Sync Profile</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
       </Modal>
 
+      {/* PLATFORM PICKER MODAL */}
       <Modal visible={platformPickerOpen} transparent={true} animationType="fade">
         <View style={styles.centeredModalDimOverlay}>
           <View style={styles.pickerOptionsPanelBox}>
@@ -483,6 +499,7 @@ export function SocialMediaAccounts() {
         </View>
       </Modal>
 
+      {/* STATUS PICKER MODAL */}
       <Modal visible={statusPickerOpen} transparent={true} animationType="fade">
         <View style={styles.centeredModalDimOverlay}>
           <View style={styles.pickerOptionsPanelBox}>
@@ -504,6 +521,7 @@ export function SocialMediaAccounts() {
         </View>
       </Modal>
 
+      {/* VIEW ACCOUNT DETAILS MODAL */}
       <Modal visible={isViewOpen} transparent={true} animationType="fade">
         <View style={styles.centeredModalDimOverlay}>
           {viewingAccount ? (
@@ -531,7 +549,7 @@ export function SocialMediaAccounts() {
                     </View>
                     <View style={styles.flexOne}>
                       <Text style={styles.metaDataHeaderMiniLabel}>Status State</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: statusThemes[viewingAccount.status]?.bg, borderColor: statusThemes[viewingAccount.status]?.border, alignSelf: "flex-start", marginTop: s(4) }]}>
+                      <View style={[styles.statusBadge, { backgroundColor: statusThemes[viewingAccount.status]?.bg, borderColor: statusThemes[viewingAccount.status]?.border, alignSelf: "flex-start", marginTop: 4 }]}>
                         <Text style={[styles.statusBadgeText, { color: statusThemes[viewingAccount.status]?.text }]}>{viewingAccount.status}</Text>
                       </View>
                     </View>
@@ -632,30 +650,30 @@ export function SocialMediaAccounts() {
 
 const getStyles = (activeColors: any) => StyleSheet.create({
   baseLayoutContainer: { flex: 1, backgroundColor: activeColors.background },
-  headerSearchBarArea: { flexDirection: "row", paddingHorizontal: s(16), paddingTop: s(14), paddingBottom: s(2), gap: s(10), alignItems: "center" },
+  headerSearchBarArea: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2, gap: 10, alignItems: "center" },
   searchBarWrapper: { flex: 1, position: "relative", justifyContent: "center" },
-  searchIconAbsolute: { position: "absolute", left: s(12), zIndex: 5 },
-  searchBarInputField: { height: s(38), backgroundColor: activeColors.surface, borderWidth: 1, borderColor: activeColors.border, borderRadius: s(8), paddingLeft: s(36), paddingRight: s(12), fontSize: 13, color: activeColors.text },
+  searchIconAbsolute: { position: "absolute", left: 12, zIndex: 5 },
+  searchBarInputField: { height: 38, backgroundColor: activeColors.surface, borderWidth: 1, borderColor: activeColors.border, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 13, color: activeColors.text },
   flexOne: { flex: 1 },
-  loaderSpacing: { marginTop: s(32) },
-  titleBlockContainer: { flex: 1, paddingRight: s(6) },
-  titleMetaFlexWrap: { flexDirection: "row", alignItems: "center", gap: s(6), flexWrap: "wrap" },
-  rowFlexGap: { flexDirection: "row", gap: s(4) },
-  maxHeightScrollPanel: { maxHeight: s(280) },
-  maxHeightInspectorScroll: { maxHeight: s(350) },
+  loaderSpacing: { marginTop: 32 },
+  titleBlockContainer: { flex: 1, paddingRight: 6 },
+  titleMetaFlexWrap: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  rowFlexGap: { flexDirection: "row", gap: 4 },
+  maxHeightScrollPanel: { maxHeight: 280 },
+  maxHeightInspectorScroll: { maxHeight: 350 },
   
-  addAssetFabBtn: { flexDirection: "row", alignItems: "center", gap: s(4), backgroundColor: activeColors.primary, height: s(38), paddingHorizontal: s(14), borderRadius: s(8) },
+  addAssetFabBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: activeColors.primary, height: 38, paddingHorizontal: 14, borderRadius: 8 },
   addAssetFabBtnText: { color: "#fff", fontSize: 13, fontWeight: "600" },
   
-  scrollBlockLayout: { padding: s(16), paddingTop: s(12) },
-  emptyCardState: { alignItems: "center", justifyContent: "center", padding: s(32), backgroundColor: activeColors.surface, borderRadius: s(12), borderWidth: 1, borderColor: activeColors.border, borderStyle: "dashed", gap: s(10) },
+  scrollBlockLayout: { padding: 16, paddingTop: 12 },
+  emptyCardState: { alignItems: "center", justifyContent: "center", padding: 32, backgroundColor: activeColors.surface, borderRadius: 12, borderWidth: 1, borderColor: activeColors.border, borderStyle: "dashed", gap: 10 },
   emptyCardText: { color: activeColors.textLight, fontSize: 13, textAlign: "center", lineHeight: 18 },
 
-  entriesDirectoryStack: { gap: s(10) },
+  entriesDirectoryStack: { gap: 10 },
   accountRowItemCard: {
     backgroundColor: activeColors.surface,
-    borderRadius: s(12),
-    padding: s(14),
+    borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: activeColors.border,
     ...Platform.select({
@@ -666,72 +684,125 @@ const getStyles = (activeColors: any) => StyleSheet.create({
   cardHeaderTopLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   cardMainTitle: { fontSize: 14, fontWeight: "700", color: activeColors.text },
   brandSubTitleText: { fontSize: 12, color: activeColors.textMuted, fontWeight: "500" },
-  profileHandleText: { fontSize: 13, color: activeColors.purple, fontWeight: "600", marginTop: s(2) },
+  profileHandleText: { fontSize: 13, color: activeColors.purple, fontWeight: "600", marginTop: 2 },
   
-  statusBadge: { paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(4), borderWidth: 1 },
+  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1 },
   statusBadgeText: { fontSize: 8, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.3 },
 
-  conceptTextContentDisplay: { fontSize: 12, color: activeColors.textMuted, marginTop: s(10), backgroundColor: activeColors.background, paddingHorizontal: s(8), paddingVertical: s(6), borderRadius: s(6), borderWidth: 1, borderColor: activeColors.borderLight },
+  conceptTextContentDisplay: { fontSize: 12, color: activeColors.textMuted, marginTop: 10, backgroundColor: activeColors.background, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: activeColors.borderLight },
 
-  cardFooterActionsFlex: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: activeColors.borderLight, paddingTop: s(8), marginTop: s(10) },
+  cardFooterActionsFlex: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: activeColors.borderLight, paddingTop: 8, marginTop: 10 },
   indexCounterText: { fontSize: 11, fontFamily: Platform.OS === "ios" ? "Courier" : "monospace", color: activeColors.textLight },
-  actionButtonGroup: { flexDirection: "row", alignItems: "center", gap: s(6) },
-  rowIconActionButton: { padding: s(6), borderRadius: s(6), backgroundColor: activeColors.background, borderWidth: 1, borderColor: activeColors.borderLight },
+  actionButtonGroup: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rowIconActionButton: { padding: 6, borderRadius: 6, backgroundColor: activeColors.background, borderWidth: 1, borderColor: activeColors.borderLight },
 
-  modalScrollFormContainer: { flex: 1, backgroundColor: activeColors.surface },
-  modalSheetFormHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: s(16), borderBottomWidth: 1, borderBottomColor: activeColors.borderLight },
-  modalSheetFormTitle: { fontSize: 15, fontWeight: "700", color: activeColors.text },
-  closeSheetCircleButton: { padding: s(6), backgroundColor: activeColors.borderLight, borderRadius: s(16) },
+  modalOverlayContainer: {
+    flex: 1,
+    backgroundColor: activeColors.overlay,
+    justifyContent: "flex-end",
+  },
+  modalContentCard: {
+    flex: 1,
+    backgroundColor: activeColors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: activeColors.border,
+    marginTop: Platform.OS === "ios" ? 40 : 20,
+  },
+  modalSheetFormHeader: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    paddingHorizontal: 18, 
+    paddingVertical: 16,
+    borderBottomWidth: 1, 
+    borderBottomColor: activeColors.borderLight 
+  },
+  modalSheetFormTitle: { fontSize: 16, fontWeight: "700", color: activeColors.text },
+  closeSheetCircleButton: { padding: 6, backgroundColor: activeColors.borderLight, borderRadius: 16 },
 
-  innerFormKeyboardPadding: { padding: s(16), paddingBottom: s(40) },
-  formInputSectionSpace: { gap: s(14) },
+  innerFormKeyboardPadding: { padding: 18, paddingBottom: 50 },
+  formInputSectionSpace: { gap: 16 },
   inputContainerUnit: { flexDirection: "column" },
-  formInputLabel: { fontSize: 12, fontWeight: "600", color: activeColors.textMuted, marginBottom: s(5) },
-  formInputBlock: { borderWidth: 1, borderColor: activeColors.border, borderRadius: s(8), paddingHorizontal: s(12), paddingVertical: s(8), fontSize: 14, color: activeColors.text, backgroundColor: activeColors.surface },
-  twoColumnInlineInputRow: { flexDirection: "row", gap: s(12) },
-  formCustomSelectPickerTrigger: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: activeColors.border, borderRadius: s(8), paddingHorizontal: s(12), paddingVertical: s(9), backgroundColor: activeColors.surface, minHeight: s(40) },
-  formCustomSelectPickerValueText: { fontSize: 13, fontWeight: "500", color: activeColors.text },
-  formInputTextAreaBlock: { minHeight: s(70), paddingVertical: s(8) },
+  formInputLabel: { fontSize: 13, fontWeight: "600", color: activeColors.text, marginBottom: 6 },
+  
+  inputWrapperContainer: {
+    borderWidth: 1,
+    borderColor: activeColors.border,
+    borderRadius: 8,
+    backgroundColor: activeColors.inputBg,
+    paddingHorizontal: 14,
+    height: 48,
+    justifyContent: "center",
+  },
+  inputWrapperTextArea: {
+    height: 100,
+    paddingVertical: 10,
+  },
+  formInputFieldInside: {
+    fontSize: 14,
+    color: activeColors.text,
+    paddingVertical: 0,
+    flex: 1,
+  },
+  formInputTextAreaInside: {
+    textAlignVertical: "top",
+  },
 
-  formActionSubmissionSectionRow: { flexDirection: "row", gap: s(12), marginTop: s(24), paddingTop: s(16), borderTopWidth: 1, borderTopColor: activeColors.borderLight },
-  formCancelDismissBtn: { flex: 1, paddingVertical: s(12), borderWidth: 1, borderColor: activeColors.border, borderRadius: s(8), alignItems: "center", backgroundColor: activeColors.surface },
+  twoColumnInlineInputRow: { flexDirection: "row", gap: 12 },
+  formCustomSelectPickerTrigger: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    borderWidth: 1, 
+    borderColor: activeColors.border, 
+    borderRadius: 8, 
+    paddingHorizontal: 14, 
+    backgroundColor: activeColors.inputBg, 
+    height: 48 
+  },
+  formCustomSelectPickerValueText: { fontSize: 14, fontWeight: "500", color: activeColors.text },
+
+  formActionSubmissionSectionRow: { flexDirection: "row", gap: 12, marginTop: 28, paddingTop: 16, borderTopWidth: 1, borderTopColor: activeColors.borderLight },
+  formCancelDismissBtn: { flex: 1, paddingVertical: 14, borderWidth: 1, borderColor: activeColors.border, borderRadius: 8, alignItems: "center", backgroundColor: activeColors.surface },
   formCancelDismissBtnText: { fontSize: 14, fontWeight: "600", color: activeColors.textMuted },
-  formSubmitActionBtn: { flex: 2, paddingVertical: s(12), backgroundColor: activeColors.primary, borderRadius: s(8), alignItems: "center", justifyContent: "center" },
+  formSubmitActionBtn: { flex: 2, paddingVertical: 14, backgroundColor: activeColors.primary, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   formSubmitActionBtnText: { fontSize: 14, fontWeight: "600", color: "#fff" },
 
-  centeredModalDimOverlay: { flex: 1, backgroundColor: activeColors.overlay, justifyContent: "center", alignItems: "center", padding: s(20) },
-  pickerOptionsPanelBox: { backgroundColor: activeColors.surface, width: "100%", maxWidth: s(300), borderRadius: s(12), padding: s(16), borderWidth: 1, borderColor: activeColors.border },
-  pickerHeaderSection: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingBottom: s(10), borderBottomWidth: 1, borderBottomColor: activeColors.borderLight, marginBottom: s(8) },
+  centeredModalDimOverlay: { flex: 1, backgroundColor: activeColors.overlay, justifyContent: "center", alignItems: "center", padding: 20 },
+  pickerOptionsPanelBox: { backgroundColor: activeColors.surface, width: "100%", maxWidth: 300, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: activeColors.border },
+  pickerHeaderSection: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: activeColors.borderLight, marginBottom: 8 },
   pickerHeaderTitleText: { fontSize: 13, fontWeight: "700", color: activeColors.text },
-  pickerRowOptionItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: s(10), paddingHorizontal: s(8), borderRadius: s(6) },
+  pickerRowOptionItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, borderRadius: 6 },
   activePickerRowOptionItem: { backgroundColor: activeColors.primaryLight },
   pickerRowOptionItemText: { fontSize: 13, color: activeColors.textMuted, fontWeight: "500" },
   activePickerRowOptionItemText: { color: activeColors.primary, fontWeight: "700" },
 
-  inspectorDetailOverlayCard: { backgroundColor: activeColors.surface, width: "100%", maxWidth: s(340), borderRadius: s(16), padding: s(16), borderWidth: 1, borderColor: activeColors.border },
-  inspectorHeaderBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: activeColors.borderLight, paddingBottom: s(12), marginBottom: s(12) },
+  inspectorDetailOverlayCard: { backgroundColor: activeColors.surface, width: "100%", maxWidth: 340, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: activeColors.border },
+  inspectorHeaderBlock: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: activeColors.borderLight, paddingBottom: 12, marginBottom: 12 },
   inspectorPlatformMainTitle: { fontSize: 16, fontWeight: "700", color: activeColors.text },
-  inspectorHandleSubText: { fontSize: 13, color: activeColors.purple, fontWeight: "600", marginTop: s(2) },
-  inspectorCloseCircleBtn: { padding: s(4), backgroundColor: activeColors.borderLight, borderRadius: s(12) },
-  inspectorInformationGridStack: { gap: s(12) },
+  inspectorHandleSubText: { fontSize: 13, color: activeColors.purple, fontWeight: "600", marginTop: 2 },
+  inspectorCloseCircleBtn: { padding: 4, backgroundColor: activeColors.borderLight, borderRadius: 12 },
+  inspectorInformationGridStack: { gap: 12 },
   metaDataHeaderMiniLabel: { fontSize: 11, fontWeight: "600", color: activeColors.textLight, textTransform: "uppercase", letterSpacing: 0.3 },
-  metaDataTextValue: { fontSize: 13, color: activeColors.text, fontWeight: "500", marginTop: s(2) },
+  metaDataTextValue: { fontSize: 13, color: activeColors.text, fontWeight: "500", marginTop: 2 },
   
-  credentialsIntegrationVaultSafeBox: { backgroundColor: activeColors.background, padding: s(12), borderRadius: s(10), borderWidth: 1, borderColor: activeColors.border, gap: s(8) },
-  credentialsVaultHeaderMiniTitle: { fontSize: 10, fontWeight: "700", color: activeColors.textLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: s(2) },
-  credentialSecretInteractiveDataRow: { flexDirection: "row", alignItems: "center", gap: s(8) },
-  vaultInteractiveDividerRow: { flexDirection: "row", alignItems: "center", gap: s(8), borderTopWidth: 1, borderTopColor: activeColors.borderLight, paddingTop: s(8), marginTop: s(8) },
+  credentialsIntegrationVaultSafeBox: { backgroundColor: activeColors.background, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: activeColors.border, gap: 8 },
+  credentialsVaultHeaderMiniTitle: { fontSize: 10, fontWeight: "700", color: activeColors.textLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 },
+  credentialSecretInteractiveDataRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  vaultInteractiveDividerRow: { flexDirection: "row", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: activeColors.borderLight, paddingTop: 8, marginTop: 8 },
   vaultMetaFieldMiniLabel: { fontSize: 10, color: activeColors.textMuted },
-  vaultValueMonoTextString: { fontSize: 12, color: activeColors.text, fontFamily: Platform.OS === "ios" ? "Courier" : "monospace", fontWeight: "600", marginTop: s(1) },
-  vaultActionIconButtonUnit: { padding: s(5), backgroundColor: activeColors.surface, borderRadius: s(4), borderWidth: 1, borderColor: activeColors.borderLight },
+  vaultValueMonoTextString: { fontSize: 12, color: activeColors.text, fontFamily: Platform.OS === "ios" ? "Courier" : "monospace", fontWeight: "600", marginTop: 1 },
+  vaultActionIconButtonUnit: { padding: 5, backgroundColor: activeColors.surface, borderRadius: 4, borderWidth: 1, borderColor: activeColors.borderLight },
   
-  inspectorInlineUrlRoutingRow: { flexDirection: "row", alignItems: "center", gap: s(4), marginTop: s(2) },
+  inspectorInlineUrlRoutingRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   inspectorUrlRoutingText: { fontSize: 13, color: activeColors.primary, fontWeight: "500", textDecorationLine: "underline" },
-  inspectorNotesParagraphText: { fontSize: 12, color: activeColors.textMuted, lineHeight: 16, marginTop: s(2) },
+  inspectorNotesParagraphText: { fontSize: 12, color: activeColors.textMuted, lineHeight: 16, marginTop: 2 },
   
-  inspectorActionControlFooterButtonsRow: { flexDirection: "row", gap: s(10), marginTop: s(16), paddingTop: s(12), borderTopWidth: 1, borderTopColor: activeColors.borderLight },
-  inspectorEditActionControlBtn: { flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(6), paddingVertical: s(8), backgroundColor: activeColors.borderLight, borderRadius: s(8) },
+  inspectorActionControlFooterButtonsRow: { flexDirection: "row", gap: 10, marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: activeColors.borderLight },
+  inspectorEditActionControlBtn: { flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, backgroundColor: activeColors.borderLight, borderRadius: 8 },
   inspectorEditActionControlBtnText: { fontSize: 12, fontWeight: "600", color: activeColors.text },
-  inspectorDismissCloseControlBtn: { flex: 1, paddingVertical: s(8), backgroundColor: activeColors.primary, borderRadius: s(8), alignItems: "center", justifyContent: "center" },
+  inspectorDismissCloseControlBtn: { flex: 1, paddingVertical: 8, backgroundColor: activeColors.primary, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   inspectorDismissCloseControlBtnText: { fontSize: 12, fontWeight: "600", color: "#fff" }
 });

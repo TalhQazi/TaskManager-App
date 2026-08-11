@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo,useEffect } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
 import { usePathname, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   LayoutDashboard,
@@ -46,13 +48,14 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Brain,
   Book,
 } from 'lucide-react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { apiRequest } from '@/services/api';
 import { s } from '@/util/styles';
+import { toProxiedUrl, initToken } from '@/util/toProxiedUrl';
 
 const SIDEBAR_WIDTH = 270;
 
@@ -65,6 +68,60 @@ interface NavItem {
   imageSource?: string;
   children?: NavItem[];
 }
+
+interface EmployeeMeResponse {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  current_status?: string;
+  role?: string;
+}
+
+/**
+ * Bulletproof Image URL Converter
+ * Converts `/uploads/xxx.png` -> `https://task.se7eninc.com/api/s3-proxy/xxx.png?token=...`
+ */
+const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
+  if (!rawPath || typeof rawPath !== 'string' || !rawPath.trim()) return null;
+
+  if (rawPath.startsWith('data:') || rawPath.startsWith('file://') || rawPath.startsWith('content://')) {
+    return rawPath;
+  }
+
+  let path = rawPath.trim();
+
+  if (path.includes('token=')) return path;
+
+  // Map /uploads/ or uploads/ -> /api/s3-proxy/
+  if (path.startsWith('/uploads/')) {
+    path = path.replace('/uploads/', '/api/s3-proxy/');
+  } else if (path.startsWith('uploads/')) {
+    path = path.replace('uploads/', '/api/s3-proxy/');
+  } else if (!path.startsWith('/api/s3-proxy/') && !path.startsWith('http')) {
+    path = `/api/s3-proxy/${path.replace(/^\//, '')}`;
+  }
+
+  if (!path.startsWith('http://') && !path.startsWith('https://')) {
+    path = `https://task.se7eninc.com${path.startsWith('/') ? path : `/${path}`}`;
+  }
+
+  try {
+    const proxied = toProxiedUrl(path);
+    if (proxied && proxied.includes('token=')) {
+      return proxied;
+    }
+  } catch (e) {
+    // Fall back to manual token attachment
+  }
+
+  if (activeToken) {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}token=${activeToken}`;
+  }
+
+  return path;
+};
 
 const baseItems: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', path: '/(manager)/home', icon: LayoutDashboard },
@@ -97,33 +154,32 @@ const baseItems: NavItem[] = [
   { key: 'travelCalendar', label: 'Travel Calendar', path: '/(manager)/travel-calendar', icon: Calendar },
   { key: 'vehicles', label: 'Vehicles', path: '/(manager)/vehicles', icon: Car },
   { key: 'appliance', label: 'Inventory/Appliances', path: '/(manager)/appliances', icon: Wrench },
-  
   { key: 'locations', label: 'Locations', path: '/(manager)/locations', icon: MapPin },
   { key: 'itinerary', label: 'Daily Itinerary', path: '/(manager)/itinerary', icon: MapPin },
   { key: 'vendors', label: 'Vendors', path: '/(manager)/vendors', icon: Building2 },
   { key: 'donothire', label: 'Do Not Hire', path: '/(manager)/donothire', icon: UserRoundX },
   { key: 'onboarding', label: 'Onboarding', path: '/(manager)/onboarding', icon: ClipboardCheck },
   { key: 'reports', label: 'Reports', path: '/(manager)/reports', icon: BarChart3 },
-  { key: 'messages', label: 'Messages', path: '/(manager)/messages', icon: MessageSquare }, 
+  { key: 'messages', label: 'Messages', path: '/(manager)/messages', icon: MessageSquare },
   { key: 'uiCustomization', label: 'UI Customization', path: '/(manager)/ui-customization', icon: Settings },
   { key: 'shoppingLists', label: 'Shopping Lists', path: '/(manager)/shopping-lists', icon: ShoppingCart },
   { key: 'settings', label: 'Settings', path: '/(manager)/settings', icon: Settings },
   { key: 'bugs', label: 'Bugs', path: '/(manager)/bug', icon: Bug },
-  { key: 'contracts', label: 'SignaCore', path: '/(manager)/contracts', isCustomImage: true, imageSource: 'https://via.placeholder.com/24' },
-  { key: 'uphMaintenance', label: 'Atlas Properties', path: '/(manager)/uph-maintenance', isCustomImage: true, imageSource: 'https://via.placeholder.com/24' },
-]; 
+  { key: 'contracts', label: 'SignaCore', path: '/(manager)/contracts', isCustomImage: true, imageSource: '/uploads/asset-library/signacore.png' },
+  { key: 'uphMaintenance', label: 'Atlas Properties', path: '/(manager)/uph-maintenance', isCustomImage: true, imageSource: '/uploads/asset-library/atlas.png' },
+];
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white"; 
+  const isDark = uiTheme.theme !== 'crystal-white';
   return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#133767" : "#ffffff"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#0f2d55" : "#f1f5f9"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f4f4f5" : "#000000"),
-    textSecondary:   isDark ? "#a1a1aa" : "#475569",
-    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
-    primary:         uiTheme.customColors?.primary                || "#ffd27a",
-    danger:          "#f87171",
-    overlay:         "rgba(0,0,0,0.5)",
+    background: uiTheme.panelColors?.dashboardBackground || (isDark ? '#133767' : '#ffffff'),
+    cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#0f2d55' : '#f1f5f9'),
+    text: uiTheme.panelColors?.dashboardTextColor || (isDark ? '#f4f4f5' : '#000000'),
+    textSecondary: isDark ? '#a1a1aa' : '#475569',
+    border: isDark ? '#27272a' : 'rgba(0, 0, 0, 0.08)',
+    primary: uiTheme.customColors?.primary || '#ffd27a',
+    danger: '#f87171',
+    overlay: 'rgba(0,0,0,0.5)',
   };
 }
 
@@ -196,6 +252,12 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       backgroundColor: colors.background,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    avatarImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 20,
     },
     avatarText: {
       fontSize: 16,
@@ -278,8 +340,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     customMenuImageStyle: {
       width: 20,
       height: 20,
-      borderRadius: 5,
-      resizeMode: 'contain',
+      borderRadius: 4,
     },
     boldWeightText: {
       fontWeight: '900',
@@ -342,10 +403,98 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
   const { uiTheme } = useTheme();
   const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const [imageErrorKeys, setImageErrorKeys] = useState<Record<string, boolean>>({});
+  const [avatarError, setAvatarError] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Retrieve JWT Token
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        await initToken();
+        let token =
+          (user as any)?.token ||
+          (user as any)?.accessToken ||
+          (user as any)?.jwt;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) =>
+            /token|jwt|auth|session/i.test(k)
+          );
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === 'string' && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error('Failed to load token in sidebar:', err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [user]);
+
+  // Fetch employee profile data
+  const { data: employeeStatus } = useQuery<EmployeeMeResponse | null>({
+    queryKey: ['managerEmployeeStatus'],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest<{ item: EmployeeMeResponse }>('/employees/me');
+        return res.data?.item || null;
+      } catch (e) {
+        return null;
+      }
+    },
+    enabled: isOpen,
+  });
+
+  // Fetch user settings
+  const { data: userSettings } = useQuery<any>({
+    queryKey: ['userSettings'],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest<any>('/settings');
+        return res.data?.item || res.data || null;
+      } catch (e) {
+        return null;
+      }
+    },
+    enabled: isOpen,
+  });
+
+  // Resolve raw avatar path across all endpoints
+  const rawAvatarPath = useMemo(() => {
+    return (
+      userSettings?.avatarDataUrl ||
+      userSettings?.avatarUrl ||
+      employeeStatus?.avatarUrl ||
+      (user as any)?.avatarUrl ||
+      (user as any)?.avatarDataUrl ||
+      null
+    );
+  }, [userSettings, employeeStatus, user]);
+
+  const userAvatarUri = useMemo(() => {
+    return getDisplayImageUrl(rawAvatarPath, jwtToken);
+  }, [rawAvatarPath, jwtToken]);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [userAvatarUri]);
 
   const items = useMemo(() => {
     return [...baseItems].sort((a, b) => {
@@ -445,6 +594,9 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
     const active = item.path ? isActiveRoute(item.path) : false;
     const itemIconColor = active ? colors.primary : colors.textSecondary;
 
+    const customImageUri = item.isCustomImage ? getDisplayImageUrl(item.imageSource, jwtToken) : null;
+    const hasImageError = imageErrorKeys[item.key];
+
     return (
       <TouchableOpacity
         key={item.key}
@@ -456,8 +608,13 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
         onPress={() => item.path && navigate(item.path)}
       >
         <View style={s(styles.itemInnerLeftGroup)}>
-          {item.isCustomImage ? (
-            <Image source={{ uri: item.imageSource }} style={s(styles.customMenuImageStyle)} />
+          {item.isCustomImage && customImageUri && !hasImageError ? (
+            <Image
+              source={{ uri: customImageUri }}
+              style={s(styles.customMenuImageStyle)}
+              resizeMode="contain"
+              onError={() => setImageErrorKeys((prev) => ({ ...prev, [item.key]: true }))}
+            />
           ) : (
             item.icon && <item.icon color={itemIconColor} size={isChild ? 16 : 20} />
           )}
@@ -468,20 +625,18 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
               <Text style={s(styles.orangeBrandingText)}>Core</Text>
             </Text>
           ) : (
-            <Text 
+            <Text
               style={s([
-                styles.menuLabel, 
-                isChild && styles.childLabelText, 
-                active && styles.menuLabelActive
+                styles.menuLabel,
+                isChild && styles.childLabelText,
+                active && styles.menuLabelActive,
               ])}
             >
               {item.label}
             </Text>
           )}
         </View>
-        {active && !isChild && (
-          <ChevronRight color={colors.primary} size={16} />
-        )}
+        {active && !isChild && <ChevronRight color={colors.primary} size={16} />}
       </TouchableOpacity>
     );
   };
@@ -493,13 +648,13 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
       </TouchableWithoutFeedback>
 
       <Animated.View style={s([styles.drawer, { transform: [{ translateX: slideAnim }] }])}>
-        <View 
+        <View
           style={s([
-            styles.container, 
-            { 
+            styles.container,
+            {
               paddingTop: Platform.OS === 'ios' ? insets.top + 10 : insets.top + 16,
-              paddingBottom: insets.bottom + 16 
-            }
+              paddingBottom: insets.bottom + 16,
+            },
           ])}
         >
           <View style={s(styles.logoSection)}>
@@ -514,16 +669,25 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
 
           <View style={s(styles.userCard)}>
             <View style={s(styles.avatarContainer)}>
-              <Text style={s(styles.avatarText)}>
-                {user?.fullName?.charAt(0)?.toUpperCase() ?? 'M'}
-              </Text>
+              {userAvatarUri && !avatarError ? (
+                <Image
+                  source={{ uri: userAvatarUri }}
+                  style={s(styles.avatarImage)}
+                  resizeMode="cover"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                <Text style={s(styles.avatarText)}>
+                  {(employeeStatus?.name || user?.fullName || 'M').charAt(0).toUpperCase()}
+                </Text>
+              )}
             </View>
             <View style={s(styles.userInfo)}>
               <Text style={s(styles.userName)} numberOfLines={1}>
-                {user?.fullName ?? 'Manager'}
+                {employeeStatus?.name || user?.fullName || 'Manager'}
               </Text>
               <Text style={s(styles.userRole)} numberOfLines={1}>
-                {user?.jobTitle ?? 'Administrator'}
+                {(employeeStatus?.role || user?.jobTitle || 'Administrator').toUpperCase()}
               </Text>
             </View>
             <View style={s(styles.statusIndicator)}>

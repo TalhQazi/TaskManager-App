@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,29 +8,26 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
   Linking,
-  Clipboard,
+  useWindowDimensions,
   Platform
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/services/api";
-import { 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  ExternalLink, 
-  X, 
-  Globe, 
-  Layers, 
-  HardDrive, 
-  Copy, 
-  ChevronRight, 
-  CheckCircle 
+import {
+  Search,
+  Plus,
+  Edit2,
+  Trash2,
+  ExternalLink,
+  Lock,
+  X,
+  Copy,
+  Check
 } from "lucide-react-native";
+import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
 
 export interface Website {
   _id: string;
@@ -45,17 +42,40 @@ export interface Website {
   createdAt: string;
 }
 
-export default function ActiveWebsites() {
-  const themeContext = useTheme() as any;
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+const STATUS_COLORS = {
+  Live: { bg: "rgba(34, 197, 94, 0.15)", text: "#22c55e", border: "rgba(34, 197, 94, 0.3)" },
+  Maintenance: { bg: "rgba(245, 158, 11, 0.15)", text: "#f59e0b", border: "rgba(245, 158, 11, 0.3)" },
+  Development: { bg: "rgba(59, 130, 246, 0.15)", text: "#3b82f6", border: "rgba(59, 130, 246, 0.3)" },
+  Offline: { bg: "rgba(239, 68, 68, 0.15)", text: "#ef4444", border: "rgba(239, 68, 68, 0.3)" },
+};
 
-  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
-  const [viewingWebsite, setViewingWebsite] = useState<Website | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+export function ActiveWebsites() {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
 
+  const { uiTheme } = useTheme() as any;
+  const isDark =
+    uiTheme?.theme === "dark" ||
+    uiTheme?.theme === "metallic-elite" ||
+    uiTheme?.panelColors?.dashboardTextColor === "#ffffff" ||
+    uiTheme?.panelColors?.dashboardTextColor === "#f4f4f5";
+
+  const colors = useMemo(() => {
+    return {
+      background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#090a0f" : "#f8fafc"),
+      surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
+      modalBg: isDark ? "#1e293b" : "#ffffff",
+      inputBg: isDark ? "#0f172a" : "#f1f5f9",
+      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.12)" : "#e2e8f0"),
+      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9"),
+      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
+      textMuted: isDark ? "#94a3b8" : "#64748b",
+      primary: uiTheme?.customColors?.primary || "#0072FF",
+      primaryText: "#ffffff",
+    };
+  }, [uiTheme, isDark]);
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<Website>>({
     siteName: "",
     url: "",
@@ -67,62 +87,35 @@ export default function ActiveWebsites() {
     notes: "",
   });
 
-  const activeColors = useMemo(() => {
-    const uiTheme = themeContext?.uiTheme;
-    const isDark = uiTheme?.theme === "dark" || uiTheme?.theme === "metallic-elite";
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [viewingWebsite, setViewingWebsite] = useState<Website | null>(null);
+  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCredentials, setShowCredentials] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
-    return {
-      background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#090a0f" : "#f8fafc"),
-      surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
-      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
-      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"),
-      surfaceVariant: isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
-      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#ffffff" : "#0f172a"),
-      textMuted: isDark ? "#94a3b8" : "#64748b",
-      textLight: isDark ? "#64748b" : "#94a3b8",
-      primary: uiTheme?.customColors?.primary || "#0072FF",
-      primaryLight: isDark ? "rgba(0, 114, 255, 0.15)" : "#eff6ff",
-      danger: "#ef4444",
-      dangerBg: isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
-      dangerBorder: isDark ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
-      success: isDark ? "#4ade80" : "#166534",
-      successBg: isDark ? "rgba(34, 197, 94, 0.15)" : "#dcfce7",
-      successBorder: isDark ? "rgba(34, 197, 94, 0.3)" : "#bbf7d0",
-      warning: isDark ? "#facc15" : "#854d0e",
-      warningBg: isDark ? "rgba(234, 179, 8, 0.15)" : "#fef9c3",
-      warningBorder: isDark ? "rgba(234, 179, 8, 0.3)" : "#fef08a",
-      info: isDark ? "#60a5fa" : "#1e40af",
-      infoBg: isDark ? "rgba(59, 130, 246, 0.15)" : "#dbeafe",
-      infoBorder: isDark ? "rgba(59, 130, 246, 0.3)" : "#bfdbfe",
-    };
-  }, [themeContext]);
+  const websitesQuery = useQuery<Website[]>({
+    queryKey: ["active-websites"],
+    queryFn: async () => {
+      const res = await apiFetch<{ items: Website[] }>("/api/websites/active");
+      return res.items || [];
+    },
+  });
 
-  const statusThemes = useMemo(() => {
-    return {
-      Live: { container: activeColors.successBg, text: activeColors.success, border: activeColors.successBorder },
-      Maintenance: { container: activeColors.warningBg, text: activeColors.warning, border: activeColors.warningBorder },
-      Development: { container: activeColors.infoBg, text: activeColors.info, border: activeColors.infoBorder },
-      Offline: { container: activeColors.dangerBg, text: activeColors.danger, border: activeColors.dangerBorder },
-    };
-  }, [activeColors]);
+  const websites = useMemo(() => {
+    const list = websitesQuery.data || [];
+    const filtered = list.filter(
+      (w) =>
+        (w.siteName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (w.url || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (w.platform || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (w.hostingProvider || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    return filtered.slice().sort((a, b) => (a.siteName || "").localeCompare(b.siteName || ""));
+  }, [websitesQuery.data, searchQuery]);
 
-const websitesQuery = useQuery<Website[]>({
-  queryKey: ["active-websites"],
-  queryFn: async () => {
-    const res = await apiRequest<any>("/websites/active");
-    if (res && res.success && res.data && Array.isArray(res.data.items)) {
-      return res.data.items;
-    }
-   return Array.isArray(res) ? res : res?.data?.items || res?.data || [];
-  },
-});
-
-  const websites = useMemo(() => 
-    (websitesQuery.data || []).slice().sort((a, b) => a.siteName.localeCompare(b.siteName)),
-    [websitesQuery.data]
-  );
-
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       siteName: "",
       url: "",
@@ -134,23 +127,23 @@ const websitesQuery = useQuery<Website[]>({
       notes: "",
     });
     setSelectedWebsite(null);
-  };
+  }, []);
 
   const handleSave = async () => {
     if (!formData.siteName || !formData.url) {
-      Alert.alert("Required Fields Missing", "Site Name and URL must be filled out.");
+      Alert.alert("Validation Error", "Site Name and URL are required.");
       return;
     }
 
     try {
       setIsSubmitting(true);
       if (selectedWebsite) {
-        await apiRequest(`/websites/${selectedWebsite._id}`, {
+        await apiFetch(`/api/websites/${selectedWebsite._id}`, {
           method: "PUT",
           body: JSON.stringify(formData),
         });
       } else {
-        await apiRequest("/websites", {
+        await apiFetch("/api/websites", {
           method: "POST",
           body: JSON.stringify({
             ...formData,
@@ -160,10 +153,10 @@ const websitesQuery = useQuery<Website[]>({
       }
 
       await websitesQuery.refetch();
-      setIsFormOpen(false);
+      setIsEditDialogOpen(false);
       resetForm();
-    } catch (err) {
-      Alert.alert("Save Operation Failed", err instanceof Error ? err.message : "Error dispatching network payload");
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Failed to save website details.");
     } finally {
       setIsSubmitting(false);
     }
@@ -171,8 +164,8 @@ const websitesQuery = useQuery<Website[]>({
 
   const handleDelete = (website: Website) => {
     Alert.alert(
-      "Confirm Deletion",
-      `Are you sure you want to permanently delete ${website.siteName}?`,
+      "Confirm Delete",
+      `Are you sure you want to delete "${website.siteName}"?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -180,14 +173,15 @@ const websitesQuery = useQuery<Website[]>({
           style: "destructive",
           onPress: async () => {
             try {
-              await apiRequest(`/websites/${website._id}`, { method: "DELETE" });
+              await apiFetch(`/api/websites/${website._id}`, {
+                method: "DELETE",
+              });
               await websitesQuery.refetch();
-              if (isViewOpen) setIsViewOpen(false);
-            } catch (err) {
-              Alert.alert("Error", err instanceof Error ? err.message : "Failed to remove entry");
+            } catch (err: any) {
+              Alert.alert("Error", err?.message || "Failed to delete website.");
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -195,796 +189,743 @@ const websitesQuery = useQuery<Website[]>({
   const handleEdit = (website: Website) => {
     setSelectedWebsite(website);
     setFormData(website);
-    setIsFormOpen(true);
+    setIsEditDialogOpen(true);
   };
 
-  const handleUrlRedirect = async (urlStr: string) => {
-    const formattedUrl = urlStr.startsWith("http") ? urlStr : `https://${urlStr}`;
-    const supported = await Linking.canOpenURL(formattedUrl);
-    if (supported) {
-      await Linking.openURL(formattedUrl);
-    } else {
-      Alert.alert("Invalid Link Structure", `Cannot evaluate or open target destination: ${formattedUrl}`);
-    }
-  };
-
-  const copyToClipboard = (text?: string, label?: string) => {
+  const copyToClipboard = async (text: string, label: string) => {
     if (!text) return;
-    Clipboard.setString(text);
-    setCopiedField(label || "field");
+    await Clipboard.setStringAsync(text);
+    setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const openUrl = (url: string) => {
+    if (!url) return;
+    const formatted = url.startsWith("http") ? url : `https://${url}`;
+    Linking.openURL(formatted).catch(() => {
+      Alert.alert("Invalid URL", "Unable to open link.");
+    });
+  };
+
   return (
-    <SafeAreaView style={[s(styles.baseContainer), { backgroundColor: activeColors.background }]}>
-      <ScrollView contentContainerStyle={s(styles.scrollBlock)} showsVerticalScrollIndicator={false}>
-        
-        <TouchableOpacity 
-          style={[s(styles.addAssetPrimaryBtn), { backgroundColor: activeColors.primary }]}
-          activeOpacity={0.8}
-          onPress={() => { resetForm(); setIsFormOpen(true); }}
-        >
-          <Plus size={16} color="#fff" />
-          <Text style={s(styles.addAssetPrimaryBtnText)}>Add Website</Text>
-        </TouchableOpacity>
-
-        {websitesQuery.isLoading ? (
-          <ActivityIndicator size="small" color={activeColors.primary} style={s(styles.loaderMargin)} />
-        ) : websites.length === 0 ? (
-          <View style={[s(styles.emptyCardState), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-            <Globe size={32} color={activeColors.textMuted} />
-            <Text style={[s(styles.emptyCardText), { color: activeColors.textMuted }]}>No websites found. Click "Add Website" to populate dashboard metrics.</Text>
-          </View>
-        ) : (
-          <View style={s(styles.entriesDirectoryStack)}>
-            {websites.map((website, index) => {
-              const currentStatus = website.status || "Offline";
-              const currentTheme = statusThemes[currentStatus];
-              return (
-                <TouchableOpacity
-                  key={website._id}
-                  style={[s(styles.websiteItemRowCard), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}
-                  activeOpacity={0.9}
-                  onPress={() => { setViewingWebsite(website); setIsViewOpen(true); }}
-                >
-                  <View style={[s(styles.cardHeaderTopLine), { borderBottomColor: activeColors.borderLight }]}>
-                    <View style={s(styles.flexOnePadding)}>
-                      <Text style={[s(styles.cardMainTitle), { color: activeColors.text }]} numberOfLines={1}>{website.siteName}</Text>
-                      <TouchableOpacity 
-                        style={s(styles.inlineUrlLinkRow)}
-                        onPress={() => handleUrlRedirect(website.url)}
-                      >
-                        <Text style={[s(styles.inlineUrlLinkText), { color: activeColors.primary }]} numberOfLines={1}>{website.url}</Text>
-                        <ExternalLink size={11} color={activeColors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                    <View style={[s(styles.statusBadge), { backgroundColor: currentTheme.container, borderColor: currentTheme.border }]}>
-                      <Text style={[s(styles.statusBadgeText), { color: currentTheme.text }]}>{website.status}</Text>
-                    </View>
-                  </View>
-
-                  <View style={s(styles.cardMetaGridInfo)}>
-                    <View style={s(styles.metaRowItem)}>
-                      <Layers size={12} color={activeColors.textMuted} />
-                      <Text style={[s(styles.metaRowText), { color: activeColors.textMuted }]} numberOfLines={1}>{website.platform || "Unassigned Platform"}</Text>
-                    </View>
-                    <View style={s(styles.metaRowItem)}>
-                      <HardDrive size={12} color={activeColors.textMuted} />
-                      <Text style={[s(styles.metaRowText), { color: activeColors.textMuted }]} numberOfLines={1}>{website.hostingProvider || "Unallocated Host"}</Text>
-                    </View>
-                  </View>
-
-                  <View style={[s(styles.cardFooterActionsFlex), { borderTopColor: activeColors.borderLight }]}>
-                    <Text style={[s(styles.indexCounterText), { color: activeColors.textLight }]}>#{(index + 1).toString().padStart(2, "0")}</Text>
-                    <View style={s(styles.actionButtonGroup)}>
-                      <TouchableOpacity style={[s(styles.rowIconActionButton), { backgroundColor: activeColors.background, borderColor: activeColors.borderLight }]} onPress={() => handleEdit(website)}>
-                        <Edit2 size={14} color={activeColors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[s(styles.rowIconActionButton), { backgroundColor: activeColors.background, borderColor: activeColors.borderLight }]} onPress={() => handleDelete(website)}>
-                        <Trash2 size={14} color={activeColors.danger} />
-                      </TouchableOpacity>
-                      <ChevronRight size={16} color={activeColors.textLight} style={s(styles.chevronMargin)} />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
-
-      <Modal visible={isFormOpen} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[s(styles.modalScrollFormContainer), { backgroundColor: activeColors.surface }]}>
-          <View style={[s(styles.modalSheetFormHeader), { borderBottomColor: activeColors.borderLight }]}>
-            <Text style={[s(styles.modalSheetFormTitle), { color: activeColors.text }]}>{selectedWebsite ? "Edit Website Node" : "Register Website Asset"}</Text>
-            <TouchableOpacity onPress={() => setIsFormOpen(false)} style={[s(styles.closeSheetCircleButton), { backgroundColor: activeColors.background }]}>
-              <X size={18} color={activeColors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={s(styles.innerFormKeyboardPadding)} keyboardShouldPersistTaps="handled">
-            <View style={s(styles.formInputSectionSpace)}>
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Site Name *</Text>
-                <TextInput
-                  style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                  placeholder="e.g., Company Main Storefront"
-                  placeholderTextColor={activeColors.textLight}
-                  value={formData.siteName}
-                  onChangeText={(val) => setFormData({ ...formData, siteName: val })}
-                />
-              </View>
-
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Destination Domain URL *</Text>
-                <TextInput
-                  style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                  placeholder="https://example.com"
-                  placeholderTextColor={activeColors.textLight}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                  value={formData.url}
-                  onChangeText={(val) => setFormData({ ...formData, url: val })}
-                />
-              </View>
-
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Platform Framework Architecture</Text>
-                <TextInput
-                  style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                  placeholder="e.g., WordPress, Next.js, Expo Web"
-                  placeholderTextColor={activeColors.textLight}
-                  value={formData.platform}
-                  onChangeText={(val) => setFormData({ ...formData, platform: val })}
-                />
-              </View>
-
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Cloud Hosting Engine Provider</Text>
-                <TextInput
-                  style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                  placeholder="e.g., AWS EC2, Vercel Pipeline"
-                  placeholderTextColor={activeColors.textLight}
-                  value={formData.hostingProvider}
-                  onChangeText={(val) => setFormData({ ...formData, hostingProvider: val })}
-                />
-              </View>
-
-              <View style={s(styles.twoColumnInlineInputRow)}>
-                <View style={[s(styles.inputContainerUnit), { flex: 1 }]}>
-                  <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Login Access Identifier</Text>
-                  <TextInput
-                    style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                    placeholder="admin@email.com"
-                    placeholderTextColor={activeColors.textLight}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    value={formData.loginEmail}
-                    onChangeText={(val) => setFormData({ ...formData, loginEmail: val })}
-                  />
-                </View>
-                <View style={[s(styles.inputContainerUnit), { flex: 1 }]}>
-                  <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Access Keyphrase</Text>
-                  <TextInput
-                    style={[s(styles.formInputBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                    placeholder="Password"
-                    placeholderTextColor={activeColors.textLight}
-                    autoCapitalize="none"
-                    secureTextEntry
-                    value={formData.loginPassword}
-                    onChangeText={(val) => setFormData({ ...formData, loginPassword: val })}
-                  />
-                </View>
-              </View>
-
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Operational Lifecycle Status</Text>
-                <TouchableOpacity 
-                  style={[s(styles.formCustomSelectPickerTrigger), { borderColor: activeColors.border, backgroundColor: activeColors.background }]}
-                  onPress={() => setStatusMenuOpen(true)}
-                >
-                  <Text style={[s(styles.formCustomSelectPickerValueText), { color: activeColors.text }]}>{formData.status}</Text>
-                  <Layers size={14} color={activeColors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={s(styles.inputContainerUnit)}>
-                <Text style={[s(styles.formInputLabel), { color: activeColors.textMuted }]}>Internal Documentation Notes</Text>
-                <TextInput
-                  style={[s(styles.formInputBlock), s(styles.formInputTextAreaBlock), { borderColor: activeColors.border, color: activeColors.text, backgroundColor: activeColors.background }]}
-                  placeholder="Log specific deployment revisions or server instructions..."
-                  placeholderTextColor={activeColors.textLight}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  value={formData.notes}
-                  onChangeText={(val) => setFormData({ ...formData, notes: val })}
-                />
-              </View>
-            </View>
-
-            <View style={[s(styles.formActionSubmissionSectionRow), { borderTopColor: activeColors.borderLight }]}>
-              <TouchableOpacity 
-                style={[s(styles.formCancelDismissBtn), { borderColor: activeColors.border, backgroundColor: activeColors.surface }]} 
-                onPress={() => setIsFormOpen(false)}
-              >
-                <Text style={[s(styles.formCancelDismissBtnText), { color: activeColors.textMuted }]}>Dismiss</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[s(styles.formSubmitActionBtn), { backgroundColor: activeColors.primary }]} 
-                onPress={handleSave}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s(styles.formSubmitActionBtnText)}>Commit Changes</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      <Modal visible={statusMenuOpen} transparent={true} animationType="fade">
-        <View style={s(styles.centeredModalDimOverlay)}>
-          <View style={[s(styles.pickerOptionsPanelBox), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-            <View style={[s(styles.pickerHeaderSection), { borderBottomColor: activeColors.borderLight }]}>
-              <Text style={[s(styles.pickerHeaderTitleText), { color: activeColors.text }]}>Select Operational State</Text>
-              <TouchableOpacity onPress={() => setStatusMenuOpen(false)}>
-                <X size={16} color={activeColors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {(["Live", "Maintenance", "Development", "Offline"] as Website["status"][]).map((stateOption) => (
-              <TouchableOpacity
-                key={stateOption}
-                style={[s(styles.pickerRowOptionItem), formData.status === stateOption && [s(styles.activePickerRowOptionItem), { backgroundColor: activeColors.primaryLight }]]}
-                onPress={() => {
-                  setFormData({ ...formData, status: stateOption });
-                  setStatusMenuOpen(false);
-                }}
-              >
-                <Text style={[s(styles.pickerRowOptionItemText), { color: activeColors.textMuted }, formData.status === stateOption && [s(styles.activePickerRowOptionItemText), { color: activeColors.primary }]]}>
-                  {stateOption}
-                </Text>
-                {formData.status === stateOption && <CheckCircle size={14} color={activeColors.primary} />}
-              </TouchableOpacity>
-            ))}
-          </View>
+    <View style={styles.container}>
+      {/* Toolbar */}
+      <View style={[styles.toolbar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+          <Search size={16} color={colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search active websites..."
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
         </View>
-      </Modal>
 
-      <Modal visible={isViewOpen} transparent={true} animationType="fade">
-        <View style={s(styles.centeredModalDimOverlay)}>
-          {viewingWebsite && (
-            <View style={[s(styles.detailsViewOverlayDialogBox), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-              <View style={[s(styles.detailsDialogHeaderBlock), { borderBottomColor: activeColors.borderLight }]}>
-                <View style={s(styles.flexOne)}>
-                  <Text style={[s(styles.detailsDialogTopMiniHeader), { color: activeColors.textLight }]}>Asset Profile Inspect</Text>
-                  <Text style={[s(styles.detailsDialogMainTitleText), { color: activeColors.text }]}>{viewingWebsite.siteName}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={[s(styles.closeSheetCircleButton), { backgroundColor: activeColors.background }]} 
-                  onPress={() => { setIsViewOpen(false); setViewingWebsite(null); }}
-                >
-                  <X size={16} color={activeColors.textMuted} />
-                </TouchableOpacity>
-              </View>
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            resetForm();
+            setIsEditDialogOpen(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <Plus size={16} color="#ffffff" style={styles.addIcon} />
+          <Text style={styles.addButtonText}>Add Website</Text>
+        </TouchableOpacity>
+      </View>
 
-              <ScrollView style={s(styles.maxHeightFourHundred)} showsVerticalScrollIndicator={false}>
-                <View style={s(styles.detailsInspectorSheetDataBody)}>
-                  <View style={s(styles.inlineSplitDetailDataRow)}>
-                    <View style={s(styles.flexOne)}>
-                      <Text style={[s(styles.inspectorDataLabel), { color: activeColors.textMuted }]}>Infrastructure Status</Text>
-                      <View style={[s(styles.statusBadge), statusThemes[viewingWebsite.status || "Offline"], s(styles.statusBadgeAlign)]}>
-                        <Text style={[s(styles.statusBadgeText), { color: statusThemes[viewingWebsite.status || "Offline"]?.text }]}>
-                          {viewingWebsite.status}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={s(styles.flexOne)}>
-                      <Text style={[s(styles.inspectorDataLabel), { color: activeColors.textMuted }]}>Platform Matrix</Text>
-                      <Text style={[s(styles.inspectorDataValueText), { color: activeColors.text }]}>{viewingWebsite.platform || "None declared"}</Text>
-                    </View>
-                  </View>
+      {/* Table Content */}
+      {websitesQuery.isLoading ? (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : websites.length === 0 ? (
+        <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            No websites yet. Click "Add Website" to get started.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={[styles.tableCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.tableRowHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.headerCell, { width: 40, color: colors.textMuted }]}>#</Text>
+              <Text style={[styles.headerCell, { width: 160, color: colors.textMuted }]}>SITE NAME</Text>
+              <Text style={[styles.headerCell, { width: 180, color: colors.textMuted }]}>URL</Text>
+              <Text style={[styles.headerCell, { width: 110, color: colors.textMuted }]}>PLATFORM</Text>
+              <Text style={[styles.headerCell, { width: 110, color: colors.textMuted }]}>HOSTING</Text>
+              <Text style={[styles.headerCell, { width: 110, color: colors.textMuted }]}>STATUS</Text>
+              <Text style={[styles.headerCell, { width: 120, textAlign: "right", color: colors.textMuted }]}>ACTIONS</Text>
+            </View>
 
-                  <View style={s(styles.inlineSplitDetailDataRow)}>
-                    <View style={s(styles.flexOne)}>
-                      <Text style={[s(styles.inspectorDataLabel), { color: activeColors.textMuted }]}>Cloud Server Host Engine</Text>
-                      <Text style={[s(styles.inspectorDataValueText), { color: activeColors.text }]}>{viewingWebsite.hostingProvider || "None declared"}</Text>
-                    </View>
-                  </View>
+            {websites.map((website, index) => {
+              const statusCfg = STATUS_COLORS[website.status] || STATUS_COLORS.Live;
+              const isCredsVisible = showCredentials === website._id;
 
-                  <View style={[s(styles.credentialsVaultInspectionCard), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}>
-                    <View style={s(styles.vaultEntryBlockRow)}>
-                      <View style={s(styles.flexOne)}>
-                        <Text style={[s(styles.vaultMiniLabel), { color: activeColors.textLight }]}>Access Identifier / Email</Text>
-                        <Text style={[s(styles.vaultMonospaceContentText), { color: activeColors.text }]} numberOfLines={1}>
-                          {viewingWebsite.loginEmail || "No login identity configured"}
-                        </Text>
-                      </View>
-                      {viewingWebsite.loginEmail && (
-                        <TouchableOpacity 
-                          style={[s(styles.vaultRowCopyActionBtn), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]} 
-                          onPress={() => copyToClipboard(viewingWebsite.loginEmail, "Email")}
-                        >
-                          {copiedField === "Email" ? <CheckCircle size={14} color={activeColors.success} /> : <Copy size={13} color={activeColors.textMuted} />}
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    <View style={[s(styles.vaultEntryBlockRow), s(styles.vaultRowDivider), { borderTopColor: activeColors.borderLight }]}>
-                      <View style={s(styles.flexOne)}>
-                        <Text style={[s(styles.vaultMiniLabel), { color: activeColors.textLight }]}>Encrypted Access Token</Text>
-                        <Text style={[s(styles.vaultMonospaceContentText), { color: activeColors.text }]} numberOfLines={1}>
-                          {viewingWebsite.loginPassword || "No passkey configured"}
-                        </Text>
-                      </View>
-                      {viewingWebsite.loginPassword && (
-                        <TouchableOpacity 
-                          style={[s(styles.vaultRowCopyActionBtn), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]} 
-                          onPress={() => copyToClipboard(viewingWebsite.loginPassword, "Password")}
-                        >
-                          {copiedField === "Password" ? <CheckCircle size={14} color={activeColors.success} /> : <Copy size={13} color={activeColors.textMuted} />}
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  <View style={[s(styles.inspectorEndpointUrlLinkCardBlock), { backgroundColor: activeColors.primaryLight, borderColor: activeColors.border }]}>
-                    <Text style={[s(styles.inspectorDataLabel), { color: activeColors.primary }]}>Destination End-Point URL</Text>
-                    <TouchableOpacity 
-                      style={s(styles.inspectorUrlTriggerRow)}
-                      onPress={() => handleUrlRedirect(viewingWebsite.url)}
+              return (
+                <View key={website._id}>
+                  <TouchableOpacity
+                    style={[styles.tableRow, { borderBottomColor: colors.borderLight }]}
+                    onPress={() => {
+                      setViewingWebsite(website);
+                      setIsViewOpen(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.cellText, { width: 40, color: colors.textMuted, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }]}>
+                      {index + 1}
+                    </Text>
+                    <Text style={[styles.cellTextBold, { width: 160, color: colors.text }]} numberOfLines={1}>
+                      {website.siteName}
+                    </Text>
+                    <TouchableOpacity
+                      style={{ width: 180, flexDirection: "row", alignItems: "center" }}
+                      onPress={() => openUrl(website.url)}
+                      activeOpacity={0.7}
                     >
-                      <Text style={[s(styles.inspectorUrlStringDisplay), { color: activeColors.primary }]} numberOfLines={1}>{viewingWebsite.url}</Text>
-                      <ExternalLink size={13} color={activeColors.primary} />
+                      <Text style={[styles.linkText, { color: colors.primary }]} numberOfLines={1}>
+                        {website.url.length > 22 ? website.url.slice(0, 22) + "..." : website.url}
+                      </Text>
+                      <ExternalLink size={12} color={colors.primary} style={{ marginLeft: 4 }} />
                     </TouchableOpacity>
-                  </View>
+                    <Text style={[styles.cellText, { width: 110, color: colors.text }]} numberOfLines={1}>
+                      {website.platform || "N/A"}
+                    </Text>
+                    <Text style={[styles.cellText, { width: 110, color: colors.text }]} numberOfLines={1}>
+                      {website.hostingProvider || "N/A"}
+                    </Text>
+                    <View style={{ width: 110 }}>
+                      <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg, borderColor: statusCfg.border }]}>
+                        <Text style={[styles.statusBadgeText, { color: statusCfg.text }]}>{website.status}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.actionsCell}>
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => handleEdit(website)}
+                        activeOpacity={0.7}
+                      >
+                        <Edit2 size={15} color="#3b82f6" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => setShowCredentials(isCredsVisible ? null : website._id)}
+                        activeOpacity={0.7}
+                      >
+                        <Lock size={15} color="#f59e0b" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => handleDelete(website)}
+                        activeOpacity={0.7}
+                      >
+                        <Trash2 size={15} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
 
-                  {viewingWebsite.notes && (
-                    <View style={s(styles.marginTopSix)}>
-                      <Text style={[s(styles.inspectorDataLabel), { color: activeColors.textMuted }]}>Internal Core Documentation Notes</Text>
-                      <Text style={[s(styles.inspectorNotesTextContentBlock), { color: activeColors.textMuted }]}>{viewingWebsite.notes}</Text>
+                  {isCredsVisible && (
+                    <View style={[styles.credentialsInlinePanel, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                      <View style={styles.credRow}>
+                        <Text style={[styles.credLabel, { color: colors.textMuted }]}>LOGIN EMAIL:</Text>
+                        <Text style={[styles.credValue, { color: colors.text }]}>{website.loginEmail || "No email set"}</Text>
+                        {website.loginEmail ? (
+                          <TouchableOpacity onPress={() => copyToClipboard(website.loginEmail || "", "email")}>
+                            <Copy size={13} color={colors.primary} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <View style={[styles.credRow, { marginTop: 6 }]}>
+                        <Text style={[styles.credLabel, { color: colors.textMuted }]}>PASSWORD:</Text>
+                        <Text style={[styles.credValue, { color: colors.text }]}>{website.loginPassword || "No password set"}</Text>
+                        {website.loginPassword ? (
+                          <TouchableOpacity onPress={() => copyToClipboard(website.loginPassword || "", "password")}>
+                            <Copy size={13} color={colors.primary} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
                   )}
                 </View>
-              </ScrollView>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
 
-              <View style={[s(styles.inspectorDetailsModalActionRowFooter), { borderTopColor: activeColors.borderLight }]}>
-                <TouchableOpacity 
-                  style={[s(styles.inspectorModalModifyActionBtn), { borderColor: activeColors.border }]}
-                  onPress={() => {
-                    setIsViewOpen(false);
-                    handleEdit(viewingWebsite);
-                  }}
-                >
-                  <Edit2 size={13} color={activeColors.textMuted} />
-                  <Text style={[s(styles.inspectorModalModifyActionBtnText), { color: activeColors.textMuted }]}>Modify Node</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[s(styles.inspectorModalCloseDismissBtn), { backgroundColor: activeColors.text }]}
-                  onPress={() => { setIsViewOpen(false); setViewingWebsite(null); }}
-                >
-                  <Text style={[s(styles.inspectorModalCloseDismissBtnText), { color: activeColors.surface }]}>Close Inspector</Text>
-                </TouchableOpacity>
-              </View>
+      {/* CREATE / EDIT MODAL */}
+      <Modal
+        visible={isEditDialogOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsEditDialogOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.modalBg, borderColor: colors.border, maxWidth: isTablet ? 500 : "100%" }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitleText, { color: colors.text }]}>
+                {selectedWebsite ? "Edit Website" : "Add New Website"}
+              </Text>
+              <TouchableOpacity onPress={() => setIsEditDialogOpen(false)} activeOpacity={0.7}>
+                <X size={18} color={colors.text} />
+              </TouchableOpacity>
             </View>
-          )}
+
+            <ScrollView contentContainerStyle={styles.formScrollContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Site Name *</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text }]}
+                    placeholder="e.g., Company Main Site"
+                    placeholderTextColor={colors.textMuted}
+                    value={formData.siteName || ""}
+                    onChangeText={(txt) => setFormData({ ...formData, siteName: txt })}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>URL *</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text }]}
+                    placeholder="https://example.com"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                    value={formData.url || ""}
+                    onChangeText={(txt) => setFormData({ ...formData, url: txt })}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Platform</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text }]}
+                    placeholder="e.g., WordPress, React, etc."
+                    placeholderTextColor={colors.textMuted}
+                    value={formData.platform || ""}
+                    onChangeText={(txt) => setFormData({ ...formData, platform: txt })}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Hosting Provider</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text }]}
+                    placeholder="e.g., AWS, DigitalOcean"
+                    placeholderTextColor={colors.textMuted}
+                    value={formData.hostingProvider || ""}
+                    onChangeText={(txt) => setFormData({ ...formData, hostingProvider: txt })}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.gridTwoColumns}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: 6 }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Login Email</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <TextInput
+                      style={[styles.modalInput, { color: colors.text }]}
+                      placeholder="admin@example.com"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                      value={formData.loginEmail || ""}
+                      onChangeText={(txt) => setFormData({ ...formData, loginEmail: txt })}
+                    />
+                  </View>
+                </View>
+                <View style={[styles.inputGroup, { flex: 1, marginLeft: 6 }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Password</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <TextInput
+                      style={[styles.modalInput, { color: colors.text }]}
+                      placeholder="Password"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry
+                      value={formData.loginPassword || ""}
+                      onChangeText={(txt) => setFormData({ ...formData, loginPassword: txt })}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Status</Text>
+                <View style={styles.statusOptionsRow}>
+                  {(["Live", "Maintenance", "Development", "Offline"] as const).map((st) => {
+                    const isSelected = (formData.status || "Live") === st;
+                    return (
+                      <TouchableOpacity
+                        key={st}
+                        style={[
+                          styles.statusChipOption,
+                          { backgroundColor: isSelected ? colors.primary : colors.inputBg, borderColor: colors.border },
+                        ]}
+                        onPress={() => setFormData({ ...formData, status: st })}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.statusChipText, { color: isSelected ? "#ffffff" : colors.text }]}>{st}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Notes</Text>
+                <View style={[styles.inputWrapper, styles.multilineWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.modalInput, styles.multilineInput, { color: colors.text }]}
+                    placeholder="Additional notes..."
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    numberOfLines={3}
+                    value={formData.notes || ""}
+                    onChangeText={(txt) => setFormData({ ...formData, notes: txt })}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => setIsEditDialogOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.cancelBtnText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSave}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
 
-    </SafeAreaView>
+      {/* VIEW WEBSITE DETAILS MODAL */}
+      <Modal
+        visible={isViewOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsViewOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.modalBg, borderColor: colors.border, maxWidth: isTablet ? 500 : "100%" }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitleText, { color: colors.text }]}>Website Details</Text>
+              <TouchableOpacity onPress={() => setIsViewOpen(false)} activeOpacity={0.7}>
+                <X size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {viewingWebsite && (
+              <ScrollView contentContainerStyle={styles.formScrollContent} showsVerticalScrollIndicator={false}>
+                <View style={[styles.viewGridRow, { borderBottomColor: colors.borderLight, paddingBottom: 12 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>SITE NAME</Text>
+                    <Text style={[styles.viewValueBold, { color: colors.text }]}>{viewingWebsite.siteName}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>STATUS</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLORS[viewingWebsite.status] || STATUS_COLORS.Live).bg, borderColor: (STATUS_COLORS[viewingWebsite.status] || STATUS_COLORS.Live).border }]}>
+                      <Text style={[styles.statusBadgeText, { color: (STATUS_COLORS[viewingWebsite.status] || STATUS_COLORS.Live).text }]}>
+                        {viewingWebsite.status}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.viewGridRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>PLATFORM</Text>
+                    <Text style={[styles.viewValueText, { color: colors.text }]}>{viewingWebsite.platform || "N/A"}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>HOSTING</Text>
+                    <Text style={[styles.viewValueText, { color: colors.text }]}>{viewingWebsite.hostingProvider || "N/A"}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.credentialsBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <View style={styles.credBoxItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>LOGIN EMAIL</Text>
+                      <Text style={[styles.credMonoText, { color: colors.text }]}>{viewingWebsite.loginEmail || "No email set"}</Text>
+                    </View>
+                    {viewingWebsite.loginEmail ? (
+                      <TouchableOpacity onPress={() => copyToClipboard(viewingWebsite.loginEmail || "", "viewEmail")}>
+                        {copiedField === "viewEmail" ? <Check size={16} color="#22c55e" /> : <Copy size={16} color={colors.primary} />}
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <View style={[styles.credBoxItem, { marginTop: 10 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>PASSWORD</Text>
+                      <Text style={[styles.credMonoText, { color: colors.text }]}>{viewingWebsite.loginPassword || "No password set"}</Text>
+                    </View>
+                    {viewingWebsite.loginPassword ? (
+                      <TouchableOpacity onPress={() => copyToClipboard(viewingWebsite.loginPassword || "", "viewPass")}>
+                        {copiedField === "viewPass" ? <Check size={16} color="#22c55e" /> : <Copy size={16} color={colors.primary} />}
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.viewBlockGroup}>
+                  <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>URL</Text>
+                  <TouchableOpacity onPress={() => openUrl(viewingWebsite.url)} style={styles.flexRowCenter} activeOpacity={0.7}>
+                    <Text style={[styles.viewValueLink, { color: colors.primary }]}>{viewingWebsite.url}</Text>
+                    <ExternalLink size={13} color={colors.primary} style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                </View>
+
+                {viewingWebsite.notes ? (
+                  <View style={styles.viewBlockGroup}>
+                    <Text style={[styles.viewLabelText, { color: colors.textMuted }]}>NOTES</Text>
+                    <Text style={[styles.viewNotesText, { color: colors.text }]}>{viewingWebsite.notes}</Text>
+                  </View>
+                ) : null}
+              </ScrollView>
+            )}
+
+            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => {
+                  setIsViewOpen(false);
+                  if (viewingWebsite) handleEdit(viewingWebsite);
+                }}
+                activeOpacity={0.7}
+              >
+                <Edit2 size={14} color={colors.text} style={{ marginRight: 6 }} />
+                <Text style={[styles.cancelBtnText, { color: colors.text }]}>Edit Details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={() => setIsViewOpen(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  baseContainer: { 
-    flex: 1 
+  container: {
+    flex: 1,
   },
-  scrollBlock: { 
-    padding: 16 
-  },
-  addAssetPrimaryBtn: {
+  toolbar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10,
+    flex: 1,
+    minWidth: 200,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  addIcon: {
+    marginRight: 6,
+  },
+  addButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  loaderContainer: {
+    paddingVertical: 32,
+    alignItems: "center",
+  },
+  emptyCard: {
+    padding: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 13,
+  },
+  tableCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  tableRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  headerCell: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  cellText: {
+    fontSize: 12,
+  },
+  cellTextBold: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  linkText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  actionsCell: {
+    width: 120,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  actionBtn: {
+    padding: 6,
+    borderRadius: 6,
+  },
+  credentialsInlinePanel: {
+    padding: 10,
+    marginHorizontal: 14,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  credRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  credLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  credValue: {
+    fontSize: 12,
+    fontWeight: "600",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    flex: 1,
+    marginHorizontal: 8,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxHeight: "85%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    paddingBottom: 12,
+    marginBottom: 12,
+  },
+  modalTitleText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  formScrollContent: {
+    paddingBottom: 12,
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  inputWrapper: {
+    borderWidth: 1,
+    borderRadius: 8,
+    height: 42,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  multilineWrapper: {
+    height: 80,
+    paddingVertical: 8,
+  },
+  modalInput: {
+    fontSize: 13,
+    paddingVertical: 0,
+    flex: 1,
+  },
+  multilineInput: {
+    textAlignVertical: "top",
+  },
+  gridTwoColumns: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statusOptionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  statusChipOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  statusChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modalFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    borderTopWidth: 1,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalBtn: {
+    height: 38,
     paddingHorizontal: 16,
     borderRadius: 8,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-      android: { elevation: 2 }
-    })
+    justifyContent: "center",
+    alignItems: "center",
+    flexDirection: "row",
   },
-  addAssetPrimaryBtnText: { 
-    color: "#fff", 
-    fontSize: 14, 
-    fontWeight: "600" 
-  },
-  loaderMargin: { 
-    marginTop: 32 
-  },
-  emptyCardState: { 
-    alignItems: "center", 
-    justifyContent: "center", 
-    padding: 32, 
-    borderRadius: 12, 
-    borderWidth: 1, 
-    borderStyle: "dashed", 
-    gap: 10, 
-    marginTop: 12 
-  },
-  emptyCardText: { 
-    fontSize: 13, 
-    textAlign: "center", 
-    lineHeight: 18 
-  },
-  entriesDirectoryStack: { 
-    gap: 12 
-  },
-  websiteItemRowCard: {
-    borderRadius: 12,
-    padding: 16,
+  cancelBtn: {
     borderWidth: 1,
-    ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 3 },
-      android: { elevation: 1 }
-    })
+    backgroundColor: "transparent",
+  },
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  saveBtnText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  viewGridRow: {
+    flexDirection: "row",
+    marginBottom: 12,
+    gap: 12,
+  },
+  viewLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    marginBottom: 3,
+  },
+  viewValueBold: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  viewValueText: {
+    fontSize: 13,
+  },
+  credentialsBox: {
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginVertical: 12,
+  },
+  credBoxItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  credMonoText: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+  viewBlockGroup: {
+    marginBottom: 12,
+  },
+  flexRowCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 3,
+  },
+  viewValueLink: {
+    fontSize: 13,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  viewNotesText: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
   },
-  cardHeaderTopLine: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "flex-start", 
-    borderBottomWidth: 1, 
-    paddingBottom: 10 
-  },
-  cardMainTitle: { 
-    fontSize: 15, 
-    fontWeight: "600" 
-  },
-  inlineUrlLinkRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 4, 
-    marginTop: 3 
-  },
-  inlineUrlLinkText: { 
-    fontSize: 12, 
-    marginRight: 2 
-  },
-  statusBadge: { 
-    paddingHorizontal: 8, 
-    paddingVertical: 3, 
-    borderRadius: 6, 
-    borderWidth: 1 
-  },
-  statusBadgeText: { 
-    fontSize: 10, 
-    fontWeight: "700", 
-    textTransform: "uppercase", 
-    letterSpacing: 0.3 
-  },
-  cardMetaGridInfo: { 
-    flexDirection: "row", 
-    gap: 16, 
-    marginTop: 10, 
-    paddingBottom: 10 
-  },
-  metaRowItem: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 6, 
-    flex: 1 
-  },
-  metaRowText: { 
-    fontSize: 12 
-  },
-  cardFooterActionsFlex: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    borderTopWidth: 1, 
-    paddingTop: 10, 
-    marginTop: 4 
-  },
-  indexCounterText: { 
-    fontVariant: ["tabular-nums"], 
-    fontSize: 11, 
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace" 
-  },
-  actionButtonGroup: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 4 
-  },
-  rowIconActionButton: { 
-    padding: 6, 
-    borderRadius: 6, 
-    borderWidth: 1 
-  },
-  modalScrollFormContainer: { 
-    flex: 1 
-  },
-  modalSheetFormHeader: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    padding: 16, 
-    borderBottomWidth: 1 
-  },
-  modalSheetFormTitle: { 
-    fontSize: 16, 
-    fontWeight: "700" 
-  },
-  closeSheetCircleButton: { 
-    padding: 6, 
-    borderRadius: 16 
-  },
-  innerFormKeyboardPadding: { 
-    padding: 16, 
-    paddingBottom: 40 
-  },
-  formInputSectionSpace: { 
-    gap: 14 
-  },
-  inputContainerUnit: { 
-    flexDirection: "column" 
-  },
-  formInputLabel: { 
-    fontSize: 13, 
-    fontWeight: "500", 
-    marginBottom: 5 
-  },
-  formInputBlock: { 
-    borderWidth: 1, 
-    borderRadius: 8, 
-    paddingHorizontal: 12, 
-    paddingVertical: 8, 
-    fontSize: 14 
-  },
-  twoColumnInlineInputRow: { 
-    flexDirection: "row", 
-    gap: 12 
-  },
-  formCustomSelectPickerTrigger: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    borderWidth: 1, 
-    borderRadius: 8, 
-    paddingHorizontal: 12, 
-    paddingVertical: 10 
-  },
-  formCustomSelectPickerValueText: { 
-    fontSize: 14, 
-    fontWeight: "500" 
-  },
-  formInputTextAreaBlock: { 
-    minHeight: 80, 
-    paddingVertical: 10 
-  },
-  formActionSubmissionSectionRow: { 
-    flexDirection: "row", 
-    gap: 12, 
-    marginTop: 24, 
-    paddingTop: 16, 
-    borderTopWidth: 1 
-  },
-  formCancelDismissBtn: { 
-    flex: 1, 
-    paddingVertical: 12, 
-    borderWidth: 1, 
-    borderRadius: 8, 
-    alignItems: "center" 
-  },
-  formCancelDismissBtnText: { 
-    fontSize: 14, 
-    fontWeight: "600" 
-  },
-  formSubmitActionBtn: { 
-    flex: 2, 
-    paddingVertical: 12, 
-    borderRadius: 8, 
-    alignItems: "center", 
-    justifyContent: "center" 
-  },
-  formSubmitActionBtnText: { 
-    fontSize: 14, 
-    fontWeight: "600", 
-    color: "#fff" 
-  },
-  centeredModalDimOverlay: { 
-    flex: 1, 
-    backgroundColor: "rgba(0,0,0,0.5)", 
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 20 
-  },
-  pickerOptionsPanelBox: { 
-    width: "100%", 
-    maxWidth: 300, 
-    borderRadius: 12, 
-    padding: 16, 
-    borderWidth: 1 
-  },
-  pickerHeaderSection: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    paddingBottom: 10, 
-    borderBottomWidth: 1, 
-    marginBottom: 8 
-  },
-  pickerHeaderTitleText: { 
-    fontSize: 14, 
-    fontWeight: "600" 
-  },
-  pickerRowOptionItem: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    paddingVertical: 10, 
-    paddingHorizontal: 8, 
-    borderRadius: 6 
-  },
-  activePickerRowOptionItem: {},
-  pickerRowOptionItemText: { 
-    fontSize: 14 
-  },
-  activePickerRowOptionItemText: { 
-    fontWeight: "600" 
-  },
-  detailsViewOverlayDialogBox: { 
-    width: "100%", 
-    maxWidth: 360, 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 1 
-  },
-  detailsDialogHeaderBlock: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "flex-start", 
-    borderBottomWidth: 1, 
-    paddingBottom: 12, 
-    marginBottom: 12 
-  },
-  detailsDialogTopMiniHeader: { 
-    fontSize: 10, 
-    fontWeight: "700", 
-    textTransform: "uppercase", 
-    letterSpacing: 0.5 
-  },
-  detailsDialogMainTitleText: { 
-    fontSize: 16, 
-    fontWeight: "700", 
-    marginTop: 2 
-  },
-  detailsInspectorSheetDataBody: { 
-    gap: 14 
-  },
-  inlineSplitDetailDataRow: { 
-    flexDirection: "row", 
-    gap: 12 
-  },
-  inspectorDataLabel: { 
-    fontSize: 10, 
-    fontWeight: "700", 
-    textTransform: "uppercase", 
-    letterSpacing: 0.3 
-  },
-  inspectorDataValueText: { 
-    fontSize: 13, 
-    fontWeight: "500", 
-    marginTop: 2 
-  },
-  credentialsVaultInspectionCard: { 
-    borderWidth: 1, 
-    borderRadius: 10, 
-    padding: 12, 
-    marginVertical: 4 
-  },
-  vaultEntryBlockRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "space-between", 
-    gap: 8 
-  },
-  vaultMiniLabel: { 
-    fontSize: 9, 
-    fontWeight: "700", 
-    textTransform: "uppercase" 
-  },
-  vaultMonospaceContentText: { 
-    fontSize: 12, 
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace", 
-    marginTop: 2 
-  },
-  vaultRowCopyActionBtn: { 
-    padding: 6, 
-    borderWidth: 1, 
-    borderRadius: 6 
-  },
-  inspectorEndpointUrlLinkCardBlock: { 
-    borderWidth: 1, 
-    padding: 12, 
-    borderRadius: 8 
-  },
-  inspectorUrlTriggerRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "space-between", 
-    gap: 8, 
-    marginTop: 4 
-  },
-  inspectorUrlStringDisplay: { 
-    flex: 1, 
-    fontSize: 12, 
-    fontWeight: "500" 
-  },
-  inspectorNotesTextContentBlock: { 
-    fontSize: 12, 
-    lineHeight: 18, 
-    marginTop: 3 
-  },
-  inspectorDetailsModalActionRowFooter: { 
-    flexDirection: "row", 
-    gap: 10, 
-    marginTop: 20, 
-    paddingTop: 12, 
-    borderTopWidth: 1 
-  },
-  inspectorModalModifyActionBtn: { 
-    flex: 1, 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "center", 
-    gap: 6, 
-    paddingVertical: 10, 
-    borderWidth: 1, 
-    borderRadius: 8 
-  },
-  inspectorModalModifyActionBtnText: { 
-    fontSize: 13, 
-    fontWeight: "600" 
-  },
-  inspectorModalCloseDismissBtn: { 
-    flex: 1, 
-    paddingVertical: 10, 
-    borderRadius: 8, 
-    alignItems: "center", 
-    justifyContent: "center" 
-  },
-  inspectorModalCloseDismissBtnText: { 
-    fontSize: 13, 
-    fontWeight: "600" 
-  },
-  flexOne: { 
-    flex: 1 
-  },
-  flexOnePadding: { 
-    flex: 1, 
-    paddingRight: 8 
-  },
-  chevronMargin: { 
-    marginLeft: 4 
-  },
-  statusBadgeAlign: { 
-    alignSelf: "flex-start", 
-    marginTop: 4 
-  },
-  vaultRowDivider: { 
-    borderTopWidth: 1, 
-    paddingTop: 8, 
-    marginTop: 8 
-  },
-  marginTopSix: { 
-    marginTop: 6 
-  },
-  maxHeightFourHundred: { 
-    maxHeight: 400 
-  }
 });

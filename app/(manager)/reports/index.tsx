@@ -7,17 +7,14 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  SafeAreaView,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
-import { Download, Search, BarChart2, TrendingUp, Users } from "lucide-react-native";
+import { Download, Search, FileText, Clock, BarChart2, Users } from "lucide-react-native";
+import Svg, { Rect, Line, Text as SvgText, Circle, Path } from "react-native-svg";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
 
 type TaskStatus = "active" | "pending" | "completed";
 type TaskPriority = "high" | "medium" | "low";
@@ -42,693 +39,768 @@ interface AttendanceRow {
   location: string;
 }
 
-type TaskRowApi = Omit<TaskRow, "id"> & { _id: string; assignees?: string[] };
+type TaskRowApi = Omit<TaskRow, "id"> & { _id: string };
 type AttendanceRowApi = Omit<AttendanceRow, "id"> & { _id: string };
 
+interface AnalyticsData {
+  statusAnalytics: Array<{ status: TaskStatus; value: number }>;
+  priorityAnalytics: Array<{ priority: TaskPriority; value: number }>;
+  hoursByEmployee: Array<{ employee: string; hours: number }>;
+  weeklyTrend: Array<{ week: string; tasksCompleted: number; hoursLogged: number }>;
+}
+
 function normalizeTask(t: TaskRowApi): TaskRow {
-  const assignee = Array.isArray(t.assignees) && t.assignees.length > 0
-    ? t.assignees[0]
-    : (typeof t.assignee === "string" ? t.assignee : "");
+  const raw = t as Record<string, unknown>;
+  const assignee =
+    Array.isArray(raw.assignees) && (raw.assignees as string[]).length > 0
+      ? (raw.assignees as string[])[0]
+      : typeof raw.assignee === "string"
+      ? raw.assignee
+      : "Unassigned";
+
   return {
-    id: t._id,
-    title: t.title || "",
+    id: t._id || String(Math.random()),
+    title: t.title || "Untitled Task",
     assignee,
-    status: t.status,
-    priority: t.priority,
-    dueDate: typeof t.dueDate === "string" ? t.dueDate : "",
+    status: t.status || "pending",
+    priority: t.priority || "medium",
+    dueDate:
+      typeof t.dueDate === "string"
+        ? t.dueDate
+        : typeof t.dueDate === "object" && t.dueDate && "toISOString" in t.dueDate
+        ? (t.dueDate as Date).toISOString().split("T")[0]
+        : "",
   };
 }
 
 function normalizeAttendance(a: AttendanceRowApi): AttendanceRow {
   return {
-    id: a._id,
-    employee: a.employee,
-    date: a.date,
-    clockIn: a.clockIn,
-    clockOut: a.clockOut,
-    totalHours: a.totalHours,
-    status: a.status,
-    location: a.location,
+    id: a._id || String(Math.random()),
+    employee: a.employee || "Unknown Employee",
+    date: a.date || "",
+    clockIn: a.clockIn || "—",
+    clockOut: a.clockOut || "—",
+    totalHours: Number(a.totalHours) || 0,
+    status: a.status || "complete",
+    location: a.location || "Office",
   };
 }
 
-function toCsv(rows: Array<Record<string, unknown>>): string {
-  if (!rows.length) return "";
-  const headers = Object.keys(rows[0]);
-  const escape = (v: unknown) => {
-    const sStr = String(v ?? "");
-    const needsQuotes = /[\n\r",]/.test(sStr);
-    const escaped = sStr.replace(/"/g, '""');
-    return needsQuotes ? `"${escaped}"` : escaped;
-  };
-  const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => escape(r[h])).join(","))];
-  return lines.join("\n");
+function SimpleBarChart({
+  data,
+  labelKey,
+  valueKey,
+  fillColor,
+  height = 200,
+  textColor,
+  gridColor,
+}: {
+  data: Array<Record<string, any>>;
+  labelKey: string;
+  valueKey: string;
+  fillColor: string;
+  height?: number;
+  textColor: string;
+  gridColor: string;
+}) {
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = Math.min(windowWidth - 48, 600);
+  const paddingLeft = 32;
+  const paddingBottom = 28;
+  const paddingTop = 16;
+  const paddingRight = 16;
+
+  const drawableWidth = chartWidth - paddingLeft - paddingRight;
+  const drawableHeight = height - paddingTop - paddingBottom;
+
+  const maxValue = useMemo(() => {
+    if (!data.length) return 10;
+    const max = Math.max(...data.map((d) => Number(d[valueKey]) || 0));
+    return max === 0 ? 10 : Math.ceil(max * 1.2);
+  }, [data, valueKey]);
+
+  const barWidth = useMemo(() => {
+    if (!data.length) return 20;
+    return Math.min(40, (drawableWidth / data.length) * 0.5);
+  }, [data.length, drawableWidth]);
+
+  return (
+    <View style={{ width: "100%", alignItems: "center" }}>
+      <Svg width={chartWidth} height={height}>
+        {[0, 0.5, 1].map((ratio, i) => {
+          const y = paddingTop + drawableHeight * (1 - ratio);
+          const val = Math.round(maxValue * ratio);
+          return (
+            <React.Fragment key={i}>
+              <Line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke={gridColor} strokeWidth="1" strokeDasharray="4 4" />
+              <SvgText x={paddingLeft - 6} y={y + 4} fill={textColor} fontSize="10" textAnchor="end">
+                {val}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+
+        {data.map((item, index) => {
+          const val = Number(item[valueKey]) || 0;
+          const barHeight = (val / maxValue) * drawableHeight;
+          const step = drawableWidth / (data.length || 1);
+          const x = paddingLeft + index * step + (step - barWidth) / 2;
+          const y = paddingTop + (drawableHeight - barHeight);
+          const label = String(item[labelKey] || "");
+
+          return (
+            <React.Fragment key={index}>
+              <Rect x={x} y={y} width={barWidth} height={barHeight} fill={fillColor} rx={4} ry={4} />
+              <SvgText x={x + barWidth / 2} y={height - 8} fill={textColor} fontSize="10" textAnchor="middle">
+                {label.length > 8 ? `${label.slice(0, 7)}…` : label}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+    </View>
+  );
 }
 
-const TASK_COLS = { title: 160, assignee: 120, priority: 90, status: 100, dueDate: 110 };
-const TASK_TABLE_MIN_WIDTH = Object.values(TASK_COLS).reduce((a, b) => a + b, 0);
+function SimpleLineChart({
+  data,
+  xKey,
+  yKey1,
+  yKey2,
+  color1,
+  color2,
+  height = 220,
+  textColor,
+  gridColor,
+}: {
+  data: Array<Record<string, any>>;
+  xKey: string;
+  yKey1: string;
+  yKey2: string;
+  color1: string;
+  color2: string;
+  height?: number;
+  textColor: string;
+  gridColor: string;
+}) {
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = Math.min(windowWidth - 48, 600);
+  const paddingLeft = 32;
+  const paddingBottom = 28;
+  const paddingTop = 16;
+  const paddingRight = 16;
 
-const ATTENDANCE_COLS = { employee: 130, date: 95, clockIn: 85, clockOut: 85, hours: 70, status: 95, location: 110 };
-const ATTENDANCE_TABLE_MIN_WIDTH = Object.values(ATTENDANCE_COLS).reduce((a, b) => a + b, 0);
+  const drawableWidth = chartWidth - paddingLeft - paddingRight;
+  const drawableHeight = height - paddingTop - paddingBottom;
 
-function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
-  return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
-    panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
-    textSecondary:   isDark ? "#a1a1aa" : "#475569",
-    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
-    primary:         uiTheme.customColors?.primary                || "#ffd27a",
-    success:         "#16C784",
-    warning:         "#F59E0B",
-    danger:          "#EF4444",
-    tabBg:           isDark ? "#18181b" : "#f4f4f5",
-    tabActive:       isDark ? "#27272a" : "#e4e4e7",
-    trackBg:         isDark ? "#18181b" : "#e4e4e7"
-  };
-}
+  const maxValue = useMemo(() => {
+    if (!data.length) return 10;
+    const max1 = Math.max(...data.map((d) => Number(d[yKey1]) || 0));
+    const max2 = Math.max(...data.map((d) => Number(d[yKey2]) || 0));
+    const max = Math.max(max1, max2);
+    return max === 0 ? 10 : Math.ceil(max * 1.2);
+  }, [data, yKey1, yKey2]);
 
-function createStyles(
-  colors: ReturnType<typeof buildColors>,
-  wp: (percentage: number) => number,
-  hp: (percentage: number) => number,
-  isTablet: boolean,
-  isSmallScreen: boolean
-) {
-  const horizontalPadding = isSmallScreen ? wp(3) : isTablet ? wp(6) : wp(4.2);
+  const points1 = useMemo(() => {
+    if (!data.length) return "";
+    const step = drawableWidth / (data.length - 1 || 1);
+    return data
+      .map((item, index) => {
+        const val = Number(item[yKey1]) || 0;
+        const x = paddingLeft + index * step;
+        const y = paddingTop + drawableHeight - (val / maxValue) * drawableHeight;
+        return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+      })
+      .join(" ");
+  }, [data, drawableWidth, drawableHeight, maxValue, yKey1]);
 
-  return StyleSheet.create({
-    centered: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: colors.background,
-      padding: wp(6),
-    },
-    loadingText: {
-      marginTop: hp(1),
-      color: colors.textSecondary,
-      fontSize: wp(3.3),
-    },
-    screenContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    responsiveContentWrapper: {
-      flex: 1,
-      width: "100%",
-      maxWidth: 768,
-      alignSelf: "center",
-    },
-    scrollPadding: {
-      paddingHorizontal: horizontalPadding,
-      paddingBottom: hp(5),
-    },
-    headerContainer: {
-      marginTop: hp(2),
-      marginBottom: hp(2),
-    },
-    pageTitle: {
-      fontSize: isSmallScreen ? wp(5) : isTablet ? wp(5.5) : wp(6),
-      fontWeight: "800",
-      color: colors.text,
-      letterSpacing: 0.3,
-    },
-    pageSubtitle: {
-      fontSize: isSmallScreen ? wp(3) : wp(3.3),
-      color: colors.textSecondary,
-      marginTop: hp(0.25),
-    },
-    tabsWrapper: {
-      flexDirection: "row",
-      backgroundColor: colors.tabBg,
-      padding: wp(1),
-      borderRadius: wp(2),
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginBottom: hp(2),
-    },
-    tabButton: {
-      flex: 1,
-      paddingVertical: hp(1.2),
-      alignItems: "center",
-      borderRadius: wp(1.5),
-    },
-    tabActive: {
-      backgroundColor: colors.tabActive,
-    },
-    tabText: {
-      fontSize: wp(3.3),
-      fontWeight: "600",
-      color: colors.textSecondary,
-    },
-    tabTextActive: {
-      color: colors.primary,
-      fontWeight: "700",
-    },
-    viewContent: {
-      gap: hp(2),
-    },
-    chartCard: {
-      backgroundColor: colors.cardBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: wp(2.5),
-      padding: wp(4),
-    },
-    chartHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: wp(2),
-      marginBottom: hp(2),
-    },
-    chartTitle: {
-      fontSize: wp(3.8),
-      fontWeight: "700",
-      color: colors.text,
-    },
-    barChartContainer: {
-      flexDirection: "row",
-      justifyContent: "space-around",
-      alignItems: "flex-end",
-      height: hp(20),
-      paddingTop: hp(1),
-    },
-    barColumn: {
-      alignItems: "center",
-      flex: 1,
-      marginHorizontal: wp(1),
-    },
-    barBackTrack: {
-      height: hp(12),
-      width: isTablet ? wp(2.5) : wp(3.5),
-      backgroundColor: colors.trackBg,
-      borderRadius: wp(1),
-      justifyContent: "flex-end",
-      overflow: "hidden",
-    },
-    barFill: {
-      width: "100%",
-      backgroundColor: colors.primary,
-      borderRadius: wp(1),
-    },
-    barCountLabel: {
-      fontSize: wp(2.8),
-      fontWeight: "700",
-      color: colors.text,
-      marginTop: hp(0.5),
-    },
-    barAxisLabel: {
-      fontSize: wp(2.5),
-      color: colors.textSecondary,
-      marginTop: hp(0.25),
-      textTransform: "capitalize",
-      textAlign: "center",
-    },
-    actionCard: {
-      backgroundColor: colors.cardBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: wp(2.5),
-      paddingVertical: hp(1.8),
-    },
-    searchRow: {
-      flexDirection: "row",
-      paddingHorizontal: wp(3.5),
-      gap: wp(2.5),
-      marginBottom: hp(1.8),
-    },
-    searchWrapper: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.trackBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: wp(1.5),
-      paddingHorizontal: wp(2.5),
-    },
-    searchIcon: {
-      marginRight: wp(1.5),
-    },
-    textInput: {
-      flex: 1,
-      height: hp(4.5),
-      color: colors.text,
-      fontSize: wp(3.3),
-      padding: 0,
-    },
-    exportButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.primary,
-      paddingHorizontal: wp(3.5),
-      borderRadius: wp(1.5),
-      gap: wp(1.5),
-    },
-    exportBtnText: {
-      color: colors.background,
-      fontSize: wp(3),
-      fontWeight: "700",
-    },
-    horizontalTableContainer: {
-      paddingHorizontal: wp(3.5),
-    },
-    tableHeadRow: {
-      flexDirection: "row",
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingBottom: hp(1),
-      marginBottom: hp(0.5),
-    },
-    tableTh: {
-      fontSize: wp(2.8),
-      fontWeight: "600",
-      color: colors.textSecondary,
-      textTransform: "uppercase",
-      paddingRight: wp(1.5),
-    },
-    tableBodyRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: hp(1.2),
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      opacity: 0.9,
-    },
-    tableTdText: {
-      fontSize: wp(3.2),
-      color: colors.text,
-      paddingRight: wp(2),
-    },
-    boldCell: {
-      color: colors.text,
-      fontWeight: "600",
-    },
-    badgeAlign: {
-      alignItems: "flex-start",
-      justifyContent: "center",
-    },
-    outlineBadge: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: wp(1.5),
-      paddingVertical: hp(0.3),
-      borderRadius: wp(1),
-      backgroundColor: colors.trackBg,
-    },
-    outlineBadgeText: {
-      fontSize: wp(2.5),
-      color: colors.textSecondary,
-      textTransform: "capitalize",
-      fontWeight: "600",
-    },
-    solidBadge: {
-      backgroundColor: colors.tabBg,
-      paddingHorizontal: wp(1.5),
-      paddingVertical: hp(0.3),
-      borderRadius: wp(1),
-    },
-    solidBadgeText: {
-      fontSize: wp(2.5),
-      color: colors.primary,
-      textTransform: "capitalize",
-      fontWeight: "700",
-    },
-    trendMetricNode: {
-      backgroundColor: colors.trackBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: wp(2),
-      padding: wp(3),
-      marginRight: wp(2.5),
-      width: isTablet ? wp(22) : wp(32),
-    },
-    trendNodeHeader: {
-      fontSize: wp(3),
-      fontWeight: "700",
-      color: colors.textSecondary,
-      marginBottom: hp(0.75),
-    },
-    trendNodeMetrics: {
-      gap: hp(0.25),
-    },
-    trendSubText: {
-      fontSize: wp(2.8),
-      color: colors.textSecondary,
-    },
-    rowMetricContainer: {
-      gap: hp(0.75),
-    },
-    rowMetricHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    rowMetricName: {
-      fontSize: wp(3.3),
-      color: colors.text,
-      fontWeight: "600",
-    },
-    rowMetricHours: {
-      fontSize: wp(3),
-      color: colors.primary,
-      fontWeight: "700",
-    },
-    horizontalTrack: {
-      height: hp(1),
-      backgroundColor: colors.trackBg,
-      borderRadius: wp(1),
-      overflow: "hidden",
-    },
-    horizontalFill: {
-      height: "100%",
-      backgroundColor: colors.primary,
-      borderRadius: wp(1),
-    },
-  });
+  const points2 = useMemo(() => {
+    if (!data.length) return "";
+    const step = drawableWidth / (data.length - 1 || 1);
+    return data
+      .map((item, index) => {
+        const val = Number(item[yKey2]) || 0;
+        const x = paddingLeft + index * step;
+        const y = paddingTop + drawableHeight - (val / maxValue) * drawableHeight;
+        return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+      })
+      .join(" ");
+  }, [data, drawableWidth, drawableHeight, maxValue, yKey2]);
+
+  return (
+    <View style={{ width: "100%", alignItems: "center" }}>
+      <Svg width={chartWidth} height={height}>
+        {[0, 0.5, 1].map((ratio, i) => {
+          const y = paddingTop + drawableHeight * (1 - ratio);
+          const val = Math.round(maxValue * ratio);
+          return (
+            <React.Fragment key={i}>
+              <Line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke={gridColor} strokeWidth="1" strokeDasharray="4 4" />
+              <SvgText x={paddingLeft - 6} y={y + 4} fill={textColor} fontSize="10" textAnchor="end">
+                {val}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+
+        {points1 ? <Path d={points1} fill="none" stroke={color1} strokeWidth="2.5" /> : null}
+        {points2 ? <Path d={points2} fill="none" stroke={color2} strokeWidth="2.5" /> : null}
+
+        {data.map((item, index) => {
+          const step = drawableWidth / (data.length - 1 || 1);
+          const x = paddingLeft + index * step;
+          const val1 = Number(item[yKey1]) || 0;
+          const val2 = Number(item[yKey2]) || 0;
+          const y1 = paddingTop + drawableHeight - (val1 / maxValue) * drawableHeight;
+          const y2 = paddingTop + drawableHeight - (val2 / maxValue) * drawableHeight;
+          const label = String(item[xKey] || "");
+
+          return (
+            <React.Fragment key={index}>
+              <Circle cx={x} cy={y1} r="3.5" fill={color1} />
+              <Circle cx={x} cy={y2} r="3.5" fill={color2} />
+              <SvgText x={x} y={height - 8} fill={textColor} fontSize="10" textAnchor="middle">
+                {label}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+    </View>
+  );
 }
 
 export default function Reports() {
-  const { width, height } = useWindowDimensions();
-  const isTablet = width >= 768;
-  const isSmallScreen = width < 360;
-
-  const wp = useMemo(() => (p: number) => (width * p) / 100, [width]);
-  const hp = useMemo(() => (p: number) => (height * p) / 100, [height]);
-
+  const { width } = useWindowDimensions();
   const { uiTheme } = useTheme();
-  const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
-  const styles = useMemo(() => createStyles(colors, wp, hp, isTablet, isSmallScreen), [colors, wp, hp, isTablet, isSmallScreen]);
+
+  const isDark = uiTheme?.theme !== "crystal-white";
+
+  const palette = useMemo(() => {
+    return {
+      background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#09090b" : "#ffffff"),
+      cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#000000"),
+      muted: isDark ? "#a1a1aa" : "#64748b",
+      border: isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
+      primary: uiTheme?.customColors?.primary || "#ffd27a",
+      accent: isDark ? "#3b82f6" : "#2563eb",
+      surface: isDark ? "#18181b" : "#f1f5f9",
+      success: "#16C784",
+      chartGrid: isDark ? "#27272a" : "#e2e8f0",
+      inputBg: isDark ? "#09090b" : "#ffffff",
+    };
+  }, [uiTheme, isDark]);
+
+  const styles = useMemo(() => createStyles(palette), [palette]);
 
   const [activeTab, setActiveTab] = useState<"tasks" | "attendance" | "performance">("tasks");
   const [taskQuery, setTaskQuery] = useState("");
   const [attendanceQuery, setAttendanceQuery] = useState("");
 
-  const { data: tasks = [], isLoading: loadingTasks } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: ["reports", "tasks"],
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const res = await apiFetch<{ items: TaskRowApi[] }>("/api/reports/tasks");
-      return (res.items || []).map(normalizeTask);
+      const res = await apiFetch<any>("/api/reports/tasks");
+      const items = Array.isArray(res) ? res : res?.items || [];
+      return items.map(normalizeTask);
     },
   });
 
-  const { data: attendance = [], isLoading: loadingAttendance } = useQuery({
+  const attendanceApiQuery = useQuery({
     queryKey: ["reports", "attendance"],
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const res = await apiFetch<{ items: AttendanceRowApi[] }>("/api/reports/attendance");
-      return (res.items || []).map(normalizeAttendance);
+      const res = await apiFetch<any>("/api/reports/attendance");
+      const items = Array.isArray(res) ? res : res?.items || [];
+      return items.map(normalizeAttendance);
     },
   });
 
-  const { data: analytics, isLoading: loadingAnalytics } = useQuery({
+  const analyticsQuery = useQuery({
     queryKey: ["reports", "analytics"],
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      return apiFetch<{
-        statusAnalytics: Array<{ status: TaskStatus; value: number }>;
-        priorityAnalytics: Array<{ priority: TaskPriority; value: number }>;
-        hoursByEmployee: Array<{ employee: string; hours: number }>;
-        weeklyTrend: Array<{ week: string; tasksCompleted: number; hoursLogged: number }>;
-      }>("/api/reports/analytics");
+      return apiFetch<AnalyticsData>("/api/reports/analytics");
     },
   });
+
+  const tasks = tasksQuery.data ?? [];
+  const attendance = attendanceApiQuery.data ?? [];
 
   const filteredTasks = useMemo(() => {
     const q = taskQuery.trim().toLowerCase();
     if (!q) return tasks;
-    return tasks.filter((t) => 
-      (t.title || "").toLowerCase().includes(q) ||
-      (t.assignee || "").toLowerCase().includes(q) ||
-      (t.status || "").toLowerCase().includes(q) ||
-      (t.priority || "").toLowerCase().includes(q)
-    );
+    return tasks.filter((t) => {
+      return (
+        (t.title || "").toLowerCase().includes(q) ||
+        (t.assignee || "").toLowerCase().includes(q) ||
+        (t.status || "").toLowerCase().includes(q) ||
+        (t.priority || "").toLowerCase().includes(q)
+      );
+    });
   }, [tasks, taskQuery]);
+
+  const employeeSummaryList = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredTasks.forEach((t) => {
+      const name = t.assignee || "Unassigned";
+      map.set(name, (map.get(name) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  }, [filteredTasks]);
 
   const filteredAttendance = useMemo(() => {
     const q = attendanceQuery.trim().toLowerCase();
     if (!q) return attendance;
-    return attendance.filter((a) => 
-      a.employee.toLowerCase().includes(q) ||
-      a.location.toLowerCase().includes(q) ||
-      a.status.toLowerCase().includes(q)
-    );
+    return attendance.filter((a) => {
+      return (
+        a.employee.toLowerCase().includes(q) ||
+        a.location.toLowerCase().includes(q) ||
+        a.status.toLowerCase().includes(q)
+      );
+    });
   }, [attendance, attendanceQuery]);
 
-  const executeNativeCsvExport = async (filename: string, csvData: string) => {
-    try {
-      const targetUri = `${FileSystem.documentDirectory}${filename}`;
-      await FileSystem.writeAsStringAsync(targetUri, csvData, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(targetUri);
-      } else {
-        Alert.alert("Saved", `Document compiled at:\n${targetUri}`);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not write spreadsheet file.";
-      Alert.alert("Export Failed", msg);
-    }
-  };
+  const statusAnalytics = useMemo(() => analyticsQuery.data?.statusAnalytics ?? [], [analyticsQuery.data]);
+  const priorityAnalytics = useMemo(() => analyticsQuery.data?.priorityAnalytics ?? [], [analyticsQuery.data]);
+  const hoursByEmployee = useMemo(() => analyticsQuery.data?.hoursByEmployee ?? [], [analyticsQuery.data]);
+  const weeklyTrend = useMemo(() => analyticsQuery.data?.weeklyTrend ?? [], [analyticsQuery.data]);
 
-  const exportTasksCsv = () => {
-    const dataString = toCsv(
-      filteredTasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        assignee: t.assignee,
-        status: t.status,
-        priority: t.priority,
-        dueDate: t.dueDate,
-      }))
-    );
-    executeNativeCsvExport("tasks-report.csv", dataString);
-  };
-
-  const exportAttendanceCsv = () => {
-    const dataString = toCsv(
-      filteredAttendance.map((a) => ({
-        id: a.id,
-        employee: a.employee,
-        date: a.date,
-        clockIn: a.clockIn,
-        clockOut: a.clockOut,
-        totalHours: a.totalHours,
-        status: a.status,
-        location: a.location,
-      }))
-    );
-    executeNativeCsvExport("attendance-report.csv", dataString);
-  };
-
-  const maxStatusVal = useMemo(() => Math.max(...(analytics?.statusAnalytics?.map(d => d.value) || [1])), [analytics]);
-  const maxPriorityVal = useMemo(() => Math.max(...(analytics?.priorityAnalytics?.map(d => d.value) || [1])), [analytics]);
-  const maxEmployeeHours = useMemo(() => Math.max(...(analytics?.hoursByEmployee?.map(d => d.hours) || [1])), [analytics]);
-
-  if (loadingTasks || loadingAttendance || loadingAnalytics) {
-    return (
-      <View style={s(styles.centered)}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={s(styles.loadingText)}>Processing ...</Text>
-      </View>
-    );
-  }
+  const isLoading = tasksQuery.isLoading || attendanceApiQuery.isLoading || analyticsQuery.isLoading;
 
   return (
-    <SafeAreaView style={s(styles.screenContainer)} edges={["top", "left", "right"]}>
-      <ScrollView contentContainerStyle={s(styles.scrollPadding)} showsVerticalScrollIndicator={false}>
-        <View style={s(styles.responsiveContentWrapper)}>
-          <View style={s(styles.headerContainer)}>
-            <Text style={s(styles.pageTitle)}>Reports & Analytics</Text>
-            <Text style={s(styles.pageSubtitle)}>Review task, attendance, and performance insights</Text>
-          </View>
-
-          <View style={s(styles.tabsWrapper)}>
-            <TouchableOpacity style={s([styles.tabButton, activeTab === "tasks" && styles.tabActive])} onPress={() => setActiveTab("tasks")}>
-              <Text style={s([styles.tabText, activeTab === "tasks" && styles.tabTextActive])}>Tasks</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s([styles.tabButton, activeTab === "attendance" && styles.tabActive])} onPress={() => setActiveTab("attendance")}>
-              <Text style={s([styles.tabText, activeTab === "attendance" && styles.tabTextActive])}>Time Clock</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s([styles.tabButton, activeTab === "performance" && styles.tabActive])} onPress={() => setActiveTab("performance")}>
-              <Text style={s([styles.tabText, activeTab === "performance" && styles.tabTextActive])}>Performance</Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeTab === "tasks" && (
-            <View style={s(styles.viewContent)}>
-              <View style={s(styles.chartCard)}>
-                <View style={s(styles.chartHeaderRow)}>
-                  <BarChart2 size={16} color={colors.primary} />
-                  <Text style={s(styles.chartTitle)}>Tasks by Status</Text>
-                </View>
-                <View style={s(styles.barChartContainer)}>
-                  {analytics?.statusAnalytics?.map((item) => (
-                    <View key={item.status} style={s(styles.barColumn)}>
-                      <View style={s(styles.barBackTrack)}>
-                        <View style={s([styles.barFill, { height: `${(item.value / maxStatusVal) * 100}%` }])} />
-                      </View>
-                      <Text style={s(styles.barCountLabel)}>{item.value}</Text>
-                      <Text style={s(styles.barAxisLabel)} numberOfLines={1}>{item.status}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              <View style={s(styles.chartCard)}>
-                <View style={s(styles.chartHeaderRow)}>
-                  <BarChart2 size={16} color={colors.primary} />
-                  <Text style={s(styles.chartTitle)}>Tasks by Priority</Text>
-                </View>
-                <View style={s(styles.barChartContainer)}>
-                  {analytics?.priorityAnalytics?.map((item) => (
-                    <View key={item.priority} style={s(styles.barColumn)}>
-                      <View style={s(styles.barBackTrack)}>
-                        <View style={s([styles.barFill, { height: `${(item.value / maxPriorityVal) * 100}%` }])} />
-                      </View>
-                      <Text style={s(styles.barCountLabel)}>{item.value}</Text>
-                      <Text style={s(styles.barAxisLabel)} numberOfLines={1}>{item.priority}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              <View style={s(styles.actionCard)}>
-                <View style={s(styles.searchRow)}>
-                  <View style={s(styles.searchWrapper)}>
-                    <Search size={14} color={colors.textSecondary} style={s(styles.searchIcon)} />
-                    <TextInput
-                      style={s(styles.textInput)}
-                      placeholder="Search tasks..."
-                      placeholderTextColor={colors.textSecondary}
-                      value={taskQuery}
-                      onChangeText={setTaskQuery}
-                      autoCorrect={false}
-                    />
-                  </View>
-                  <TouchableOpacity style={s(styles.exportButton)} onPress={exportTasksCsv}>
-                    <Download size={14} color={colors.background} />
-                    <Text style={s(styles.exportBtnText)}>CSV</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={true} style={s(styles.horizontalTableContainer)}>
-                  <View style={{ width: TASK_TABLE_MIN_WIDTH }}>
-                    <View style={s(styles.tableHeadRow)}>
-                      <Text style={s([styles.tableTh, { width: TASK_COLS.title }])}>Task Name</Text>
-                      <Text style={s([styles.tableTh, { width: TASK_COLS.assignee }])}>Assignee</Text>
-                      <Text style={s([styles.tableTh, { width: TASK_COLS.priority }])}>Priority</Text>
-                      <Text style={s([styles.tableTh, { width: TASK_COLS.status }])}>Status</Text>
-                      <Text style={s([styles.tableTh, { width: TASK_COLS.dueDate }])}>Due Date</Text>
-                    </View>
-                    {filteredTasks.map((t) => (
-                      <View key={t.id} style={s(styles.tableBodyRow)}>
-                        <Text style={s([styles.tableTdText, styles.boldCell, { width: TASK_COLS.title }])} numberOfLines={1} ellipsizeMode="tail">{t.title}</Text>
-                        <Text style={s([styles.tableTdText, { width: TASK_COLS.assignee }])} numberOfLines={1} ellipsizeMode="tail">{t.assignee || "Unassigned"}</Text>
-                        <View style={s([{ width: TASK_COLS.priority }, styles.badgeAlign])}><View style={s(styles.outlineBadge)}><Text style={s(styles.outlineBadgeText)}>{t.priority}</Text></View></View>
-                        <View style={s([{ width: TASK_COLS.status }, styles.badgeAlign])}><View style={s(styles.solidBadge)}><Text style={s(styles.solidBadgeText)}>{t.status}</Text></View></View>
-                        <Text style={s([styles.tableTdText, { width: TASK_COLS.dueDate }])}>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "--"}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            </View>
-          )}
-
-          {activeTab === "attendance" && (
-            <View style={s(styles.viewContent)}>
-              <View style={s(styles.chartCard)}>
-                <View style={s(styles.chartHeaderRow)}>
-                  <TrendingUp size={16} color={colors.primary} />
-                  <Text style={s(styles.chartTitle)}>Weekly Log Trend Monitor</Text>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {analytics?.weeklyTrend?.map((week, idx) => (
-                    <View key={idx} style={s(styles.trendMetricNode)}>
-                      <Text style={s(styles.trendNodeHeader)}>{week.week}</Text>
-                      <View style={s(styles.trendNodeMetrics)}>
-                        <Text style={s(styles.trendSubText)}>Done: <Text style={{ color: colors.primary, fontWeight: "700" }}>{week.tasksCompleted}</Text></Text>
-                        <Text style={s(styles.trendSubText)}>Hours: <Text style={{ color: colors.text, fontWeight: "700" }}>{week.hoursLogged}h</Text></Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={s(styles.actionCard)}>
-                <View style={s(styles.searchRow)}>
-                  <View style={s(styles.searchWrapper)}>
-                    <Search size={14} color={colors.textSecondary} style={s(styles.searchIcon)} />
-                    <TextInput
-                      style={s(styles.textInput)}
-                      placeholder="Search rosters..."
-                      placeholderTextColor={colors.textSecondary}
-                      value={attendanceQuery}
-                      onChangeText={setAttendanceQuery}
-                      autoCorrect={false}
-                    />
-                  </View>
-                  <TouchableOpacity style={s(styles.exportButton)} onPress={exportAttendanceCsv}>
-                    <Download size={14} color={colors.background} />
-                    <Text style={s(styles.exportBtnText)}>CSV</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={true} style={s(styles.horizontalTableContainer)}>
-                  <View style={{ width: ATTENDANCE_TABLE_MIN_WIDTH }}>
-                    <View style={s(styles.tableHeadRow)}>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.employee }])}>Employee</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.date }])}>Date</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.clockIn }])}>Clock In</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.clockOut }])}>Clock Out</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.hours }])}>Hours</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.status }])}>Status</Text>
-                      <Text style={s([styles.tableTh, { width: ATTENDANCE_COLS.location }])}>Location</Text>
-                    </View>
-                    {filteredAttendance.map((a) => (
-                      <View key={a.id} style={s(styles.tableBodyRow)}>
-                        <Text style={s([styles.tableTdText, styles.boldCell, { width: ATTENDANCE_COLS.employee }])} numberOfLines={1} ellipsizeMode="tail">{a.employee}</Text>
-                        <Text style={s([styles.tableTdText, { width: ATTENDANCE_COLS.date }])}>{a.date ? new Date(a.date).toLocaleDateString() : "--"}</Text>
-                        <Text style={s([styles.tableTdText, { width: ATTENDANCE_COLS.clockIn }])}>{a.clockIn || "--"}</Text>
-                        <Text style={s([styles.tableTdText, { width: ATTENDANCE_COLS.clockOut }])}>{a.clockOut || "--"}</Text>
-                        <Text style={s([styles.tableTdText, { width: ATTENDANCE_COLS.hours, color: colors.primary, fontWeight: "600" }])}>{a.totalHours}h</Text>
-                        <View style={s([{ width: ATTENDANCE_COLS.status }, styles.badgeAlign])}><View style={s(styles.solidBadge)}><Text style={s(styles.solidBadgeText)}>{a.status}</Text></View></View>
-                        <Text style={s([styles.tableTdText, { width: ATTENDANCE_COLS.location }])} numberOfLines={1} ellipsizeMode="tail">{a.location}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            </View>
-          )}
-
-          {activeTab === "performance" && (
-            <View style={s(styles.viewContent)}>
-              <View style={s(styles.chartCard)}>
-                <View style={s(styles.chartHeaderRow)}>
-                  <Users size={16} color={colors.primary} />
-                  <Text style={s(styles.chartTitle)}>Assigned Hours Matrix</Text>
-                </View>
-                <View style={{ marginTop: hp(1.5), gap: hp(1.8) }}>
-                  {analytics?.hoursByEmployee?.map((row) => (
-                    <View key={row.employee} style={s(styles.rowMetricContainer)}>
-                      <View style={s(styles.rowMetricHeader)}>
-                        <Text style={s(styles.rowMetricName)}>{row.employee}</Text>
-                        <Text style={s(styles.rowMetricHours)}>{row.hours} Hours</Text>
-                      </View>
-                      <View style={s(styles.horizontalTrack)}>
-                        <View style={s([styles.horizontalFill, { width: `${(row.hours / maxEmployeeHours) * 100}%` }])} />
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </View>
-          )}
+    <SafeAreaView style={[styles.container, { backgroundColor: palette.background }]}>
+      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        
+        <View style={styles.headerBlock}>
+          <Text style={[styles.title, { color: palette.text }]}>Reports & Analytics</Text>
+          <Text style={[styles.subtitle, { color: palette.muted }]}>Review task, attendance, and performance insights</Text>
         </View>
+
+        <View style={[styles.tabBar, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === "tasks" && { backgroundColor: palette.surface }]}
+            onPress={() => setActiveTab("tasks")}
+          >
+            <FileText size={14} color={activeTab === "tasks" ? palette.primary : palette.muted} />
+            <Text style={[styles.tabText, { color: activeTab === "tasks" ? palette.text : palette.muted }]}>Task Analytics</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === "attendance" && { backgroundColor: palette.surface }]}
+            onPress={() => setActiveTab("attendance")}
+          >
+            <Clock size={14} color={activeTab === "attendance" ? palette.primary : palette.muted} />
+            <Text style={[styles.tabText, { color: activeTab === "attendance" ? palette.text : palette.muted }]}>Time Clock Reports</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === "performance" && { backgroundColor: palette.surface }]}
+            onPress={() => setActiveTab("performance")}
+          >
+            <BarChart2 size={14} color={activeTab === "performance" ? palette.primary : palette.muted} />
+            <Text style={[styles.tabText, { color: activeTab === "performance" ? palette.text : palette.muted }]}>Employee Performance</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLoading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="small" color={palette.primary} />
+            <Text style={[styles.loaderText, { color: palette.muted }]}>Loading analytics data...</Text>
+          </View>
+        ) : (
+          <>
+            {activeTab === "tasks" && (
+              <View style={styles.tabContent}>
+                <View style={styles.gridRow}>
+                  <View style={[styles.chartCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                    <Text style={[styles.cardTitle, { color: palette.text }]}>Tasks by Status</Text>
+                    <SimpleBarChart
+                      data={statusAnalytics}
+                      labelKey="status"
+                      valueKey="value"
+                      fillColor={palette.primary}
+                      textColor={palette.muted}
+                      gridColor={palette.chartGrid}
+                    />
+                  </View>
+
+                  <View style={[styles.chartCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                    <Text style={[styles.cardTitle, { color: palette.text }]}>Tasks by Priority</Text>
+                    <SimpleBarChart
+                      data={priorityAnalytics}
+                      labelKey="priority"
+                      valueKey="value"
+                      fillColor={palette.accent}
+                      textColor={palette.muted}
+                      gridColor={palette.chartGrid}
+                    />
+                  </View>
+                </View>
+
+                {/* Assigned Employees Overview Card */}
+                <View style={[styles.tableCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <View style={styles.cardHeaderRow}>
+                    <Users size={16} color={palette.primary} />
+                    <Text style={[styles.cardTitle, { color: palette.text, marginBottom: 0 }]}>
+                      Assigned Employees ({employeeSummaryList.length})
+                    </Text>
+                  </View>
+                  <View style={styles.employeeChipGroup}>
+                    {employeeSummaryList.map((emp) => (
+                      <View key={emp.name} style={[styles.employeeChip, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+                        <Text style={[styles.employeeChipName, { color: palette.text }]}>{emp.name}</Text>
+                        <View style={[styles.employeeChipBadge, { backgroundColor: palette.primary }]}>
+                          <Text style={styles.employeeChipBadgeText}>{emp.count}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={[styles.tableCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <View style={styles.filterRow}>
+                    <View style={[styles.searchBox, { backgroundColor: palette.inputBg, borderColor: palette.border }]}>
+                      <Search size={16} color={palette.muted} style={{ marginRight: 8 }} />
+                      <TextInput
+                        style={[styles.searchInput, { color: palette.text }]}
+                        placeholder="Search tasks or assignees..."
+                        placeholderTextColor={palette.muted}
+                        value={taskQuery}
+                        onChangeText={setTaskQuery}
+                        autoCorrect={false}
+                      />
+                    </View>
+                  </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View>
+                      <View style={[styles.tableHeader, { borderBottomColor: palette.border }]}>
+                        <Text style={[styles.th, { width: 140, color: palette.muted }]}>Task</Text>
+                        <Text style={[styles.th, { width: 120, color: palette.muted }]}>Assignee</Text>
+                        <Text style={[styles.th, { width: 90, color: palette.muted }]}>Priority</Text>
+                        <Text style={[styles.th, { width: 100, color: palette.muted }]}>Status</Text>
+                        <Text style={[styles.th, { width: 100, color: palette.muted }]}>Due Date</Text>
+                      </View>
+                      {filteredTasks.map((t) => (
+                        <View key={t.id} style={[styles.tableRow, { borderBottomColor: palette.border }]}>
+                          <Text style={[styles.td, styles.tdBold, { width: 140, color: palette.text }]} numberOfLines={1}>{t.title}</Text>
+                          <Text style={[styles.td, { width: 120, color: palette.text }]} numberOfLines={1}>{t.assignee}</Text>
+                          <View style={{ width: 90 }}>
+                            <View style={[styles.badge, { backgroundColor: palette.surface }]}>
+                              <Text style={[styles.badgeText, { color: palette.text }]}>{t.priority}</Text>
+                            </View>
+                          </View>
+                          <View style={{ width: 100 }}>
+                            <View style={[styles.badge, { backgroundColor: palette.surface }]}>
+                              <Text style={[styles.badgeText, { color: palette.text }]}>{t.status}</Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.td, { width: 100, color: palette.muted }]}>
+                            {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+
+            {activeTab === "attendance" && (
+              <View style={styles.tabContent}>
+                <View style={[styles.chartCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <Text style={[styles.cardTitle, { color: palette.text }]}>Weekly Summary</Text>
+                  <View style={styles.legendRow}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: palette.primary }]} />
+                      <Text style={[styles.legendText, { color: palette.muted }]}>Tasks Completed</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: palette.success }]} />
+                      <Text style={[styles.legendText, { color: palette.muted }]}>Hours Logged</Text>
+                    </View>
+                  </View>
+                  <SimpleLineChart
+                    data={weeklyTrend}
+                    xKey="week"
+                    yKey1="tasksCompleted"
+                    yKey2="hoursLogged"
+                    color1={palette.primary}
+                    color2={palette.success}
+                    textColor={palette.muted}
+                    gridColor={palette.chartGrid}
+                  />
+                </View>
+
+                <View style={[styles.tableCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <View style={styles.filterRow}>
+                    <View style={[styles.searchBox, { backgroundColor: palette.inputBg, borderColor: palette.border }]}>
+                      <Search size={16} color={palette.muted} style={{ marginRight: 8 }} />
+                      <TextInput
+                        style={[styles.searchInput, { color: palette.text }]}
+                        placeholder="Search attendance..."
+                        placeholderTextColor={palette.muted}
+                        value={attendanceQuery}
+                        onChangeText={setAttendanceQuery}
+                        autoCorrect={false}
+                      />
+                    </View>
+                  </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View>
+                      <View style={[styles.tableHeader, { borderBottomColor: palette.border }]}>
+                        <Text style={[styles.th, { width: 120, color: palette.muted }]}>Employee</Text>
+                        <Text style={[styles.th, { width: 100, color: palette.muted }]}>Date</Text>
+                        <Text style={[styles.th, { width: 90, color: palette.muted }]}>Clock In</Text>
+                        <Text style={[styles.th, { width: 90, color: palette.muted }]}>Clock Out</Text>
+                        <Text style={[styles.th, { width: 90, color: palette.muted }]}>Total Hours</Text>
+                        <Text style={[styles.th, { width: 90, color: palette.muted }]}>Status</Text>
+                        <Text style={[styles.th, { width: 110, color: palette.muted }]}>Location</Text>
+                      </View>
+                      {filteredAttendance.map((a) => (
+                        <View key={a.id} style={[styles.tableRow, { borderBottomColor: palette.border }]}>
+                          <Text style={[styles.td, styles.tdBold, { width: 120, color: palette.text }]} numberOfLines={1}>{a.employee}</Text>
+                          <Text style={[styles.td, { width: 100, color: palette.muted }]}>
+                            {a.date ? new Date(a.date).toLocaleDateString() : "—"}
+                          </Text>
+                          <Text style={[styles.td, { width: 90, color: palette.muted }]}>{a.clockIn}</Text>
+                          <Text style={[styles.td, { width: 90, color: palette.muted }]}>{a.clockOut}</Text>
+                          <Text style={[styles.td, { width: 90, color: palette.muted }]}>{a.totalHours}h</Text>
+                          <View style={{ width: 90 }}>
+                            <View style={[styles.badge, { backgroundColor: palette.surface }]}>
+                              <Text style={[styles.badgeText, { color: palette.text }]}>{a.status}</Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.td, { width: 110, color: palette.muted }]} numberOfLines={1}>{a.location}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+
+            {activeTab === "performance" && (
+              <View style={styles.tabContent}>
+                <View style={[styles.chartCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <Text style={[styles.cardTitle, { color: palette.text }]}>Hours by Employee</Text>
+                  <SimpleBarChart
+                    data={hoursByEmployee}
+                    labelKey="employee"
+                    valueKey="hours"
+                    fillColor={palette.primary}
+                    height={240}
+                    textColor={palette.muted}
+                    gridColor={palette.chartGrid}
+                  />
+                </View>
+
+                <View style={[styles.tableCard, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ width: "100%", minWidth: width - 64 }}>
+                      <View style={[styles.tableHeader, { borderBottomColor: palette.border }]}>
+                        <Text style={[styles.th, { flex: 1, color: palette.muted }]}>Employee</Text>
+                        <Text style={[styles.th, { width: 120, color: palette.muted }]}>Total Hours</Text>
+                      </View>
+                      {hoursByEmployee.map((row) => (
+                        <View key={row.employee} style={[styles.tableRow, { borderBottomColor: palette.border }]}>
+                          <Text style={[styles.td, styles.tdBold, { flex: 1, color: palette.text }]}>{row.employee}</Text>
+                          <Text style={[styles.td, { width: 120, color: palette.muted }]}>{row.hours}h</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function createStyles(colors: any) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    scrollBody: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 40,
+    },
+    headerBlock: {
+      marginBottom: 16,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
+    subtitle: {
+      fontSize: 13,
+      marginTop: 2,
+    },
+    tabBar: {
+      flexDirection: "row",
+      borderRadius: 10,
+      borderWidth: 1,
+      padding: 4,
+      marginBottom: 20,
+    },
+    tabItem: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      borderRadius: 6,
+      gap: 4,
+    },
+    tabText: {
+      fontSize: 11,
+      fontWeight: "600",
+    },
+    loaderContainer: {
+      paddingVertical: 48,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    loaderText: {
+      fontSize: 13,
+      marginTop: 8,
+    },
+    tabContent: {
+      gap: 16,
+    },
+    gridRow: {
+      gap: 16,
+    },
+    chartCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 16,
+    },
+    cardTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      marginBottom: 12,
+    },
+    cardHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 12,
+    },
+    employeeChipGroup: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    employeeChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      gap: 6,
+    },
+    employeeChipName: {
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    employeeChipBadge: {
+      borderRadius: 10,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
+    employeeChipBadgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: "#000000",
+    },
+    legendRow: {
+      flexDirection: "row",
+      gap: 16,
+      marginBottom: 8,
+    },
+    legendItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    legendDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    legendText: {
+      fontSize: 11,
+    },
+    tableCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 16,
+    },
+    filterRow: {
+      flexDirection: "row",
+      marginBottom: 16,
+    },
+    searchBox: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      height: 38,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 13,
+      height: "100%",
+    },
+    tableHeader: {
+      flexDirection: "row",
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+    },
+    th: {
+      fontSize: 11,
+      fontWeight: "600",
+    },
+    tableRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+    },
+    td: {
+      fontSize: 12,
+    },
+    tdBold: {
+      fontWeight: "600",
+    },
+    badge: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 6,
+      alignSelf: "flex-start",
+    },
+    badgeText: {
+      fontSize: 10,
+      fontWeight: "600",
+      textTransform: "capitalize",
+    },
+  });
 }

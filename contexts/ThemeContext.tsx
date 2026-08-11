@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiFetch } from "@/lib/admin/apiClient";
 
 export type ThemePresetId = 
@@ -19,7 +20,7 @@ export interface PanelColors {
   dashboardBackground: string;
   dashboardCardBackground: string;
   dashboardTextColor: string;
-  borderColor: string;
+  borderColor?: string;
 }
 
 export interface UIThemeState {
@@ -35,6 +36,8 @@ interface ThemeContextType {
   resetTheme: () => Promise<void>;
   saveToBackend: (themeState: UIThemeState) => Promise<void>;
 }
+
+const ASYNC_STORAGE_THEME_KEY = "@app_ui_theme_cache";
 
 const THEME_PRESETS: Record<ThemePresetId, PanelColors & { defaultPrimary: string }> = {
   "dark-minimal": {
@@ -100,7 +103,12 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [uiTheme, setUiTheme] = useState<UIThemeState>(DEFAULT_THEME_STATE);
 
-  const computeThemeState = useCallback((themeId: ThemePresetId, cardStyle: UIThemeState["cardStyle"], customTextColor?: string, customPanelColors?: Partial<PanelColors>): UIThemeState => {
+  const computeThemeState = useCallback((
+    themeId: ThemePresetId, 
+    cardStyle: UIThemeState["cardStyle"], 
+    customTextColor?: string, 
+    customPanelColors?: Partial<PanelColors>
+  ): UIThemeState => {
     const preset = THEME_PRESETS[themeId] || THEME_PRESETS["dark-minimal"];
     const textColors = customTextColor || customPanelColors?.dashboardTextColor || preset.dashboardTextColor;
 
@@ -119,11 +127,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Automatic Instant Hydration + Background Cloud Sync
   useEffect(() => {
-    const loadStoredCloudTheme = async () => {
+    let isMounted = true;
+
+    const loadAppTheme = async () => {
+      // 1. Instant local cache load
+      try {
+        const cachedTheme = await AsyncStorage.getItem(ASYNC_STORAGE_THEME_KEY);
+        if (cachedTheme && isMounted) {
+          setUiTheme(JSON.parse(cachedTheme));
+        }
+      } catch (err) {
+        console.log("[ThemeContext] Cache hydration bypassed:", err);
+      }
+
+      // 2. Background sync with backend API
       try {
         const response = await apiFetch<{ item?: any }>("/api/ui-preferences");
-        if (response && response.item) {
+        if (response && response.item && isMounted) {
           const item = response.item;
           const resolvedState = computeThemeState(
             item.theme || "dark-minimal", 
@@ -131,17 +153,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             item.customColors?.textColor,
             item.panelColors
           );
+          
           setUiTheme(resolvedState);
+          await AsyncStorage.setItem(ASYNC_STORAGE_THEME_KEY, JSON.stringify(resolvedState));
         }
       } catch (error) {
-        console.log("[ThemeContext] Initialization failure bypassed.");
+        console.log("[ThemeContext] Server fetch bypassed, maintaining cached state.");
       }
     };
 
-    loadStoredCloudTheme();
+    loadAppTheme();
+
+    return () => {
+      isMounted = false;
+    };
   }, [computeThemeState]);
 
-  const updateTheme = useCallback((updates: Partial<Omit<UIThemeState, "panelColors" | "customColors">> & { customColors?: Partial<CustomColors> }) => {
+  const updateTheme = useCallback((
+    updates: Partial<Omit<UIThemeState, "panelColors" | "customColors">> & { customColors?: Partial<CustomColors> }
+  ) => {
     setUiTheme((current) => {
       const targetTheme = updates.theme !== undefined ? updates.theme : current.theme;
       const targetCardStyle = updates.cardStyle !== undefined ? updates.cardStyle : current.cardStyle;
@@ -149,7 +179,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         ? updates.customColors.textColor 
         : (updates.theme !== undefined ? THEME_PRESETS[updates.theme].dashboardTextColor : current.customColors.textColor);
 
-      return computeThemeState(targetTheme, targetCardStyle, targetTextColor);
+      const nextState = computeThemeState(targetTheme, targetCardStyle, targetTextColor);
+      
+      // Save locally to cache on change
+      AsyncStorage.setItem(ASYNC_STORAGE_THEME_KEY, JSON.stringify(nextState)).catch(() => {});
+      return nextState;
     });
   }, [computeThemeState]);
 
@@ -171,6 +205,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           }
         }),
       });
+
+      // Mirror to local cache
+      await AsyncStorage.setItem(ASYNC_STORAGE_THEME_KEY, JSON.stringify(targetThemeState));
     } catch (e) {
       console.error(e);
       throw e;
@@ -182,18 +219,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const res = await apiFetch<{ item?: any }>("/api/ui-preferences/reset", {
         method: "POST",
       });
+
+      let nextState = DEFAULT_THEME_STATE;
       if (res && res.item) {
         const item = res.item;
         const theme = (item.theme || "dark-minimal") as ThemePresetId;
         const cardStyle = (item.cardStyle || "glass") as UIThemeState["cardStyle"];
         const textColor = item.customColors?.textColor || THEME_PRESETS[theme].dashboardTextColor;
         
-        setUiTheme(computeThemeState(theme, cardStyle, textColor, item.panelColors));
-      } else {
-        setUiTheme(DEFAULT_THEME_STATE);
+        nextState = computeThemeState(theme, cardStyle, textColor, item.panelColors);
       }
+
+      setUiTheme(nextState);
+      await AsyncStorage.setItem(ASYNC_STORAGE_THEME_KEY, JSON.stringify(nextState));
     } catch (e) {
       setUiTheme(DEFAULT_THEME_STATE);
+      await AsyncStorage.setItem(ASYNC_STORAGE_THEME_KEY, JSON.stringify(DEFAULT_THEME_STATE));
     }
   };
 

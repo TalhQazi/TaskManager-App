@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   StatusBar,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { Palette, RefreshCw, Check, ChevronDown } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
@@ -100,7 +101,6 @@ const CARD_STYLES = [
   { id: "flat", name: "Flat Default" },
 ];
 
-// Flat color catalog for robust distribution within a wrapped grid engine
 const COLOR_PICKER_SPECTRUM = [
   "#ffffff", "#cbd5e1", "#64748b", "#334155", "#000000",
   "#fee2e2", "#f87171", "#ef4444", "#dc2626", "#991b1b",
@@ -116,6 +116,12 @@ const COLOR_PICKER_SPECTRUM = [
 export default function ThemeEngine() {
   const { uiTheme, updateTheme } = useTheme();
 
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const [activeTheme, setActiveTheme] = useState(uiTheme.theme || "dark-minimal");
   const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle || "glass");
   const [customTextColor, setCustomTextColor] = useState(
@@ -125,7 +131,10 @@ export default function ThemeEngine() {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
+  const styles = useMemo(
+    () => getThemedStyles(uiTheme, wp, hp, isTablet, isSmallScreen),
+    [uiTheme, wp, hp, isTablet, isSmallScreen]
+  );
   
   const isLightTheme = useMemo(() => {
     return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
@@ -134,46 +143,6 @@ export default function ThemeEngine() {
   const textColor = useMemo(() => {
     return uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
   }, [uiTheme, isLightTheme]);
-
-  useEffect(() => {
-    const fetchPersistedPreferences = async () => {
-      try {
-        const res = await apiFetch<{ item: any }>("/api/ui-preferences");
-        if (res?.item) {
-          const theme = res.item.theme || "dark-minimal";
-          const cardStyle = res.item.cardStyle || "glass";
-          const textColorVal = res.item.customColors?.textColor || THEME_DEFAULTS[theme] || "#ffffff";
-          const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
-
-          setActiveTheme(theme as any);
-          setActiveCardStyle(cardStyle as any);
-          setCustomTextColor(textColorVal);
-
-          updateTheme({
-            theme,
-            cardStyle,
-            customColors: { 
-              ...uiTheme.customColors,
-              primary: preset.primary, 
-              secondary: preset.secondary,
-              accent: preset.accent, 
-              textColor: textColorVal 
-            },
-            panelColors: {
-              ...uiTheme.panelColors,
-              dashboardBackground: preset.dashboardBg,
-              dashboardCardBackground: preset.cardBg,
-              dashboardTextColor: textColorVal
-            }
-          } as any);
-        }
-      } catch (err) {
-        console.error("Failed to recover configuration parameters from server store:", err);
-      }
-    };
-
-    fetchPersistedPreferences();
-  }, []);
 
   useEffect(() => {
     setActiveTheme(uiTheme.theme as any);
@@ -191,6 +160,7 @@ export default function ThemeEngine() {
 
     updateTheme({
       theme: themeId,
+      cardStyle: activeCardStyle,
       customColors: { 
         ...uiTheme.customColors, 
         primary: preset.primary,
@@ -295,7 +265,7 @@ export default function ThemeEngine() {
   };
 
   return (
-    <SafeAreaView style={styles.container} key={uiTheme?.theme || 'default'}>
+    <SafeAreaView style={styles.container}>
       <StatusBar 
         barStyle={isLightTheme ? "dark-content" : "light-content"} 
         backgroundColor={uiTheme.panelColors?.dashboardBackground || "#09090b"} 
@@ -305,7 +275,7 @@ export default function ThemeEngine() {
         <View style={styles.iconContainer}>
           <Palette size={22} color={uiTheme.customColors?.primary || "#ffd27a"} />
         </View>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Theme Engine</Text>
           <Text style={styles.subtitle}>Customize the interface exactly the way you want it.</Text>
         </View>
@@ -355,7 +325,7 @@ export default function ThemeEngine() {
             })}
           </View>
 
-          <Text style={[styles.sectionHeading, { marginTop: 24 }]}>GLOBAL TEXT COLOR</Text>
+          <Text style={[styles.sectionHeading, { marginTop: hp(3) }]}>GLOBAL TEXT COLOR</Text>
           <View style={styles.colorPickerWrapper}>
             <TouchableOpacity 
               style={styles.colorConfigInputRow} 
@@ -442,7 +412,13 @@ export default function ThemeEngine() {
   );
 }
 
-const getThemedStyles = (uiTheme: any) => {
+const getThemedStyles = (
+  uiTheme: any,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean
+) => {
   const isLightTheme = uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   const structuralBorderColor = isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
   const surfaceAlphaColor = isLightTheme ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)";
@@ -450,6 +426,8 @@ const getThemedStyles = (uiTheme: any) => {
   const bg = uiTheme.panelColors?.dashboardBackground || (isLightTheme ? "#ffffff" : "#09090b");
   const cardBg = uiTheme.panelColors?.dashboardCardBackground || (isLightTheme ? "#f8fafc" : "#141417");
   const textColor = uiTheme.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
+
+  const horizontalPadding = isSmallScreen ? wp(3) : isTablet ? wp(6) : wp(4.2);
 
   return StyleSheet.create({
     container: {
@@ -459,67 +437,71 @@ const getThemedStyles = (uiTheme: any) => {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 16,
+      gap: wp(3),
+      paddingHorizontal: horizontalPadding,
+      paddingTop: hp(2),
+      paddingBottom: hp(2),
       borderBottomWidth: 1,
       borderColor: structuralBorderColor,
     },
     iconContainer: {
-      padding: 10,
+      padding: wp(2.5),
       borderRadius: 99,
       backgroundColor: isLightTheme ? "rgba(0,0,0,0.04)" : "rgba(255, 255, 255, 0.06)",
     },
     title: {
-      fontSize: 20,
+      fontSize: isTablet ? 24 : 20,
       fontWeight: "800",
       color: textColor,
       letterSpacing: -0.5,
     },
     subtitle: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       color: textColor,
       opacity: 0.6,
-      marginTop: 2,
+      marginTop: hp(0.3),
     },
     scrollContent: {
-      padding: 16,
-      paddingBottom: 120,
+      paddingHorizontal: horizontalPadding,
+      paddingTop: hp(2),
+      paddingBottom: hp(15),
     },
     sectionCard: {
       backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
+      borderRadius: wp(4),
+      padding: wp(4),
+      marginBottom: hp(2),
+      maxWidth: isTablet ? 720 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
     },
     sectionHeading: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       fontWeight: "900",
       color: textColor,
       opacity: 0.5,
       letterSpacing: 1,
       borderBottomWidth: 1,
       borderColor: structuralBorderColor,
-      paddingBottom: 6,
-      marginBottom: 12,
+      paddingBottom: hp(0.8),
+      marginBottom: hp(1.5),
     },
     themesGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 10,
+      gap: wp(2.5),
     },
     themeBtn: {
-      width: "48%",
+      width: isTablet ? "31%" : "48%",
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       borderWidth: 1,
-      borderRadius: 10,
-      paddingVertical: 14,
-      paddingHorizontal: 12,
+      borderRadius: wp(2.5),
+      paddingVertical: hp(1.8),
+      paddingHorizontal: wp(3),
     },
     inactiveButton: {
       backgroundColor: surfaceAlphaColor,
@@ -530,7 +512,7 @@ const getThemedStyles = (uiTheme: any) => {
       borderColor: uiTheme.customColors?.primary || "#ffd27a",
     },
     themeBtnText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "500",
     },
     inactiveButtonText: {
@@ -541,22 +523,22 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "800",
     },
     verticalListContainer: {
-      gap: 8,
+      gap: hp(1),
     },
     styleListItem: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       borderWidth: 1,
-      padding: 14,
-      borderRadius: 10,
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
     },
     styleListItemActive: {
       backgroundColor: uiTheme.customColors?.primary || "#ffd27a",
       borderColor: uiTheme.customColors?.primary || "#ffd27a",
     },
     styleListText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "500",
     },
     styleListTextActive: {
@@ -564,48 +546,48 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "800",
     },
     colorPickerWrapper: {
-      gap: 12,
+      gap: hp(1.5),
     },
     colorConfigInputRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: wp(3),
       backgroundColor: surfaceAlphaColor,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      padding: 10,
-      borderRadius: 10,
+      padding: wp(2.5),
+      borderRadius: wp(2.5),
     },
     colorPreviewBlock: {
-      width: 32,
-      height: 32,
-      borderRadius: 6,
+      width: isTablet ? 36 : 32,
+      height: isTablet ? 36 : 32,
+      borderRadius: wp(1.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
     },
     textHexInput: {
       flex: 1,
       color: textColor,
-      fontSize: 14,
+      fontSize: isTablet ? 15 : 14,
       fontWeight: "700",
-      paddingVertical: 4,
+      paddingVertical: hp(0.5),
     },
     spectrumPickerDropdownContainer: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
-      padding: 12,
+      gap: wp(2),
+      padding: wp(3),
       backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 10,
+      borderRadius: wp(2.5),
       justifyContent: "flex-start",
-      marginTop: 2,
+      marginTop: hp(0.3),
     },
     spectrumSwatch: {
-      width: 33,
-      height: 33,
-      borderRadius: 6,
+      width: isTablet ? 38 : isSmallScreen ? 28 : 33,
+      height: isTablet ? 38 : isSmallScreen ? 28 : 33,
+      borderRadius: wp(1.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
     },
@@ -616,21 +598,21 @@ const getThemedStyles = (uiTheme: any) => {
     },
     previewSimulationBlock: {
       width: "100%",
-      padding: 14,
-      borderRadius: 10,
+      padding: wp(3.5),
+      borderRadius: wp(2.5),
       borderWidth: 1,
       borderColor: structuralBorderColor,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 4,
+      marginTop: hp(0.5),
     },
     previewSimulationText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
     },
     actionBar: {
       position: "absolute", 
-      bottom: 30,
+      bottom: 0,
       left: 0,
       right: 0,
       flexDirection: "row",
@@ -639,40 +621,43 @@ const getThemedStyles = (uiTheme: any) => {
       backgroundColor: cardBg,
       borderTopWidth: 1,
       borderColor: structuralBorderColor,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingHorizontal: horizontalPadding,
+      paddingVertical: hp(1.8),
+      maxWidth: isTablet ? 720 : undefined,
+      alignSelf: isTablet ? "center" : undefined,
+      width: "100%",
     },
     restoreBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      paddingVertical: 10,
+      gap: wp(1.5),
+      paddingVertical: hp(1.2),
     },
     restoreBtnText: {
       color: "#ef4444",
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "600",
     },
     saveActionContainer: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: wp(3),
     },
     saveSuccessToast: {
       color: "#10b981",
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "700",
     },
     saveBtn: {
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      borderRadius: 10,
-      minWidth: 130,
+      paddingHorizontal: wp(5),
+      paddingVertical: hp(1.5),
+      borderRadius: wp(2.5),
+      minWidth: isTablet ? 150 : 130,
       alignItems: "center",
       justifyContent: "center",
     },
     saveBtnText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "800",
     },
   });

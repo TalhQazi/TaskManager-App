@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,7 +10,7 @@ import {
   Modal,
   Alert,
   SafeAreaView,
-  Dimensions
+  useWindowDimensions,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
@@ -34,8 +34,6 @@ import { useTheme } from "../../../contexts/ThemeContext";
 import { getAnnouncementWebSocket } from "@/lib/announcementWebSocket";
 import { s } from "@/util/styles";
 import AnnouncementAnalytics from "./component/AnnouncementAnalytics";
-
-const { height } = Dimensions.get("window");
 
 interface Announcement {
   id: string;
@@ -69,6 +67,12 @@ interface AnnouncementsApiResponse {
 }
 
 export default function Announcements() {
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const [tab, setTab] = useState<string>("all");
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -99,36 +103,45 @@ export default function Announcements() {
   const [formEmergency, setFormEmergency] = useState<boolean>(false);
 
   const auth = useAuth();
-  const themeContext = useTheme() as any;
+  const { uiTheme } = useTheme() as any;
+
+  const isLightTheme = useMemo(() => {
+    return (
+      uiTheme?.theme?.includes("crystal") ||
+      uiTheme?.panelColors?.dashboardTextColor === "#000000"
+    );
+  }, [uiTheme]);
 
   const activeColors = useMemo(() => {
-    if (themeContext?.colors) {
-      return {
-        ...themeContext.colors,
-        text: "#ffffff"
-      };
-    }
-    const uiTheme = themeContext?.uiTheme;
-    if (uiTheme) {
-      const isDark = uiTheme.theme === "dark" || uiTheme.theme === "metallic-elite";
-      return {
-        background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
-        surface: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
-        primary: uiTheme.customColors?.primary || "#b45309",
-        border: uiTheme.panelColors?.borderColor || (isDark ? "#334155" : "#e2e8f0"),
-        text: "#ffffff",
-        textSecondary: isDark ? "#94a3b8" : "#64748b"
-      };
-    }
+    const bg = uiTheme?.panelColors?.dashboardBackground || (isLightTheme ? "#f8fafc" : "#09090b");
+    const surface = uiTheme?.panelColors?.dashboardCardBackground || (isLightTheme ? "#ffffff" : "#141417");
+    const textColor = uiTheme?.panelColors?.dashboardTextColor || (isLightTheme ? "#0f172a" : "#f4f4f5");
+    const textSecondary = isLightTheme ? "#64748b" : "#9ca3af";
+    const border = uiTheme?.panelColors?.borderColor || (isLightTheme ? "#e2e8f0" : "rgba(255, 255, 255, 0.08)");
+    const primary = uiTheme?.customColors?.primary || "#b45309";
+    const inputBg = isLightTheme ? "#f1f5f9" : "rgba(255, 255, 255, 0.04)";
+
     return {
-      background: "#f8fafc",
-      surface: "#ffffff",
-      primary: "#b45309",
-      border: "#e2e8f0",
-      text: "#ffffff",
-      textSecondary: "#64748b"
+      background: bg,
+      surface: surface,
+      text: textColor,
+      textSecondary: textSecondary,
+      border: border,
+      primary: primary,
+      inputBg: inputBg,
+      // Solid dark modal colors
+      modalBg: "#0f172a",
+      modalInputBg: "#1e293b",
+      modalText: "#f8fafc",
+      modalTextSecondary: "#94a3b8",
+      modalBorder: "rgba(255, 255, 255, 0.12)",
     };
-  }, [themeContext]);
+  }, [uiTheme, isLightTheme]);
+
+  const styles = useMemo(
+    () => createStyles(activeColors, wp, hp, isTablet, isSmallScreen, height),
+    [activeColors, wp, hp, isTablet, isSmallScreen, height]
+  );
 
   const userRole = auth?.user?.role || "";
   const isAdmin = ["super-admin", "admin", "manager", "team-lead"].includes(userRole);
@@ -368,7 +381,7 @@ export default function Announcements() {
         <View style={s(styles.topDashboardHeaderBlock)}>
           <View style={s(styles.headerTitleContainerStrip)}>
             <Megaphone size={26} color={activeColors.primary} style={s(styles.inlineMarginRightSpacing)} />
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[s(styles.headerMainTitleTextLabel), { color: activeColors.text }]}>Announcements</Text>
               <Text style={[s(styles.headerSubtitleTextMeta), { color: activeColors.textSecondary }]}>Manage company announcements and communications</Text>
             </View>
@@ -391,16 +404,19 @@ export default function Announcements() {
               return (
                 <TouchableOpacity
                   key={tOpt.value}
+                  activeOpacity={0.7}
                   style={[
                     s(styles.tabNavigationCellButton), 
-                    isTabActive ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" } : { backgroundColor: activeColors.surface, borderColor: activeColors.border }
+                    isTabActive 
+                      ? { backgroundColor: "rgba(180, 83, 9, 0.15)", borderColor: activeColors.primary } 
+                      : { backgroundColor: activeColors.surface, borderColor: activeColors.border }
                   ]}
                   onPress={() => {
                     setTab(tOpt.value);
                     setPage(1);
                   }}
                 >
-                  <Text style={[s(styles.tabNavigationCellInnerText), isTabActive ? { color: activeColors.primary } : { color: activeColors.textSecondary }]}>
+                  <Text style={[s(styles.tabNavigationCellInnerText), isTabActive ? { color: activeColors.primary, fontWeight: "700" } : { color: activeColors.textSecondary }]}>
                     {tOpt.label}
                   </Text>
                 </TouchableOpacity>
@@ -412,7 +428,8 @@ export default function Announcements() {
         <View style={[s(styles.filterMetricsSurfaceCardWell), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
           <View style={s(styles.filterSelectorsGridFlexLayoutRow)}>
             <TouchableOpacity 
-              style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}
+              style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}
+              activeOpacity={0.7}
               onPress={() => setActiveDropdown("priority")}
             >
               <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.text }]} numberOfLines={1}>{currentPriorityLabel}</Text>
@@ -420,7 +437,8 @@ export default function Announcements() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}
+              style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}
+              activeOpacity={0.7}
               onPress={() => setActiveDropdown("category")}
             >
               <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.text }]} numberOfLines={1}>{currentCategoryLabel}</Text>
@@ -428,7 +446,7 @@ export default function Announcements() {
             </TouchableOpacity>
           </View>
 
-          <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
+          <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}>
             <Search size={14} color={activeColors.textSecondary} style={s(styles.inlineMarginRightSpacing)} />
             <TextInput
               style={[s(styles.searchTextFieldInputFieldNative), { color: activeColors.text }]}
@@ -443,7 +461,7 @@ export default function Announcements() {
           </View>
 
           <View style={s(styles.dateRangeFieldsFlexAlignmentStripRow)}>
-            <View style={[s(styles.dateRangeFieldInputCellBox), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
+            <View style={[s(styles.dateRangeFieldInputCellBox), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}>
               <Text style={[s(styles.dateRangeFieldDescriptorTextLabel), { color: activeColors.textSecondary }]}>From:</Text>
               <TextInput
                 style={[s(styles.dateRangeInputFieldNativeElement), { color: activeColors.text }]}
@@ -453,7 +471,7 @@ export default function Announcements() {
                 onChangeText={(val) => { setFilterDateFrom(val); setPage(1); }}
               />
             </View>
-            <View style={[s(styles.dateRangeFieldInputCellBox), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
+            <View style={[s(styles.dateRangeFieldInputCellBox), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}>
               <Text style={[s(styles.dateRangeFieldDescriptorTextLabel), { color: activeColors.textSecondary }]}>To:</Text>
               <TextInput
                 style={[s(styles.dateRangeInputFieldNativeElement), { color: activeColors.text }]}
@@ -468,6 +486,7 @@ export default function Announcements() {
           {(filterPriority !== "all" || filterCategory !== "all" || filterAuthor !== "all" || filterDateFrom || filterDateTo) ? (
             <TouchableOpacity 
               style={s(styles.clearFiltersActionBlockButton)}
+              activeOpacity={0.7}
               onPress={() => {
                 setFilterPriority("all");
                 setFilterCategory("all");
@@ -489,7 +508,7 @@ export default function Announcements() {
           </View>
         ) : announcements.length === 0 ? (
           <View style={[s(styles.emptyFallbackStateDisplayGraphicCard), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-            <Bell size={40} color={activeColors.border} style={s(styles.centeredIconMargin)} />
+            <Bell size={40} color={activeColors.textSecondary} style={s(styles.centeredIconMargin)} />
             <Text style={[s(styles.emptyFallbackStateMainHeadingText), { color: activeColors.text }]}>No announcements yet</Text>
             <Text style={[s(styles.emptyFallbackStateSecondaryParagraphText), { color: activeColors.textSecondary }]}>Create your first announcement to get started</Text>
           </View>
@@ -529,7 +548,8 @@ export default function Announcements() {
 
                 <View style={s(styles.itemRegistryActionsControlBarPanelStrip)}>
                   <TouchableOpacity 
-                    style={[s(styles.itemControlPanelUtilityButtonFrame), s(styles.itemControlPanelViewThemeButton), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}
+                    style={[s(styles.itemControlPanelUtilityButtonFrame), s(styles.itemControlPanelViewThemeButton), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}
+                    activeOpacity={0.7}
                     onPress={() => {
                       setSelectedAnnouncement(announcement); 
                       setShowAnalyticsModal(true);         
@@ -541,6 +561,7 @@ export default function Announcements() {
 
                   <TouchableOpacity 
                     style={[s(styles.itemControlPanelUtilityButtonFrame), s(styles.itemControlPanelEditThemeButton)]}
+                    activeOpacity={0.7}
                     onPress={() => triggerOpenUpsertDialog(announcement)}
                   >
                     <Edit size={12} color={activeColors.primary} />
@@ -548,14 +569,16 @@ export default function Announcements() {
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={[s(styles.itemControlPanelUtilityButtonFrame), announcement.pinned && s(styles.itemControlPanelEditThemeButton), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}
+                    style={[s(styles.itemControlPanelUtilityButtonFrame), announcement.pinned && s(styles.itemControlPanelEditThemeButton), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}
+                    activeOpacity={0.7}
                     onPress={() => pinMutation.mutate({ id: announcement.id, pinned: !announcement.pinned })}
                   >
                     <Pin size={12} color={announcement.pinned ? activeColors.primary : activeColors.textSecondary} />
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={[s(styles.itemControlPanelUtilityButtonFrame), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}
+                    style={[s(styles.itemControlPanelUtilityButtonFrame), { backgroundColor: activeColors.inputBg, borderColor: activeColors.border }]}
+                    activeOpacity={0.7}
                     onPress={() => archiveMutation.mutate(announcement.id)}
                   >
                     <Archive size={12} color={activeColors.textSecondary} />
@@ -563,6 +586,7 @@ export default function Announcements() {
 
                   <TouchableOpacity 
                     style={[s(styles.itemControlPanelUtilityButtonFrame), s(styles.itemControlPanelDeleteThemeButton)]}
+                    activeOpacity={0.7}
                     onPress={() => fireDeleteAlertCheck(announcement.id)}
                   >
                     <Trash2 size={12} color="#dc2626" />
@@ -578,6 +602,7 @@ export default function Announcements() {
             <TouchableOpacity 
               style={[s(styles.paginationArrowStepBoundaryButton), page === 1 && styles.paginationArrowDisabledOpacity, { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}
               disabled={page === 1}
+              activeOpacity={0.7}
               onPress={() => setPage(p => Math.max(1, p - 1))}
             >
               <Text style={[s(styles.paginationArrowStepLabelText), { color: activeColors.textSecondary }]}>Previous</Text>
@@ -588,6 +613,7 @@ export default function Announcements() {
             <TouchableOpacity 
               style={[s(styles.paginationArrowStepBoundaryButton), page * limit >= total && styles.paginationArrowDisabledOpacity, { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}
               disabled={page * limit >= total}
+              activeOpacity={0.7}
               onPress={() => setPage(p => p + 1)}
             >
               <Text style={[s(styles.paginationArrowStepLabelText), { color: activeColors.textSecondary }]}>Next</Text>
@@ -597,39 +623,40 @@ export default function Announcements() {
 
       </ScrollView>
 
+      {/* Value Selector Modal - Solid Dark Surface */}
       <Modal animationType="slide" transparent={true} visible={activeDropdown !== null} onRequestClose={() => setActiveDropdown(null)}>
         <View style={s(styles.pickerOverlayModalSheetBlurWindow)}>
-          <View style={[s(styles.pickerContentWindowCardSurface), { backgroundColor: activeColors.surface }]}>
-            <View style={[s(styles.pickerContentHeaderBarTopRow), { borderBottomColor: activeColors.border }]}>
-              <Text style={[s(styles.pickerContentHeaderTitleHeadingText), { color: activeColors.text }]}>Select Value</Text>
-              <TouchableOpacity onPress={() => setActiveDropdown(null)} style={s(styles.pickerCloseCrossTouchTargetBoundary)}>
-                <X size={16} color={activeColors.textSecondary} />
+          <View style={[s(styles.pickerContentWindowCardSurface), { backgroundColor: activeColors.modalBg }]}>
+            <View style={[s(styles.pickerContentHeaderBarTopRow), { borderBottomColor: activeColors.modalBorder }]}>
+              <Text style={[s(styles.pickerContentHeaderTitleHeadingText), { color: activeColors.modalText }]}>Select Value</Text>
+              <TouchableOpacity onPress={() => setActiveDropdown(null)} style={s(styles.pickerCloseCrossTouchTargetBoundary)} activeOpacity={0.7}>
+                <X size={16} color={activeColors.modalTextSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={s(styles.pickerSelectionItemsScrollCanvasList)} keyboardShouldPersistTaps="handled">
               {activeDropdown === "priority" && priorityOptions.map((opt) => (
-                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.border }]} onPress={() => { setFilterPriority(opt.id); setActiveDropdown(null); }}>
-                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), { color: activeColors.text }]}>{opt.name}</Text>
+                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => { setFilterPriority(opt.id); setActiveDropdown(null); }}>
+                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), { color: activeColors.modalText }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
               {activeDropdown === "formPriority" && priorityFormOptions.map((opt) => (
-                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.border }]} onPress={() => { setFormPriority(opt.id as any); setActiveDropdown(null); }}>
-                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formPriority === opt.id && { color: activeColors.primary }]}>{opt.name}</Text>
+                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => { setFormPriority(opt.id as any); setActiveDropdown(null); }}>
+                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formPriority === opt.id ? { color: activeColors.primary, fontWeight: "700" } : { color: activeColors.modalText }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
               {activeDropdown === "category" && categoryOptions.map((opt) => (
-                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.border }]} onPress={() => { setFilterCategory(opt.id); setActiveDropdown(null); }}>
-                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), { color: activeColors.text }]}>{opt.name}</Text>
+                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => { setFilterCategory(opt.id); setActiveDropdown(null); }}>
+                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), { color: activeColors.modalText }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
               {activeDropdown === "formCategory" && categoryFormOptions.map((opt) => (
-                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.border }]} onPress={() => { setFormCategory(opt.id); setActiveDropdown(null); }}>
-                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formCategory === opt.id && { color: activeColors.primary }]}>{opt.name}</Text>
+                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => { setFormCategory(opt.id); setActiveDropdown(null); }}>
+                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formCategory === opt.id ? { color: activeColors.primary, fontWeight: "700" } : { color: activeColors.modalText }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
               {activeDropdown === "formRepeat" && repeatOptions.map((opt) => (
-                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.border }]} onPress={() => { setFormRepeat(opt.id); setActiveDropdown(null); }}>
-                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formRepeat === opt.id && { color: activeColors.primary }]}>{opt.name}</Text>
+                <TouchableOpacity key={opt.id} style={[s(styles.pickerSelectionOptionRowAnchorTile), { borderBottomColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => { setFormRepeat(opt.id); setActiveDropdown(null); }}>
+                  <Text style={[s(styles.pickerSelectionOptionValueLabelString), formRepeat === opt.id ? { color: activeColors.primary, fontWeight: "700" } : { color: activeColors.modalText }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -637,34 +664,35 @@ export default function Announcements() {
         </View>
       </Modal>
 
+      {/* Create/Edit Modal - Solid Dark Surface */}
       <Modal animationType="slide" transparent={true} visible={showCreateModal} onRequestClose={() => setShowCreateModal(false)}>
         <View style={s(styles.pickerOverlayModalSheetBlurWindow)}>
-          <View style={[s(styles.formWindowCardSurfaceExtendedHeight), { backgroundColor: activeColors.surface }]}>
-            <View style={[s(styles.pickerContentHeaderBarTopRow), { borderBottomColor: activeColors.border }]}>
-              <Text style={[s(styles.pickerContentHeaderTitleHeadingText), { color: activeColors.text }]}>
+          <View style={[s(styles.formWindowCardSurfaceExtendedHeight), { backgroundColor: activeColors.modalBg }]}>
+            <View style={[s(styles.pickerContentHeaderBarTopRow), { borderBottomColor: activeColors.modalBorder }]}>
+              <Text style={[s(styles.pickerContentHeaderTitleHeadingText), { color: activeColors.modalText }]}>
                 {selectedAnnouncement ? "Edit Announcement" : "Create Announcement"}
               </Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={s(styles.pickerCloseCrossTouchTargetBoundary)}>
-                <X size={16} color={activeColors.textSecondary} />
+              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={s(styles.pickerCloseCrossTouchTargetBoundary)} activeOpacity={0.7}>
+                <X size={16} color={activeColors.modalTextSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={s(styles.formScrollingLayoutCanvas)}>
               <View style={s(styles.formInputFieldsGroupSpacerContainer)}>
                 
-                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Title</Text>
+                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Title</Text>
                 <TextInput
-                  style={[s(styles.formInputTextNativeFieldElement), { color: activeColors.text, borderColor: activeColors.border, backgroundColor: activeColors.background }]}
+                  style={[s(styles.formInputTextNativeFieldElement), { color: activeColors.modalText, borderColor: activeColors.modalBorder, backgroundColor: activeColors.modalInputBg }]}
                   placeholder="Enter announcement title"
-                  placeholderTextColor={activeColors.textSecondary}
+                  placeholderTextColor={activeColors.modalTextSecondary}
                   value={formTitle}
                   onChangeText={setFormTitle}
                 />
 
-                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Content</Text>
+                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Content</Text>
                 <TextInput
-                  style={[s(styles.formTextAreaNativeFieldElement), { color: activeColors.text, borderColor: activeColors.border, backgroundColor: activeColors.background }]}
+                  style={[s(styles.formTextAreaNativeFieldElement), { color: activeColors.modalText, borderColor: activeColors.modalBorder, backgroundColor: activeColors.modalInputBg }]}
                   placeholder="Enter announcement content body details..."
-                  placeholderTextColor={activeColors.textSecondary}
+                  placeholderTextColor={activeColors.modalTextSecondary}
                   value={formBody}
                   onChangeText={setFormBody}
                   multiline={true}
@@ -673,31 +701,31 @@ export default function Announcements() {
 
                 <View style={s(styles.filterSelectorsGridFlexLayoutRow)}>
                   <View style={s(styles.flexFieldCellUnit)}>
-                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Priority</Text>
-                    <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.background, borderColor: activeColors.border }]} onPress={() => setActiveDropdown("formPriority")}>
-                      <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.text }]} numberOfLines={1}>{formPriorityLabel}</Text>
-                      <ChevronDown size={14} color={activeColors.textSecondary} />
+                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Priority</Text>
+                    <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.modalInputBg, borderColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => setActiveDropdown("formPriority")}>
+                      <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.modalText }]} numberOfLines={1}>{formPriorityLabel}</Text>
+                      <ChevronDown size={14} color={activeColors.modalTextSecondary} />
                     </TouchableOpacity>
                   </View>
 
                   <View style={s(styles.flexFieldCellUnit)}>
-                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Category</Text>
-                    <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.background, borderColor: activeColors.border }]} onPress={() => setActiveDropdown("formCategory")}>
-                      <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.text }]} numberOfLines={1}>{formCategoryLabel}</Text>
-                      <ChevronDown size={14} color={activeColors.textSecondary} />
+                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Category</Text>
+                    <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.modalInputBg, borderColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => setActiveDropdown("formCategory")}>
+                      <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.modalText }]} numberOfLines={1}>{formCategoryLabel}</Text>
+                      <ChevronDown size={14} color={activeColors.modalTextSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 <View style={s(styles.filterSelectorsGridFlexLayoutRow)}>
                   <View style={s(styles.flexFieldCellUnit)}>
-                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Schedule For (Optional)</Text>
-                    <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}>
-                      <Calendar size={14} color={activeColors.textSecondary} style={s(styles.inlineMarginRightSpacing)} />
+                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Schedule For (Optional)</Text>
+                    <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.modalInputBg, borderColor: activeColors.modalBorder }]}>
+                      <Calendar size={14} color={activeColors.modalTextSecondary} style={s(styles.inlineMarginRightSpacing)} />
                       <TextInput
-                        style={[s(styles.searchTextFieldInputFieldNative), { color: activeColors.text }]}
+                        style={[s(styles.searchTextFieldInputFieldNative), { color: activeColors.modalText }]}
                         placeholder="YYYY-MM-DD"
-                        placeholderTextColor={activeColors.textSecondary}
+                        placeholderTextColor={activeColors.modalTextSecondary}
                         value={formScheduledFor}
                         onChangeText={setFormScheduledFor}
                       />
@@ -705,13 +733,13 @@ export default function Announcements() {
                   </View>
 
                   <View style={s(styles.flexFieldCellUnit)}>
-                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Expires At (Optional)</Text>
-                    <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}>
-                      <Calendar size={14} color={activeColors.textSecondary} style={s(styles.inlineMarginRightSpacing)} />
+                    <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Expires At (Optional)</Text>
+                    <View style={[s(styles.searchTextFieldBoxWrapperInline), { backgroundColor: activeColors.modalInputBg, borderColor: activeColors.modalBorder }]}>
+                      <Calendar size={14} color={activeColors.modalTextSecondary} style={s(styles.inlineMarginRightSpacing)} />
                       <TextInput
-                        style={[s(styles.searchTextFieldInputFieldNative), { color: activeColors.text }]}
+                        style={[s(styles.searchTextFieldInputFieldNative), { color: activeColors.modalText }]}
                         placeholder="YYYY-MM-DD"
-                        placeholderTextColor={activeColors.textSecondary}
+                        placeholderTextColor={activeColors.modalTextSecondary}
                         value={formExpiresAt}
                         onChangeText={setFormExpiresAt}
                       />
@@ -719,79 +747,86 @@ export default function Announcements() {
                   </View>
                 </View>
 
-                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.textSecondary }]}>Repeat</Text>
-                <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.background, borderColor: activeColors.border }]} onPress={() => setActiveDropdown("formRepeat")}>
-                  <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.text }]} numberOfLines={1}>{formRepeatLabel}</Text>
-                  <ChevronDown size={14} color={activeColors.textSecondary} />
+                <Text style={[s(styles.formInputFieldTitleTextLabel), { color: activeColors.modalTextSecondary }]}>Repeat</Text>
+                <TouchableOpacity style={[s(styles.dropdownTriggerInteractiveAnchorBox), { backgroundColor: activeColors.modalInputBg, borderColor: activeColors.modalBorder }]} activeOpacity={0.7} onPress={() => setActiveDropdown("formRepeat")}>
+                  <Text style={[s(styles.dropdownTriggerSelectionValueText), { color: activeColors.modalText }]} numberOfLines={1}>{formRepeatLabel}</Text>
+                  <ChevronDown size={14} color={activeColors.modalTextSecondary} />
                 </TouchableOpacity>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Require read acknowledgement</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Require read acknowledgement</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formRequiresAcknowledgement ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formRequiresAcknowledgement ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormRequiresAcknowledgement(!formRequiresAcknowledgement)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formRequiresAcknowledgement ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Send push notification</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Send push notification</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formSendPush ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formSendPush ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormSendPush(!formSendPush)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formSendPush ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Send email notification</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Send email notification</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formSendEmail ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formSendEmail ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormSendEmail(!formSendEmail)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formSendEmail ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Send SMS notification</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Send SMS notification</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formSendSms ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formSendSms ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormSendSms(!formSendSms)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formSendSms ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Pin to dashboard</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Pin to dashboard</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formPinned ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formPinned ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormPinned(!formPinned)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formPinned ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.border }]}>
-                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.text }]}>Mark as emergency alert</Text>
+                <View style={[s(styles.toggleOptionRowWrapperAlignment), { borderBottomColor: activeColors.modalBorder }]}>
+                  <Text style={[s(styles.toggleOptionMainTitleText), { color: activeColors.modalText }]}>Mark as emergency alert</Text>
                   <TouchableOpacity 
-                    style={[s(styles.customSwitchTrackFrame), formEmergency ? { backgroundColor: activeColors.primary } : { backgroundColor: "#cbd5e1" }]}
+                    style={[s(styles.customSwitchTrackFrame), formEmergency ? { backgroundColor: activeColors.primary } : { backgroundColor: "rgba(255, 255, 255, 0.15)" }]}
+                    activeOpacity={0.8}
                     onPress={() => setFormEmergency(!formEmergency)}
                   >
                     <View style={[s(styles.customSwitchKnobCircle), formEmergency ? styles.customSwitchKnobActivePosition : styles.customSwitchKnobInactivePosition]} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[s(styles.modalActionButtonsFooterRowContainer), { borderTopColor: activeColors.border }]}>
-                  <TouchableOpacity style={s(styles.modalDismissCancelTextLinkButton)} onPress={() => setShowCreateModal(false)}>
-                    <Text style={[s(styles.modalDismissCancelTextLinkLabelText), { color: activeColors.textSecondary }]}>Cancel</Text>
+                <View style={[s(styles.modalActionButtonsFooterRowContainer), { borderTopColor: activeColors.modalBorder }]}>
+                  <TouchableOpacity style={s(styles.modalDismissCancelTextLinkButton)} activeOpacity={0.7} onPress={() => setShowCreateModal(false)}>
+                    <Text style={[s(styles.modalDismissCancelTextLinkLabelText), { color: activeColors.modalTextSecondary }]}>Cancel</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity 
                     style={[s(styles.formSubmitActionStripExecuteButton), { backgroundColor: activeColors.primary }]}
+                    activeOpacity={0.8}
                     onPress={() => submitUpsertMutation.mutate()}
                     disabled={submitUpsertMutation.isPending}
                   >
@@ -822,568 +857,478 @@ export default function Announcements() {
         />
       )}
 
-      <Modal animationType="fade" transparent={true} visible={false} onRequestClose={() => setShowAnalyticsModal(false)}>
-        <View style={s(styles.pickerOverlayModalSheetBlurWindow)}>
-          <View style={[s(styles.pickerContentWindowCardSurface), { backgroundColor: activeColors.surface }]}>
-            <View style={[s(styles.pickerContentHeaderBarTopRow), { borderBottomColor: activeColors.border }]}>
-              <Text style={[s(styles.pickerContentHeaderTitleHeadingText), { color: activeColors.text }]}>Announcement Insights Analytics</Text>
-              <TouchableOpacity onPress={() => setShowAnalyticsModal(false)} style={s(styles.pickerCloseCrossTouchTargetBoundary)}>
-                <X size={16} color={activeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <View style={s(styles.analyticsInsightMetricsBlockGrid)}>
-              {selectedAnnouncement && (
-                <>
-                  <View style={[s(styles.analyticsInsightMetricCellCard), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}>
-                    <Text style={[s(styles.analyticsInsightMetricNumericText), { color: activeColors.primary }]}>{selectedAnnouncement.readPercentage || 0}%</Text>
-                    <Text style={[s(styles.analyticsInsightMetricLabelMetaText), { color: activeColors.textSecondary }]}>Read Percentage</Text>
-                  </View>
-                  <View style={[s(styles.analyticsInsightMetricCellCard), { backgroundColor: activeColors.background, borderColor: activeColors.border }]}>
-                    <Text style={[s(styles.analyticsInsightMetricNumericText), { color: activeColors.primary }]}>{selectedAnnouncement.acknowledgedPercentage || 0}%</Text>
-                    <Text style={[s(styles.analyticsInsightMetricLabelMetaText), { color: activeColors.textSecondary }]}>Acknowledged</Text>
-                  </View>
-                </>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeAreaContainer: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  safeAreaDeniedCanvas: {
-    flex: 1,
-    backgroundColor: "#0f172a",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deniedCenterAlertWrapper: {
-    alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  centeredIconMargin: {
-    marginBottom: 12,
-  },
-  deniedMainTitleLabelText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#ffffff",
-    marginBottom: 6,
-  },
-  deniedSubtextLabelPara: {
-    fontSize: 13,
-    color: "rgba(255, 255, 255, 0.6)",
-    textAlign: "center",
-  },
-  mainBodyScrollCanvas: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-  },
-  topDashboardHeaderBlock: {
-    paddingVertical: 16,
-    gap: 12,
-  },
-  headerTitleContainerStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  inlineMarginRightSpacing: {
-    marginRight: 6,
-  },
-  headerMainTitleTextLabel: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.5,
-  },
-  headerSubtitleTextMeta: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 1,
-  },
-  createAnchorTriggerActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#b45309",
-    borderRadius: 8,
-    height: 40,
-    paddingHorizontal: 16,
-  },
-  createAnchorTriggerButtonText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  navigationTabsHorizontalScrollViewStrip: {
-    marginBottom: 14,
-  },
-  tabsHorizontalItemsWrapLayout: {
-    gap: 6,
-  },
-  tabNavigationCellButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  tabNavigationCellInnerText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  filterMetricsSurfaceCardWell: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-    marginBottom: 16,
-  },
-  filterSelectorsGridFlexLayoutRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  flexFieldCellUnit: {
-    flex: 1,
-    gap: 4
-  },
-  dropdownTriggerInteractiveAnchorBox: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    height: 36,
-    paddingHorizontal: 10,
-    backgroundColor: "#f8fafc",
-  },
-  dropdownTriggerSelectionValueText: {
-    fontSize: 12,
-    color: "#334155",
-    fontWeight: "600",
-    flex: 1,
-  },
-  searchTextFieldBoxWrapperInline: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    height: 38,
-    backgroundColor: "#ffffff",
-  },
-  searchTextFieldInputFieldNative: {
-    flex: 1,
-    fontSize: 13,
-    color: "#0f172a",
-    height: "100%",
-  },
-  dateRangeFieldsFlexAlignmentStripRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  dateRangeFieldInputCellBox: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    height: 36,
-    paddingHorizontal: 8,
-    backgroundColor: "#ffffff",
-  },
-  dateRangeFieldDescriptorTextLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    marginRight: 4,
-    fontWeight: "600",
-  },
-  dateRangeInputFieldNativeElement: {
-    flex: 1,
-    fontSize: 12,
-    color: "#0f172a",
-    padding: 0,
-    height: "100%",
-  },
-  clearFiltersActionBlockButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-    borderRadius: 6,
-  },
-  clearFiltersActionBlockButtonText: {
-    fontSize: 12,
-    color: "#dc2626",
-    fontWeight: "700",
-  },
-  loaderCentralEngineIndicatorSpacingCanvas: {
-    paddingVertical: 48,
-  },
-  emptyFallbackStateDisplayGraphicCard: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    paddingVertical: 48,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyFallbackStateMainHeadingText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#334155",
-    marginBottom: 2,
-  },
-  emptyFallbackStateSecondaryParagraphText: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  registryRowItemsVerticalStackLayoutGrid: {
-    gap: 12,
-  },
-  itemRegistryRowContainerCard: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 14,
-  },
-  itemRegistryCardHeaderLineRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 6,
-  },
-  itemRegistryTitleGroupingMetaColumn: {
-    flex: 1,
-  },
-  itemRegistryAnnouncementTitleHeaderText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.2,
-    lineHeight: 18,
-  },
-  itemRegistryBadgesFlexibleWrapLayoutStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-    flexWrap: "wrap",
-  },
-  itemPriorityInlineBadgeBoxFrame: {
-    backgroundColor: "#f1f5f9",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  itemPriorityCriticalBg: {
-    backgroundColor: "#fee2e2",
-  },
-  itemPriorityInlineBadgeInnerText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#475569",
-    textTransform: "uppercase",
-  },
-  itemCategoryInlineBadgeBoxFrame: {
-    backgroundColor: "#fffbeb",
-    borderWidth: 0.5,
-    borderColor: "#fde68a",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  itemCategoryInlineBadgeInnerText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#b45309",
-    textTransform: "capitalize",
-  },
-  itemPinnedInlineBadgeBoxFrame: {
-    paddingHorizontal: 2,
-  },
-  itemEmergencyInlineBadgeBoxFrame: {
-    backgroundColor: "#b91c1c",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  itemEmergencyInlineBadgeInnerText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#ffffff"
-  },
-  itemRegistryAnnouncementBodyMessageParagraphText: {
-    fontSize: 13,
-    color: "#334155",
-    lineHeight: 18,
-    marginVertical: 8,
-  },
-  itemRegistryActionsControlBarPanelStrip: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 6,
-    marginTop: 10,
-  },
-  itemControlPanelUtilityButtonFrame: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 28,
-    width: 32,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-  },
-  itemControlPanelViewThemeButton: {
-    width: 54,
-    gap: 4,
-  },
-  itemControlPanelEditThemeButton: {
-    width: 54,
-    gap: 4,
-    borderColor: "#fde68a",
-    backgroundColor: "#fffbeb",
-  },
-  itemControlPanelDeleteThemeButton: {
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-  },
-  itemControlPanelUtilityButtonInnerText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#475569",
-  },
-  paginationControlsFooterBarLayoutBlock: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 12,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    marginTop: 14,
-  },
-  paginationArrowStepBoundaryButton: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    backgroundColor: "#ffffff",
-  },
-  paginationArrowDisabledOpacity: {
-    opacity: 0.4,
-  },
-  paginationArrowStepLabelText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#475569",
-  },
-  paginationIndexDisplayIndicatorLabelText: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "600",
-  },
-  pickerOverlayModalSheetBlurWindow: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
-    justifyContent: "flex-end",
-  },
-  pickerContentWindowCardSurface: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    width: "100%",
-    maxHeight: height * 0.45,
-    padding: 20,
-  },
-  formWindowCardSurfaceExtendedHeight: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    width: "100%",
-    maxHeight: height * 0.85,
-    padding: 20,
-  },
-  pickerContentHeaderBarTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-    paddingBottom: 12,
-    marginBottom: 8,
-  },
-  pickerContentHeaderTitleHeadingText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  pickerCloseCrossTouchTargetBoundary: {
-    padding: 4,
-  },
-  pickerSelectionItemsScrollCanvasList: {
-    flexGrow: 0,
-  },
-  pickerSelectionOptionRowAnchorTile: {
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  pickerSelectionOptionValueLabelString: {
-    fontSize: 14,
-    color: "#334155",
-    fontWeight: "500",
-  },
-  formScrollingLayoutCanvas: {
-    paddingBottom: 24,
-  },
-  formInputFieldsGroupSpacerContainer: {
-    gap: 12,
-    paddingVertical: 8,
-  },
-  formInputFieldTitleTextLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#475569",
-    marginTop: 2,
-  },
-  formInputTextNativeFieldElement: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    height: 40,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    color: "#0f172a",
-    backgroundColor: "#ffffff",
-  },
-  formTextAreaNativeFieldElement: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    minHeight: 80,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    fontSize: 13,
-    color: "#0f172a",
-    backgroundColor: "#ffffff",
-    textAlignVertical: "top",
-  },
-  toggleOptionRowWrapperAlignment: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9"
-  },
-  toggleOptionMainTitleText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#1e293b",
-    flex: 1,
-    marginRight: 8
-  },
-  customSwitchTrackFrame: {
-    width: 44,
-    height: 24,
-    borderRadius: 12,
-    padding: 2,
-    justifyContent: "center"
-  },
-  customSwitchKnobCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#ffffff"
-  },
-  customSwitchKnobActivePosition: {
-    alignSelf: "flex-end"
-  },
-  customSwitchKnobInactivePosition: {
-    alignSelf: "flex-start"
-  },
-  modalActionButtonsFooterRowContainer: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-    paddingTop: 14,
-  },
-  modalDismissCancelTextLinkButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  modalDismissCancelTextLinkLabelText: {
-    color: "#475569",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  formSubmitActionStripExecuteButton: {
-    backgroundColor: "#b45309",
-    height: 40,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  formSubmitActionStripExecuteButtonText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  analyticsInsightMetricsBlockGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 12,
-  },
-  analyticsInsightMetricCellCard: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    padding: 12,
-    alignItems: "center",
-  },
-  analyticsInsightMetricNumericText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#b45309",
-  },
-  analyticsInsightMetricLabelMetaText: {
-    fontSize: 11,
-    color: "#64748b",
-    fontWeight: "600",
-    marginTop: 2,
-  }
-});
+const createStyles = (
+  colors: any,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  windowHeight: number
+) =>
+  StyleSheet.create({
+    safeAreaContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    safeAreaDeniedCanvas: {
+      flex: 1,
+      backgroundColor: "#0f172a",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    deniedCenterAlertWrapper: {
+      alignItems: "center",
+      paddingHorizontal: wp(8),
+    },
+    centeredIconMargin: {
+      marginBottom: hp(1.5),
+    },
+    deniedMainTitleLabelText: {
+      fontSize: isTablet ? 24 : 20,
+      fontWeight: "800",
+      color: "#ffffff",
+      marginBottom: hp(0.8),
+    },
+    deniedSubtextLabelPara: {
+      fontSize: isTablet ? 14 : 13,
+      color: "rgba(255, 255, 255, 0.6)",
+      textAlign: "center",
+    },
+    mainBodyScrollCanvas: {
+      paddingHorizontal: isTablet ? wp(6) : isSmallScreen ? wp(3) : wp(4.2),
+      paddingBottom: hp(5),
+    },
+    topDashboardHeaderBlock: {
+      paddingVertical: hp(2),
+      gap: hp(1.5),
+      flexDirection: isTablet ? "row" : "column",
+      justifyContent: isTablet ? "space-between" : "flex-start",
+      alignItems: isTablet ? "center" : "stretch",
+    },
+    headerTitleContainerStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    inlineMarginRightSpacing: {
+      marginRight: wp(1.5),
+    },
+    headerMainTitleTextLabel: {
+      fontSize: isTablet ? 26 : 22,
+      fontWeight: "800",
+      letterSpacing: -0.5,
+    },
+    headerSubtitleTextMeta: {
+      fontSize: isTablet ? 13 : 12,
+      marginTop: hp(0.2),
+    },
+    createAnchorTriggerActionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: wp(2.5),
+      height: hp(5.2),
+      paddingHorizontal: wp(4),
+    },
+    createAnchorTriggerButtonText: {
+      color: "#ffffff",
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "700",
+    },
+    navigationTabsHorizontalScrollViewStrip: {
+      marginBottom: hp(1.8),
+    },
+    tabsHorizontalItemsWrapLayout: {
+      gap: wp(2),
+    },
+    tabNavigationCellButton: {
+      paddingVertical: hp(1),
+      paddingHorizontal: wp(3.5),
+      borderRadius: wp(2),
+      borderWidth: 1,
+    },
+    tabNavigationCellInnerText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "600",
+    },
+    filterMetricsSurfaceCardWell: {
+      borderWidth: 1,
+      borderRadius: wp(3),
+      padding: wp(3.5),
+      gap: hp(1.2),
+      marginBottom: hp(2),
+    },
+    filterSelectorsGridFlexLayoutRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: wp(2),
+    },
+    flexFieldCellUnit: {
+      flex: 1,
+      gap: hp(0.5),
+    },
+    dropdownTriggerInteractiveAnchorBox: {
+      flex: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderWidth: 1,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(2.5),
+    },
+    dropdownTriggerSelectionValueText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "600",
+      flex: 1,
+    },
+    searchTextFieldBoxWrapperInline: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(2.5),
+      height: hp(4.8),
+    },
+    searchTextFieldInputFieldNative: {
+      flex: 1,
+      fontSize: isTablet ? 14 : 13,
+      height: "100%",
+    },
+    dateRangeFieldsFlexAlignmentStripRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: wp(2),
+    },
+    dateRangeFieldInputCellBox: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(2.5),
+    },
+    dateRangeFieldDescriptorTextLabel: {
+      fontSize: isTablet ? 12 : 11,
+      marginRight: wp(1),
+      fontWeight: "600",
+    },
+    dateRangeInputFieldNativeElement: {
+      flex: 1,
+      fontSize: isTablet ? 13 : 12,
+      padding: 0,
+      height: "100%",
+    },
+    clearFiltersActionBlockButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: hp(1.2),
+      borderWidth: 1,
+      borderColor: "rgba(239, 68, 68, 0.3)",
+      backgroundColor: "rgba(239, 68, 68, 0.1)",
+      borderRadius: wp(2),
+    },
+    clearFiltersActionBlockButtonText: {
+      fontSize: isTablet ? 13 : 12,
+      color: "#dc2626",
+      fontWeight: "700",
+    },
+    loaderCentralEngineIndicatorSpacingCanvas: {
+      paddingVertical: hp(6),
+    },
+    emptyFallbackStateDisplayGraphicCard: {
+      borderWidth: 1,
+      borderRadius: wp(3),
+      paddingVertical: hp(6),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyFallbackStateMainHeadingText: {
+      fontSize: isTablet ? 16 : 14,
+      fontWeight: "700",
+      marginBottom: hp(0.5),
+    },
+    emptyFallbackStateSecondaryParagraphText: {
+      fontSize: isTablet ? 13 : 12,
+    },
+    registryRowItemsVerticalStackLayoutGrid: {
+      flexDirection: isTablet ? "row" : "column",
+      flexWrap: isTablet ? "wrap" : "nowrap",
+      gap: wp(3),
+    },
+    itemRegistryRowContainerCard: {
+      borderWidth: 1,
+      borderRadius: wp(3),
+      padding: wp(4),
+      width: isTablet ? "48.5%" : "100%",
+    },
+    itemRegistryCardHeaderLineRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: hp(0.8),
+    },
+    itemRegistryTitleGroupingMetaColumn: {
+      flex: 1,
+    },
+    itemRegistryAnnouncementTitleHeaderText: {
+      fontSize: isTablet ? 16 : 14,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+      lineHeight: isTablet ? 22 : 18,
+    },
+    itemRegistryBadgesFlexibleWrapLayoutStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: wp(1.5),
+      marginTop: hp(0.8),
+      flexWrap: "wrap",
+    },
+    itemPriorityInlineBadgeBoxFrame: {
+      backgroundColor: "rgba(148, 163, 184, 0.15)",
+      borderRadius: wp(1),
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.3),
+    },
+    itemPriorityCriticalBg: {
+      backgroundColor: "rgba(239, 68, 68, 0.2)",
+    },
+    itemPriorityInlineBadgeInnerText: {
+      fontSize: 9,
+      fontWeight: "700",
+      color: "#f87171",
+      textTransform: "uppercase",
+    },
+    itemCategoryInlineBadgeBoxFrame: {
+      backgroundColor: "rgba(245, 158, 11, 0.15)",
+      borderWidth: 0.5,
+      borderColor: "rgba(245, 158, 11, 0.3)",
+      borderRadius: wp(1),
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.3),
+    },
+    itemCategoryInlineBadgeInnerText: {
+      fontSize: 9,
+      fontWeight: "700",
+      color: "#fbbf24",
+      textTransform: "capitalize",
+    },
+    itemPinnedInlineBadgeBoxFrame: {
+      paddingHorizontal: wp(0.5),
+    },
+    itemEmergencyInlineBadgeBoxFrame: {
+      backgroundColor: "#b91c1c",
+      borderRadius: wp(1),
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.3),
+    },
+    itemEmergencyInlineBadgeInnerText: {
+      fontSize: 9,
+      fontWeight: "700",
+      color: "#ffffff",
+    },
+    itemRegistryAnnouncementBodyMessageParagraphText: {
+      fontSize: isTablet ? 14 : 13,
+      lineHeight: isTablet ? 20 : 18,
+      marginVertical: hp(1),
+    },
+    itemRegistryActionsControlBarPanelStrip: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: wp(1.5),
+      marginTop: hp(1.2),
+    },
+    itemControlPanelUtilityButtonFrame: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      height: hp(3.8),
+      minWidth: wp(9),
+      paddingHorizontal: wp(2),
+      borderRadius: wp(1.5),
+      borderWidth: 1,
+    },
+    itemControlPanelViewThemeButton: {
+      gap: wp(1),
+    },
+    itemControlPanelEditThemeButton: {
+      gap: wp(1),
+      borderColor: "rgba(245, 158, 11, 0.4)",
+      backgroundColor: "rgba(245, 158, 11, 0.15)",
+    },
+    itemControlPanelDeleteThemeButton: {
+      borderColor: "rgba(239, 68, 68, 0.4)",
+      backgroundColor: "rgba(239, 68, 68, 0.15)",
+    },
+    itemControlPanelUtilityButtonInnerText: {
+      fontSize: isTablet ? 12 : 11,
+      fontWeight: "600",
+    },
+    paginationControlsFooterBarLayoutBlock: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: wp(3),
+      borderWidth: 1,
+      borderRadius: wp(2.5),
+      marginTop: hp(2),
+    },
+    paginationArrowStepBoundaryButton: {
+      borderWidth: 1,
+      borderRadius: wp(1.5),
+      paddingVertical: hp(0.8),
+      paddingHorizontal: wp(3),
+    },
+    paginationArrowDisabledOpacity: {
+      opacity: 0.4,
+    },
+    paginationArrowStepLabelText: {
+      fontSize: isTablet ? 13 : 11,
+      fontWeight: "600",
+    },
+    paginationIndexDisplayIndicatorLabelText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "600",
+    },
+    pickerOverlayModalSheetBlurWindow: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.85)",
+      justifyContent: "flex-end",
+    },
+    pickerContentWindowCardSurface: {
+      borderTopLeftRadius: wp(5),
+      borderTopRightRadius: wp(5),
+      width: "100%",
+      maxHeight: windowHeight * 0.5,
+      padding: wp(5),
+    },
+    formWindowCardSurfaceExtendedHeight: {
+      borderTopLeftRadius: wp(5),
+      borderTopRightRadius: wp(5),
+      width: "100%",
+      maxHeight: windowHeight * 0.88,
+      padding: wp(5),
+    },
+    pickerContentHeaderBarTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      paddingBottom: hp(1.5),
+      marginBottom: hp(1),
+    },
+    pickerContentHeaderTitleHeadingText: {
+      fontSize: isTablet ? 17 : 15,
+      fontWeight: "700",
+    },
+    pickerCloseCrossTouchTargetBoundary: {
+      padding: wp(1),
+    },
+    pickerSelectionItemsScrollCanvasList: {
+      flexGrow: 0,
+    },
+    pickerSelectionOptionRowAnchorTile: {
+      paddingVertical: hp(1.8),
+      paddingHorizontal: wp(1),
+      borderBottomWidth: 1,
+    },
+    pickerSelectionOptionValueLabelString: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: "500",
+    },
+    formScrollingLayoutCanvas: {
+      paddingBottom: hp(4),
+    },
+    formInputFieldsGroupSpacerContainer: {
+      gap: hp(1.5),
+      paddingVertical: hp(1),
+    },
+    formInputFieldTitleTextLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
+      marginTop: hp(0.3),
+    },
+    formInputTextNativeFieldElement: {
+      borderWidth: 1,
+      borderRadius: wp(2),
+      height: hp(5.2),
+      paddingHorizontal: wp(3),
+      fontSize: isTablet ? 14 : 13,
+    },
+    formTextAreaNativeFieldElement: {
+      borderWidth: 1,
+      borderRadius: wp(2),
+      minHeight: hp(11),
+      paddingHorizontal: wp(3),
+      paddingTop: hp(1.2),
+      fontSize: isTablet ? 14 : 13,
+      textAlignVertical: "top",
+    },
+    toggleOptionRowWrapperAlignment: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: hp(1.5),
+      borderBottomWidth: 1,
+    },
+    toggleOptionMainTitleText: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "600",
+      flex: 1,
+      marginRight: wp(2),
+    },
+    customSwitchTrackFrame: {
+      width: isTablet ? 50 : 44,
+      height: isTablet ? 28 : 24,
+      borderRadius: 14,
+      padding: 2,
+      justifyContent: "center",
+    },
+    customSwitchKnobCircle: {
+      width: isTablet ? 24 : 20,
+      height: isTablet ? 24 : 20,
+      borderRadius: 12,
+      backgroundColor: "#ffffff",
+    },
+    customSwitchKnobActivePosition: {
+      alignSelf: "flex-end",
+    },
+    customSwitchKnobInactivePosition: {
+      alignSelf: "flex-start",
+    },
+    modalActionButtonsFooterRowContainer: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: wp(3),
+      marginTop: hp(2),
+      borderTopWidth: 1,
+      paddingTop: hp(1.8),
+    },
+    modalDismissCancelTextLinkButton: {
+      paddingVertical: hp(1.2),
+      paddingHorizontal: wp(3.5),
+    },
+    modalDismissCancelTextLinkLabelText: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "600",
+    },
+    formSubmitActionStripExecuteButton: {
+      height: hp(5.2),
+      borderRadius: wp(2),
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: wp(5),
+    },
+    formSubmitActionStripExecuteButtonText: {
+      color: "#ffffff",
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "700",
+    },
+  });

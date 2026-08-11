@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
-  Dimensions,
+  useWindowDimensions,
   KeyboardAvoidingView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -51,9 +51,6 @@ type BugItem = {
 
 type StatusFilter = "all" | "open" | "closed";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const GRID_IMAGE_WIDTH = (SCREEN_WIDTH - 40) / 2;
-
 function toText(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
@@ -64,476 +61,60 @@ function resolveAttachmentUrl(urlPath: string | undefined): string | null {
 }
 
 function buildColors(uiTheme: any, isDark: boolean) {
+  const bg = uiTheme?.panelColors?.dashboardBackground || (isDark ? "#09090b" : "#f8fafc");
+  const cardBg = uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141417" : "#ffffff");
+  const text = uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f4f4f5" : "#0f172a");
+  const textSecondary = isDark ? "#9ca3af" : "#475569";
+  const textMuted = isDark ? "#71717a" : "#64748b";
+  const border = uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255, 255, 255, 0.08)" : "#e2e8f0");
+  const primary = uiTheme?.customColors?.primary || (isDark ? "#3b82f6" : "#0284c7");
+  const inputBg = isDark ? "#1e293b" : "#f1f5f9";
+
   return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#F8FAFC"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#18181b" : "#FFFFFF"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#F4F4F5" : "#0F172A"),
-    textSecondary:   isDark ? "#A1A1AA" : "#475569",
-    textMuted:       isDark ? "#71717A" : "#64748B",
-    border:          isDark ? "#27272A" : "#E2E8F0",
-    borderLight:     isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9",
-    inputBg:         isDark ? "#09090b" : "#F1F5F9",
-    primary:         uiTheme.customColors?.primary || (isDark ? "#3b82f6" : "#0284c7"),
-    primaryBgLight:  "rgba(2, 132, 199, 0.1)",
-    primaryBorder:   "rgba(2, 132, 199, 0.25)",
-    golden:          uiTheme.customColors?.golden || "#B45309",
-    success:         isDark ? "#34D399" : "#16a34a",
-    danger:          isDark ? "#F87171" : "#ef4444",
-    dangerBg:        isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
-    dangerBorder:    isDark ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
-    badgeOpenBg:     isDark ? "rgba(56, 189, 248, 0.15)" : "#e0f2fe",
-    badgeOpenText:   isDark ? "#38bdf8" : "#0369a1",
-    badgeClosedBg:   isDark ? "rgba(113, 113, 122, 0.15)" : "#f1f5f9",
+    background: bg,
+    cardBg: cardBg,
+    text: text,
+    textSecondary: textSecondary,
+    textMuted: textMuted,
+    border: border,
+    borderLight: isDark ? "rgba(255, 255, 255, 0.05)" : "#f1f5f9",
+    inputBg: inputBg,
+    primary: primary,
+    primaryBgLight: isDark ? "rgba(59, 130, 246, 0.15)" : "rgba(2, 132, 199, 0.1)",
+    primaryBorder: isDark ? "rgba(59, 130, 246, 0.3)" : "rgba(2, 132, 199, 0.25)",
+    golden: uiTheme?.customColors?.golden || "#b45309",
+    success: isDark ? "#34d399" : "#16a34a",
+    danger: isDark ? "#f87171" : "#ef4444",
+    dangerBg: isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
+    dangerBorder: isDark ? "rgba(239, 68, 68, 0.3)" : "#fca5a5",
+    badgeOpenBg: isDark ? "rgba(56, 189, 248, 0.15)" : "#e0f2fe",
+    badgeOpenText: isDark ? "#38bdf8" : "#0369a1",
+    badgeClosedBg: isDark ? "rgba(113, 113, 122, 0.15)" : "#f1f5f9",
     badgeClosedText: isDark ? "#a1a1aa" : "#475569",
-    overlayBg:       "rgba(0, 0, 0, 0.5)",
-    modalPanelBg:    isDark ? "#18181b" : "#ffffff",
-    previewBg:       isDark ? "#09090b" : "#f8fafc",
+    overlayBg: "rgba(0, 0, 0, 0.85)",
+    modalPanelBg: isDark ? "#0f172a" : "#ffffff",
+    previewBg: isDark ? "#1e293b" : "#f8fafc",
+    modalText: isDark ? "#f8fafc" : "#0f172a",
+    modalTextSecondary: isDark ? "#94a3b8" : "#64748b",
+    modalBorder: isDark ? "rgba(255, 255, 255, 0.12)" : "#e2e8f0",
   };
 }
 
-function createStyles(colors: ReturnType<typeof buildColors>) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 16,
-      backgroundColor: colors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    headerTitleContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    headerIcon: {
-      marginRight: 8,
-    },
-    headerTitle: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: colors.text,
-      letterSpacing: -0.5,
-    },
-    headerSubtitle: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      marginTop: 4,
-    },
-    actionRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 12,
-    },
-    btn: {
-      height: 40,
-      borderRadius: 8,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 12,
-    },
-    btnOutline: {
-      backgroundColor: colors.cardBg,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    btnOutlineText: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: "500",
-    },
-    btnPrimary: {
-      backgroundColor: colors.primary,
-    },
-    btnPrimaryText: {
-      color: "#ffffff",
-      fontSize: 14,
-      fontWeight: "500",
-    },
-    btnDanger: {
-      backgroundColor: colors.danger,
-    },
-    errorBanner: {
-      margin: 16,
-      padding: 12,
-      backgroundColor: colors.dangerBg,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.dangerBorder,
-    },
-    errorText: {
-      color: colors.danger,
-      fontSize: 13,
-    },
-    searchCard: {
-      backgroundColor: colors.cardBg,
-      marginHorizontal: 16,
-      marginTop: 14,
-      padding: 12,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    searchInput: {
-      height: 40,
-      backgroundColor: colors.inputBg,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      fontSize: 14,
-      color: colors.text,
-    },
-    tabsContainer: {
-      flexDirection: "row",
-      gap: 6,
-      marginTop: 10,
-      paddingBottom: 2,
-    },
-    tabButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 6,
-      backgroundColor: colors.inputBg,
-    },
-    tabButtonActive: {
-      backgroundColor: colors.primary,
-    },
-    tabButtonText: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.textSecondary,
-    },
-    tabButtonTextActive: {
-      color: "#ffffff",
-    },
-    loaderContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    listContent: {
-      padding: 16,
-      gap: 12,
-    },
-    emptyContainer: {
-      paddingVertical: 40,
-      alignItems: "center",
-    },
-    emptyText: {
-      color: colors.textMuted,
-      fontSize: 14,
-      fontStyle: "italic",
-    },
-    bugCard: {
-      backgroundColor: colors.cardBg,
-      borderRadius: 12,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 6,
-    },
-    cardHeaderRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    badge: {
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    badgeOpen: {
-      backgroundColor: colors.badgeOpenBg,
-    },
-    badgeClosed: {
-      backgroundColor: colors.badgeClosedBg,
-    },
-    badgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-    badgeTextOpen: {
-      color: colors.badgeOpenText,
-    },
-    badgeTextClosed: {
-      color: colors.badgeClosedText,
-    },
-    metaRowElement: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    metaRowText: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    cardTitle: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: colors.text,
-      lineHeight: 20,
-    },
-    taskBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.primaryBgLight,
-      alignSelf: "flex-start",
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: colors.primaryBorder,
-    },
-    taskBadgeText: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: colors.primary,
-    },
-    cardDesc: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      lineHeight: 18,
-      marginTop: 2,
-    },
-    cardFooter: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
-      paddingTop: 10,
-      marginTop: 4,
-    },
-    footerUserData: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    attachmentMiniIndicator: {
-      fontSize: 11,
-      color: colors.primary,
-      fontWeight: "600",
-      backgroundColor: colors.primaryBgLight,
-      alignSelf: "flex-start",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      marginTop: 4,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: colors.overlayBg,
-      justifyContent: "flex-end",
-    },
-    modalContent: {
-      backgroundColor: colors.modalPanelBg,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: "85%",
-      paddingBottom: Platform.OS === "ios" ? 34 : 24,
-    },
-    modalHeader: {
-      padding: 18,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    modalTitle: {
-      fontSize: 17,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    modalSubtitle: {
-      fontSize: 12,
-      color: colors.textMuted,
-      marginTop: 2,
-    },
-    modalBody: {
-      padding: 16,
-    },
-    descContainer: {
-      backgroundColor: colors.previewBg,
-      borderRadius: 10,
-      padding: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginTop: 12,
-    },
-    fullDescText: {
-      fontSize: 13,
-      color: colors.text,
-      lineHeight: 20,
-    },
-    sectionLabel: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.text,
-      marginBottom: 8,
-    },
-    imageGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    gridImageWrapper: {
-      width: GRID_IMAGE_WIDTH,
-      aspectRatio: 1.5,
-      borderRadius: 8,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.border,
-      position: "relative",
-    },
-    gridImage: {
-      width: GRID_IMAGE_WIDTH,
-      height: "100%",
-    },
-    zoomOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0,0,0,0.15)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    modalFooter: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    formGroup: {
-      marginBottom: 14,
-    },
-    formLabel: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.textSecondary,
-      textTransform: "uppercase",
-      marginBottom: 4,
-    },
-    formInput: {
-      height: 40,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 6,
-      paddingHorizontal: 10,
-      fontSize: 14,
-      color: colors.text,
-      backgroundColor: colors.cardBg,
-    },
-    formTextArea: {
-      height: 100,
-      paddingTop: 8,
-      textAlignVertical: "top",
-    },
-    pickerRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      paddingTop: 4,
-    },
-    previewImageContainer: {
-      width: 64,
-      height: 64,
-      borderRadius: 6,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.border,
-      position: "relative",
-    },
-    previewImage: {
-      width: 64,
-      height: 64,
-    },
-    removeImageBadge: {
-      position: "absolute",
-      top: 2,
-      right: 2,
-      backgroundColor: "rgba(0,0,0,0.7)",
-      borderRadius: 10,
-      width: 16,
-      height: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    imagePickerButton: {
-      width: 64,
-      height: 64,
-      borderRadius: 6,
-      borderWidth: 2,
-      borderStyle: "dashed",
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 2,
-      backgroundColor: colors.cardBg,
-    },
-    imagePickerText: {
-      fontSize: 9,
-      fontWeight: "500",
-      color: colors.textSecondary,
-    },
-    formError: {
-      fontSize: 12,
-      color: colors.danger,
-      fontWeight: "500",
-    },
-    formSuccess: {
-      fontSize: 12,
-      color: colors.success,
-      fontWeight: "500",
-    },
-    lightboxContainer: {
-      flex: 1,
-      backgroundColor: "#000000",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    lightboxImage: {
-      width: SCREEN_WIDTH,
-      height: SCREEN_HEIGHT * 0.8,
-    },
-    lightboxClose: {
-      position: "absolute",
-      top: Platform.OS === "ios" ? 50 : 20,
-      right: 20,
-      zIndex: 10,
-      padding: 8,
-      backgroundColor: "rgba(255,255,255,0.15)",
-      borderRadius: 20,
-    },
-    lightboxCounter: {
-      position: "absolute",
-      top: Platform.OS === "ios" ? 56 : 26,
-      color: "rgba(255,255,255,0.7)",
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    lightboxNav: {
-      position: "absolute",
-      top: "50%",
-      transform: [{ translateY: -20 }],
-      zIndex: 10,
-      padding: 8,
-      backgroundColor: "rgba(255,255,255,0.1)",
-      borderRadius: 24,
-    },
-  });
-}
-
 export default function ManagerBugs() {
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const { uiTheme } = useTheme();
   const currentPathname = usePathname();
   const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(
+    () => createStyles(colors, wp, hp, isTablet, isSmallScreen, height, width),
+    [colors, wp, hp, isTablet, isSmallScreen, height, width]
+  );
 
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -732,21 +313,24 @@ export default function ManagerBugs() {
   ], [items.length, openCount]);
 
   return (
-    <SafeAreaView style={s(styles.container)}>
+    <SafeAreaView style={[s(styles.container), { backgroundColor: colors.background }]}>
       <View style={s(styles.header)}>
         <View style={s(styles.headerTitleContainer)}>
-          <Bug size={24} color={colors.golden} style={s(styles.headerIcon)} />
-          <Text style={s(styles.headerTitle)}>Bug Reports</Text>
+          <Bug size={26} color={colors.golden} style={s(styles.headerIcon)} />
+          <View style={{ flex: 1 }}>
+            <Text style={[s(styles.headerTitle), { color: colors.text }]}>Bug Reports</Text>
+            <Text style={[s(styles.headerSubtitle), { color: colors.textSecondary }]}>
+              {openCount > 0 ? `${openCount} open bug${openCount !== 1 ? "s" : ""}.` : "No open bugs."}
+            </Text>
+          </View>
         </View>
-        <Text style={s(styles.headerSubtitle)}>
-          {openCount > 0 ? `${openCount} open bug${openCount !== 1 ? "s" : ""}.` : "No open bugs."}
-        </Text>
+
         <View style={s(styles.actionRow)}>
-          <TouchableOpacity style={s([styles.btn, styles.btnOutline, { flex: 1 }])} onPress={() => void load()}>
+          <TouchableOpacity style={[s(styles.btn), s(styles.btnOutline), { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => void load()} activeOpacity={0.7}>
             <RefreshCw size={14} color={colors.text} style={s({ marginRight: 6 })} />
-            <Text style={s(styles.btnOutlineText)}>Refresh</Text>
+            <Text style={[s(styles.btnOutlineText), { color: colors.text }]}>Refresh</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s([styles.btn, styles.btnPrimary, { flex: 1.3 }])} onPress={() => { resetSubmit(); setSubmitOpen(true); }}>
+          <TouchableOpacity style={[s(styles.btn), s(styles.btnPrimary), { backgroundColor: colors.primary }]} onPress={() => { resetSubmit(); setSubmitOpen(true); }} activeOpacity={0.8}>
             <Text style={s(styles.btnPrimaryText)}>+ Report Bug</Text>
           </TouchableOpacity>
         </View>
@@ -758,11 +342,11 @@ export default function ManagerBugs() {
         </View>
       )}
 
-      <View style={s(styles.searchCard)}>
+      <View style={[s(styles.searchCard), { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
         <TextInput
           placeholder="Search bugs..."
           placeholderTextColor={colors.textMuted}
-          style={s(styles.searchInput)}
+          style={[s(styles.searchInput), { backgroundColor: colors.inputBg, color: colors.text }]}
           value={q}
           onChangeText={setQ}
         />
@@ -773,9 +357,10 @@ export default function ManagerBugs() {
               <TouchableOpacity
                 key={tab.value}
                 onPress={() => setStatusFilter(tab.value)}
-                style={s([styles.tabButton, isActive && styles.tabButtonActive])}
+                style={[s(styles.tabButton), { backgroundColor: isActive ? colors.primary : colors.inputBg }]}
+                activeOpacity={0.7}
               >
-                <Text style={s([styles.tabButtonText, isActive && styles.tabButtonTextActive])}>
+                <Text style={[s(styles.tabButtonText), { color: isActive ? "#ffffff" : colors.textSecondary }]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -790,60 +375,63 @@ export default function ManagerBugs() {
         </View>
       ) : (
         <FlatList
+          key={isTablet ? "tablet-grid" : "mobile-list"}
           data={filtered}
           keyExtractor={(item) => item.id}
+          numColumns={isTablet ? 2 : 1}
+          columnWrapperStyle={isTablet ? s(styles.columnWrapper) : undefined}
           contentContainerStyle={s(styles.listContent)}
           ListEmptyComponent={
             <View style={s(styles.emptyContainer)}>
-              <Text style={s(styles.emptyText)}>No bugs found.</Text>
+              <Text style={[s(styles.emptyText), { color: colors.textMuted }]}>No bugs found.</Text>
             </View>
           }
           renderItem={({ item: b }) => {
             const isOpen = b.status !== "closed";
             return (
-              <TouchableOpacity style={s(styles.bugCard)} onPress={() => openBug(b)}>
+              <TouchableOpacity style={[s(styles.bugCard), { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => openBug(b)} activeOpacity={0.8}>
                 <View style={s(styles.cardHeaderRow)}>
-                  <View style={s([styles.badge, isOpen ? styles.badgeOpen : styles.badgeClosed])}>
-                    <Text style={s([styles.badgeText, isOpen ? styles.badgeTextOpen : styles.badgeTextClosed])}>
+                  <View style={[s(styles.badge), isOpen ? styles.badgeOpen : styles.badgeClosed]}>
+                    <Text style={[s(styles.badgeText), isOpen ? styles.badgeTextOpen : styles.badgeTextClosed]}>
                       {isOpen ? "Open" : "Closed"}
                     </Text>
                   </View>
                   <View style={s(styles.metaRowElement)}>
                     <MapPin size={12} color={colors.textMuted} style={s({ marginRight: 3 })} />
-                    <Text style={s(styles.metaRowText)} numberOfLines={1}>
+                    <Text style={[s(styles.metaRowText), { color: colors.textSecondary }]} numberOfLines={1}>
                       {b.source?.path || b.source?.panel || "System"}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={s(styles.cardTitle)}>{b.title}</Text>
+                <Text style={[s(styles.cardTitle), { color: colors.text }]}>{b.title}</Text>
                 
                 {b.taskTitle ? (
-                  <View style={s(styles.taskBadge)}>
+                  <View style={[s(styles.taskBadge), { backgroundColor: colors.primaryBgLight, borderColor: colors.primaryBorder }]}>
                     <Layers size={11} color={colors.primary} style={s({ marginRight: 4 })} />
-                    <Text style={s(styles.taskBadgeText)} numberOfLines={1}>Task: {b.taskTitle}</Text>
+                    <Text style={[s(styles.taskBadgeText), { color: colors.primary }]} numberOfLines={1}>Task: {b.taskTitle}</Text>
                   </View>
                 ) : null}
 
-                <Text style={s(styles.cardDesc)} numberOfLines={2}>{b.description}</Text>
+                <Text style={[s(styles.cardDesc), { color: colors.textSecondary }]} numberOfLines={2}>{b.description}</Text>
 
-                <View style={s(styles.cardFooter)}>
+                <View style={[s(styles.cardFooter), { borderTopColor: colors.borderLight }]}>
                   <View style={s(styles.metaRowElement)}>
                     <User size={12} color={colors.textMuted} style={s({ marginRight: 4 })} />
-                    <Text style={s(styles.footerUserData)}>
+                    <Text style={[s(styles.footerUserData), { color: colors.text }]}>
                       {b.createdByUsername || "Anonymous"}
                       {b.createdByRole ? ` (${b.createdByRole})` : ""}
                     </Text>
                   </View>
                   <View style={s(styles.metaRowElement)}>
                     <Calendar size={12} color={colors.textMuted} style={s({ marginRight: 4 })} />
-                    <Text style={s(styles.metaRowText)}>
+                    <Text style={[s(styles.metaRowText), { color: colors.textSecondary }]}>
                       {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "-"}
                     </Text>
                   </View>
                 </View>
                 {b.attachments && b.attachments.length > 0 ? (
-                  <Text style={s(styles.attachmentMiniIndicator)}>📎 {b.attachments.length} Attachment(s)</Text>
+                  <Text style={[s(styles.attachmentMiniIndicator), { color: colors.primary, backgroundColor: colors.primaryBgLight }]}>📎 {b.attachments.length} Attachment(s)</Text>
                 ) : null}
               </TouchableOpacity>
             );
@@ -851,43 +439,49 @@ export default function ManagerBugs() {
         />
       )}
 
+      {/* View Details Modal */}
       <Modal visible={viewOpen} animationType="slide" transparent={true} onRequestClose={() => setViewOpen(false)}>
         <View style={s(styles.modalOverlay)}>
-          <View style={s(styles.modalContent)}>
-            <View style={s(styles.modalHeader)}>
-              <Text style={s(styles.modalTitle)} numberOfLines={2}>{selected?.title || "Bug Details"}</Text>
-              <Text style={s(styles.modalSubtitle)}>
+          <View style={[s(styles.modalContent), { backgroundColor: colors.modalPanelBg }]}>
+            <View style={[s(styles.modalHeader), { borderBottomColor: colors.modalBorder }]}>
+              <View style={s(styles.modalHeaderTopLine)}>
+                <Text style={[s(styles.modalTitle), { color: colors.modalText }]} numberOfLines={2}>{selected?.title || "Bug Details"}</Text>
+                <TouchableOpacity onPress={() => setViewOpen(false)} style={s(styles.closeIconButton)} activeOpacity={0.7}>
+                  <X size={18} color={colors.modalTextSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[s(styles.modalSubtitle), { color: colors.modalTextSecondary }]}>
                 {selected?.source?.path || selected?.source?.panel || "No source data"}
               </Text>
             </View>
 
             <ScrollView style={s(styles.modalBody)} showsVerticalScrollIndicator={true}>
               <View style={s(styles.cardHeaderRow)}>
-                <View style={s([styles.badge, selected?.status !== "closed" ? styles.badgeOpen : styles.badgeClosed])}>
-                  <Text style={s([styles.badgeText, selected?.status !== "closed" ? styles.badgeTextOpen : styles.badgeTextClosed])}>
+                <View style={[s(styles.badge), selected?.status !== "closed" ? styles.badgeOpen : styles.badgeClosed]}>
+                  <Text style={[s(styles.badgeText), selected?.status !== "closed" ? styles.badgeTextOpen : styles.badgeTextClosed]}>
                     {selected?.status === "closed" ? "Closed" : "Open"}
                   </Text>
                 </View>
                 {selected?.createdByUsername ? (
-                  <Text style={s(styles.metaRowText)}>
+                  <Text style={[s(styles.metaRowText), { color: colors.modalTextSecondary }]}>
                     By {selected.createdByUsername} {selected.createdByRole ? `(${selected.createdByRole})` : ""}
                   </Text>
                 ) : null}
               </View>
 
               {selected?.taskTitle ? (
-                <View style={s([styles.taskBadge, { marginTop: 10 }])}>
-                  <Text style={s({ fontSize: 12, fontWeight: "600", color: colors.primary })}>Linked Task: {selected.taskTitle}</Text>
+                <View style={[s(styles.taskBadge), { marginTop: hp(1), backgroundColor: colors.primaryBgLight, borderColor: colors.primaryBorder }]}>
+                  <Text style={{ fontSize: isTablet ? 13 : 12, fontWeight: "600", color: colors.primary }}>Linked Task: {selected.taskTitle}</Text>
                 </View>
               ) : null}
 
-              <View style={s(styles.descContainer)}>
-                <Text style={s(styles.fullDescText)}>{selected?.description}</Text>
+              <View style={[s(styles.descContainer), { backgroundColor: colors.previewBg, borderColor: colors.modalBorder }]}>
+                <Text style={[s(styles.fullDescText), { color: colors.modalText }]}>{selected?.description}</Text>
               </View>
 
               {selected?.attachments && selected.attachments.length > 0 ? (
-                <View style={s({ marginTop: 16 })}>
-                  <Text style={s(styles.sectionLabel)}>Attachments ({selected.attachments.length})</Text>
+                <View style={{ marginTop: hp(2) }}>
+                  <Text style={[s(styles.sectionLabel), { color: colors.modalText }]}>Attachments ({selected.attachments.length})</Text>
                   <View style={s(styles.imageGrid)}>
                     {selected.attachments.map((att, i) => {
                       const src = resolveAttachmentUrl(att.url);
@@ -898,7 +492,7 @@ export default function ManagerBugs() {
                         .filter((u): u is string => u !== null);
                       
                       return (
-                        <TouchableOpacity key={i} style={s(styles.gridImageWrapper)} onPress={() => setLightbox({ urls: allUrls, index: i })}>
+                        <TouchableOpacity key={i} style={[s(styles.gridImageWrapper), { borderColor: colors.modalBorder }]} onPress={() => setLightbox({ urls: allUrls, index: i })} activeOpacity={0.8}>
                           <Image source={{ uri: src }} style={s(styles.gridImage)} />
                           <View style={s(styles.zoomOverlay)}>
                             <ZoomIn size={16} color="#ffffff" />
@@ -911,16 +505,16 @@ export default function ManagerBugs() {
               ) : null}
             </ScrollView>
 
-            <View style={s(styles.modalFooter)}>
-              <TouchableOpacity style={s([styles.btn, styles.btnOutline])} onPress={() => setViewOpen(false)} disabled={updating}>
-                <Text style={s(styles.btnOutlineText)}>Close</Text>
+            <View style={[s(styles.modalFooter), { borderTopColor: colors.modalBorder }]}>
+              <TouchableOpacity style={[s(styles.btn), s(styles.btnOutline), { borderColor: colors.modalBorder, backgroundColor: colors.modalPanelBg }]} onPress={() => setViewOpen(false)} disabled={updating} activeOpacity={0.7}>
+                <Text style={[s(styles.btnOutlineText), { color: colors.modalTextSecondary }]}>Close</Text>
               </TouchableOpacity>
               {selected?.status === "closed" ? (
-                <TouchableOpacity style={s([styles.btn, styles.btnPrimary])} onPress={() => void updateStatus("open")} disabled={updating}>
+                <TouchableOpacity style={[s(styles.btn), s(styles.btnPrimary), { backgroundColor: colors.primary }]} onPress={() => void updateStatus("open")} disabled={updating} activeOpacity={0.8}>
                   <Text style={s(styles.btnPrimaryText)}>Reopen</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={s([styles.btn, styles.btnDanger])} onPress={() => void updateStatus("closed")} disabled={updating}>
+                <TouchableOpacity style={[s(styles.btn), s(styles.btnDanger), { backgroundColor: colors.danger }]} onPress={() => void updateStatus("closed")} disabled={updating} activeOpacity={0.8}>
                   <Text style={s(styles.btnPrimaryText)}>Mark Closed</Text>
                 </TouchableOpacity>
               )}
@@ -929,57 +523,67 @@ export default function ManagerBugs() {
         </View>
       </Modal>
 
+      {/* Solid Opaque Report Bug Modal */}
       <Modal visible={submitOpen} animationType="slide" transparent={true} onRequestClose={() => setSubmitOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s(styles.modalOverlay)}>
-          <View style={s(styles.modalContent)}>
-            <View style={s(styles.modalHeader)}>
-              <View style={s(styles.headerTitleContainer)}>
-                <Bug size={18} color={colors.primary} style={s({ marginRight: 6 })} />
-                <Text style={s(styles.modalTitle)}>Report a Bug</Text>
+          <View style={[s(styles.modalContent), { backgroundColor: colors.modalPanelBg }]}>
+            <View style={[s(styles.modalHeader), { borderBottomColor: colors.modalBorder }]}>
+              <View style={s(styles.modalHeaderTopLine)}>
+                <View style={s(styles.headerTitleContainer)}>
+                  <Bug size={20} color={colors.primary} style={s({ marginRight: 6 })} />
+                  <Text style={[s(styles.modalTitle), { color: colors.modalText }]}>Report a Bug</Text>
+                </View>
+                <TouchableOpacity onPress={() => setSubmitOpen(false)} style={s(styles.closeIconButton)} activeOpacity={0.7}>
+                  <X size={18} color={colors.modalTextSecondary} />
+                </TouchableOpacity>
               </View>
-              <Text style={s(styles.modalSubtitle)}>Describe the issue you encountered. Screenshots are helpful.</Text>
+              <Text style={[s(styles.modalSubtitle), { color: colors.modalTextSecondary }]}>Describe the issue you encountered. Screenshots are helpful.</Text>
             </View>
 
-            <ScrollView style={s(styles.modalBody)}>
+            <ScrollView style={s(styles.modalBody)} keyboardShouldPersistTaps="handled">
               <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Title <Text style={s({ color: colors.danger })}>*</Text></Text>
+                <Text style={[s(styles.formLabel), { color: colors.modalTextSecondary }]}>
+                  Title <Text style={{ color: colors.danger }}>*</Text>
+                </Text>
                 <TextInput
                   placeholder="Brief summary of the issue"
-                  placeholderTextColor={colors.textMuted}
-                  style={s(styles.formInput)}
+                  placeholderTextColor={colors.modalTextSecondary}
+                  style={[s(styles.formInput), { backgroundColor: colors.inputBg, borderColor: colors.modalBorder, color: colors.modalText }]}
                   value={submitTitle}
                   onChangeText={setSubmitTitle}
                 />
               </View>
 
               <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Description <Text style={s({ color: colors.danger })}>*</Text></Text>
+                <Text style={[s(styles.formLabel), { color: colors.modalTextSecondary }]}>
+                  Description <Text style={{ color: colors.danger }}>*</Text>
+                </Text>
                 <TextInput
                   placeholder="Steps to reproduce, expected vs actual behavior..."
-                  placeholderTextColor={colors.textMuted}
+                  placeholderTextColor={colors.modalTextSecondary}
                   multiline={true}
                   numberOfLines={4}
-                  style={s([styles.formInput, styles.formTextArea])}
+                  style={[s(styles.formInput), s(styles.formTextArea), { backgroundColor: colors.inputBg, borderColor: colors.modalBorder, color: colors.modalText }]}
                   value={submitDesc}
                   onChangeText={setSubmitDesc}
                 />
               </View>
 
               <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Screenshots (up to 5)</Text>
+                <Text style={[s(styles.formLabel), { color: colors.modalTextSecondary }]}>Screenshots (up to 5)</Text>
                 <View style={s(styles.pickerRow)}>
                   {submitFiles.map((file, i) => (
-                    <View key={i} style={s(styles.previewImageContainer)}>
+                    <View key={i} style={[s(styles.previewImageContainer), { borderColor: colors.modalBorder }]}>
                       <Image source={{ uri: file.uri }} style={s(styles.previewImage)} />
-                      <TouchableOpacity style={s(styles.removeImageBadge)} onPress={() => removeFile(i)}>
+                      <TouchableOpacity style={s(styles.removeImageBadge)} onPress={() => removeFile(i)} activeOpacity={0.7}>
                         <X size={10} color="#ffffff" />
                       </TouchableOpacity>
                     </View>
                   ))}
                   {submitFiles.length < 5 ? (
-                    <TouchableOpacity style={s(styles.imagePickerButton)} onPress={handlePickImage}>
-                      <Upload size={18} color={colors.textSecondary} />
-                      <Text style={s(styles.imagePickerText)}>Add</Text>
+                    <TouchableOpacity style={[s(styles.imagePickerButton), { backgroundColor: colors.inputBg, borderColor: colors.modalBorder }]} onPress={handlePickImage} activeOpacity={0.7}>
+                      <Upload size={18} color={colors.modalTextSecondary} />
+                      <Text style={[s(styles.imagePickerText), { color: colors.modalTextSecondary }]}>Add</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -989,11 +593,11 @@ export default function ManagerBugs() {
               {submitSuccess && <Text style={s(styles.formSuccess)}>{submitSuccess}</Text>}
             </ScrollView>
 
-            <View style={s(styles.modalFooter)}>
-              <TouchableOpacity style={s([styles.btn, styles.btnOutline])} onPress={() => { resetSubmit(); setSubmitOpen(false); }} disabled={submitting}>
-                <Text style={s(styles.btnOutlineText)}>Cancel</Text>
+            <View style={[s(styles.modalFooter), { borderTopColor: colors.modalBorder }]}>
+              <TouchableOpacity style={[s(styles.btn), s(styles.btnOutline), { borderColor: colors.modalBorder, backgroundColor: colors.modalPanelBg }]} onPress={() => { resetSubmit(); setSubmitOpen(false); }} disabled={submitting} activeOpacity={0.7}>
+                <Text style={[s(styles.btnOutlineText), { color: colors.modalTextSecondary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s([styles.btn, styles.btnPrimary])} onPress={() => void handleSubmit()} disabled={submitting}>
+              <TouchableOpacity style={[s(styles.btn), s(styles.btnPrimary), { backgroundColor: colors.primary }]} onPress={() => void handleSubmit()} disabled={submitting} activeOpacity={0.8}>
                 <Text style={s(styles.btnPrimaryText)}>{submitting ? "Submitting..." : "Submit Report"}</Text>
               </TouchableOpacity>
             </View>
@@ -1001,10 +605,11 @@ export default function ManagerBugs() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Lightbox Preview */}
       {lightbox ? (
         <Modal visible={true} transparent={true} animationType="fade">
           <View style={s(styles.lightboxContainer)}>
-            <TouchableOpacity style={s(styles.lightboxClose)} onPress={() => setLightbox(null)}>
+            <TouchableOpacity style={s(styles.lightboxClose)} onPress={() => setLightbox(null)} activeOpacity={0.7}>
               <X size={24} color="#ffffff" />
             </TouchableOpacity>
 
@@ -1016,8 +621,9 @@ export default function ManagerBugs() {
 
             {lightbox.urls.length > 1 && lightbox.index > 0 ? (
               <TouchableOpacity
-                style={s([styles.lightboxNav, { left: 16 }])}
+                style={[s(styles.lightboxNav), { left: wp(4) }]}
                 onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index - 1 } : null)}
+                activeOpacity={0.7}
               >
                 <ChevronLeft size={28} color="#ffffff" />
               </TouchableOpacity>
@@ -1031,8 +637,9 @@ export default function ManagerBugs() {
 
             {lightbox.urls.length > 1 && lightbox.index < lightbox.urls.length - 1 ? (
               <TouchableOpacity
-                style={s([styles.lightboxNav, { right: 16 }])}
+                style={[s(styles.lightboxNav), { right: wp(4) }]}
                 onPress={() => setLightbox(lb => lb ? { ...lb, index: lb.index + 1 } : null)}
+                activeOpacity={0.7}
               >
                 <ChevronRight size={28} color="#ffffff" />
               </TouchableOpacity>
@@ -1043,3 +650,415 @@ export default function ManagerBugs() {
     </SafeAreaView>
   );
 }
+
+const createStyles = (
+  colors: ReturnType<typeof buildColors>,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  windowHeight: number,
+  windowWidth: number
+) => {
+  const gridImageWidth = isTablet ? wp(18) : wp(40);
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: isTablet ? wp(6) : isSmallScreen ? wp(3) : wp(4.2),
+      paddingTop: hp(1.8),
+      paddingBottom: hp(1.8),
+    },
+    headerTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    headerIcon: {
+      marginRight: wp(2),
+    },
+    headerTitle: {
+      fontSize: isTablet ? 26 : 22,
+      fontWeight: "800",
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: isTablet ? 13 : 12,
+      marginTop: hp(0.3),
+    },
+    actionRow: {
+      flexDirection: "row",
+      gap: wp(2),
+      marginTop: hp(1.5),
+    },
+    btn: {
+      height: hp(5.2),
+      borderRadius: wp(2),
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: wp(4),
+      flex: 1,
+    },
+    btnOutline: {
+      borderWidth: 1,
+    },
+    btnOutlineText: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "600",
+    },
+    btnPrimary: {},
+    btnPrimaryText: {
+      color: "#ffffff",
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "700",
+    },
+    btnDanger: {},
+    errorBanner: {
+      marginHorizontal: isTablet ? wp(6) : wp(4.2),
+      padding: wp(3),
+      backgroundColor: colors.dangerBg,
+      borderRadius: wp(2),
+      borderWidth: 1,
+      borderColor: colors.dangerBorder,
+      marginBottom: hp(1),
+    },
+    errorText: {
+      color: colors.danger,
+      fontSize: isTablet ? 13 : 12,
+    },
+    searchCard: {
+      marginHorizontal: isTablet ? wp(6) : isSmallScreen ? wp(3) : wp(4.2),
+      marginTop: hp(1),
+      padding: wp(3.5),
+      borderRadius: wp(3),
+      borderWidth: 1,
+    },
+    searchInput: {
+      height: hp(4.8),
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      fontSize: isTablet ? 14 : 13,
+    },
+    tabsContainer: {
+      flexDirection: "row",
+      gap: wp(2),
+      marginTop: hp(1.2),
+    },
+    tabButton: {
+      paddingHorizontal: wp(3.5),
+      paddingVertical: hp(0.8),
+      borderRadius: wp(1.8),
+    },
+    tabButtonText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "600",
+    },
+    loaderContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    listContent: {
+      paddingHorizontal: isTablet ? wp(6) : isSmallScreen ? wp(3) : wp(4.2),
+      paddingTop: hp(1.8),
+      paddingBottom: hp(5),
+      gap: wp(3),
+    },
+    columnWrapper: {
+      justifyContent: "space-between",
+      gap: wp(3),
+    },
+    emptyContainer: {
+      paddingVertical: hp(6),
+      alignItems: "center",
+    },
+    emptyText: {
+      fontSize: isTablet ? 14 : 13,
+      fontStyle: "italic",
+    },
+    bugCard: {
+      borderRadius: wp(3),
+      padding: wp(4),
+      borderWidth: 1,
+      gap: hp(1),
+      width: isTablet ? "48.5%" : "100%",
+    },
+    cardHeaderRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    badge: {
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.3),
+      borderRadius: wp(1),
+    },
+    badgeOpen: {
+      backgroundColor: colors.badgeOpenBg,
+    },
+    badgeClosed: {
+      backgroundColor: colors.badgeClosedBg,
+    },
+    badgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    badgeTextOpen: {
+      color: colors.badgeOpenText,
+    },
+    badgeTextClosed: {
+      color: colors.badgeClosedText,
+    },
+    metaRowElement: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    metaRowText: {
+      fontSize: isTablet ? 12 : 11,
+    },
+    cardTitle: {
+      fontSize: isTablet ? 16 : 14,
+      fontWeight: "700",
+      lineHeight: isTablet ? 22 : 18,
+    },
+    taskBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.4),
+      borderRadius: wp(1.5),
+      borderWidth: 1,
+    },
+    taskBadgeText: {
+      fontSize: isTablet ? 12 : 11,
+      fontWeight: "600",
+    },
+    cardDesc: {
+      fontSize: isTablet ? 13 : 12,
+      lineHeight: isTablet ? 18 : 16,
+    },
+    cardFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      borderTopWidth: 1,
+      paddingTop: hp(1),
+      marginTop: hp(0.5),
+    },
+    footerUserData: {
+      fontSize: isTablet ? 12 : 11,
+      fontWeight: "600",
+    },
+    attachmentMiniIndicator: {
+      fontSize: isTablet ? 11 : 10,
+      fontWeight: "600",
+      alignSelf: "flex-start",
+      paddingHorizontal: wp(2),
+      paddingVertical: hp(0.3),
+      borderRadius: wp(1),
+      marginTop: hp(0.3),
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlayBg,
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      borderTopLeftRadius: wp(5),
+      borderTopRightRadius: wp(5),
+      maxHeight: windowHeight * 0.88,
+      paddingBottom: Platform.OS === "ios" ? hp(4) : hp(2.5),
+    },
+    modalHeader: {
+      paddingHorizontal: wp(5),
+      paddingVertical: hp(2),
+      borderBottomWidth: 1,
+    },
+    modalHeaderTopLine: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    closeIconButton: {
+      padding: wp(1),
+    },
+    modalTitle: {
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: "700",
+      flex: 1,
+      marginRight: wp(2),
+    },
+    modalSubtitle: {
+      fontSize: isTablet ? 13 : 12,
+      marginTop: hp(0.3),
+    },
+    modalBody: {
+      paddingHorizontal: wp(5),
+      paddingVertical: hp(2),
+    },
+    descContainer: {
+      borderRadius: wp(2.5),
+      padding: wp(3.5),
+      borderWidth: 1,
+      marginTop: hp(1.5),
+    },
+    fullDescText: {
+      fontSize: isTablet ? 14 : 13,
+      lineHeight: isTablet ? 20 : 18,
+    },
+    sectionLabel: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: "700",
+      marginBottom: hp(1),
+    },
+    imageGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: wp(2),
+    },
+    gridImageWrapper: {
+      width: gridImageWidth,
+      height: hp(10),
+      borderRadius: wp(2),
+      overflow: "hidden",
+      borderWidth: 1,
+      position: "relative",
+    },
+    gridImage: {
+      width: "100%",
+      height: "100%",
+    },
+    zoomOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.25)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalFooter: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: wp(2.5),
+      paddingHorizontal: wp(5),
+      paddingTop: hp(1.8),
+      borderTopWidth: 1,
+    },
+    formGroup: {
+      marginBottom: hp(1.8),
+    },
+    formLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
+      marginBottom: hp(0.6),
+    },
+    formInput: {
+      height: hp(5.2),
+      borderWidth: 1,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      fontSize: isTablet ? 14 : 13,
+    },
+    formTextArea: {
+      minHeight: hp(12),
+      paddingTop: hp(1.2),
+      textAlignVertical: "top",
+    },
+    pickerRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: wp(2),
+      paddingTop: hp(0.5),
+    },
+    previewImageContainer: {
+      width: wp(16),
+      height: wp(16),
+      borderRadius: wp(2),
+      overflow: "hidden",
+      borderWidth: 1,
+      position: "relative",
+    },
+    previewImage: {
+      width: "100%",
+      height: "100%",
+    },
+    removeImageBadge: {
+      position: "absolute",
+      top: 2,
+      right: 2,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      borderRadius: 10,
+      width: 18,
+      height: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    imagePickerButton: {
+      width: wp(16),
+      height: wp(16),
+      borderRadius: wp(2),
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+    },
+    imagePickerText: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    formError: {
+      fontSize: isTablet ? 13 : 12,
+      color: colors.danger,
+      fontWeight: "600",
+      marginTop: hp(0.5),
+    },
+    formSuccess: {
+      fontSize: isTablet ? 13 : 12,
+      color: colors.success,
+      fontWeight: "600",
+      marginTop: hp(0.5),
+    },
+    lightboxContainer: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.95)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    lightboxImage: {
+      width: windowWidth,
+      height: windowHeight * 0.8,
+    },
+    lightboxClose: {
+      position: "absolute",
+      top: Platform.OS === "ios" ? hp(6) : hp(3),
+      right: wp(5),
+      zIndex: 10,
+      padding: wp(2),
+      backgroundColor: "rgba(255,255,255,0.15)",
+      borderRadius: 20,
+    },
+    lightboxCounter: {
+      position: "absolute",
+      top: Platform.OS === "ios" ? hp(6.5) : hp(3.5),
+      color: "rgba(255,255,255,0.8)",
+      fontSize: isTablet ? 15 : 13,
+      fontWeight: "600",
+    },
+    lightboxNav: {
+      position: "absolute",
+      top: "50%",
+      transform: [{ translateY: -20 }],
+      zIndex: 10,
+      padding: wp(2),
+      backgroundColor: "rgba(255,255,255,0.15)",
+      borderRadius: 24,
+    },
+  });
+};

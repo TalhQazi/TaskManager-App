@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  useWindowDimensions,
   SafeAreaView
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
@@ -19,32 +19,20 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   Shield,
-  ShieldAlert,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   History,
   User,
   Clock,
   ArrowRight,
   Upload,
-  Download,
-  ExternalLink,
-  FileText,
-  Check,
   Lock,
   Plus,
   Search,
   RefreshCw,
   TrendingUp,
   Calendar,
-  AlertCircle,
   ChevronDown,
   X
 } from "lucide-react-native";
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface Website {
   _id: string;
@@ -135,20 +123,30 @@ interface ComplianceReport {
 }
 
 export default function ComplianceCenter() {
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const { uiTheme } = useTheme();
   const isMetallic = uiTheme.theme === "metallic-elite";
   const auth = useAuth();
   const isAdmin = auth?.user?.role === "admin" || auth?.user?.role === "super-admin";
 
+  const isDark = (uiTheme.theme as string)?.includes("dark") || isMetallic || uiTheme.panelColors?.dashboardTextColor === "#f4f4f5" || uiTheme.panelColors?.dashboardTextColor === "#ffffff";
+
   const colors = useMemo(() => {
-    const isDark = (uiTheme.theme as string) === "dark" || isMetallic;
     return {
       background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
       cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
+      modalBg: isDark ? "#1e293b" : "#ffffff",
       text: uiTheme.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
       mutedText: isDark ? "#94a3b8" : "#64748b",
-      border: isDark ? "#334155" : "#e2e8f0",
+      border: isDark ? "rgba(255, 255, 255, 0.15)" : "#cbd5e1",
+      inputBg: isDark ? "#0f172a" : "#f1f5f9",
       primary: uiTheme.customColors?.primary || "#00C6FF",
+      primaryText: "#0f172a",
       metallicGold: "#ffd27a",
       metallicGradientEnd: "#d8a537",
       green: "#22c55e",
@@ -156,9 +154,9 @@ export default function ComplianceCenter() {
       red: "#ef4444",
       purple: "#9333ea"
     };
-  }, [uiTheme, isMetallic]);
+  }, [uiTheme, isMetallic, isDark]);
 
-  const styles = useMemo(() => createStyles(colors, isMetallic), [colors, isMetallic]);
+  const styles = useMemo(() => createStyles(colors, isMetallic, isTablet, isSmallScreen, wp, hp, height, width, isDark), [colors, isMetallic, isTablet, isSmallScreen, wp, hp, height, width, isDark]);
 
   const [websites, setWebsites] = useState<Website[]>([]);
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
@@ -506,7 +504,7 @@ export default function ComplianceCenter() {
         <View style={styles.headerRow}>
           <View style={styles.flex1}>
             <View style={styles.titleWrapper}>
-              <Shield size={24} color={isMetallic ? colors.metallicGold : colors.primary} style={styles.headerIcon} />
+              <Shield size={isTablet ? 28 : 24} color={isMetallic ? colors.metallicGold : colors.primary} style={styles.headerIcon} />
               <Text style={styles.mainTitleText}>Website Compliance Center</Text>
             </View>
             <Text style={styles.subtitleText}>
@@ -517,12 +515,12 @@ export default function ComplianceCenter() {
 
         {/* Global Toolbar Action Triggers */}
         <View style={styles.actionButtonsRow}>
-          <TouchableOpacity style={[styles.button, styles.btnOutline, styles.flexRow, styles.marginRight8]} onPress={loadData} disabled={loading}>
+          <TouchableOpacity style={[styles.button, styles.btnOutlineText, styles.flexRow, styles.marginRight8]} onPress={loadData} disabled={loading} activeOpacity={0.7}>
             <RefreshCw size={14} color={colors.text} style={[styles.marginRight6, loading && styles.spin]} />
             <Text style={styles.btnOutlineText}>Refresh</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, styles.btnPrimary, styles.flexRow, styles.flex1]} onPress={() => setIsCreateOpen(true)}>
-            <Plus size={14} color={isMetallic ? "#000" : "#fff"} style={styles.marginRight6} />
+          <TouchableOpacity style={[styles.button, styles.btnPrimary, styles.flexRow, styles.flex1]} onPress={() => setIsCreateOpen(true)} activeOpacity={0.8}>
+            <Plus size={14} color={colors.primaryText} style={styles.marginRight6} />
             <Text style={styles.btnPrimaryText}>Register Site Launch</Text>
           </TouchableOpacity>
         </View>
@@ -617,6 +615,7 @@ export default function ComplianceCenter() {
                 { label: "Yellow (80% - 99%)", value: "yellow" },
                 { label: "Red (0% - 79%)", value: "red" }
               ])}
+              activeOpacity={0.7}
             >
               <Text style={styles.dropdownValue}>
                 {scoreFilter === "all" ? "All Scores" : scoreFilter === "green" ? "Green (100%)" : scoreFilter === "yellow" ? "Yellow (80% - 99%)" : "Red (0% - 79%)"}
@@ -635,6 +634,7 @@ export default function ComplianceCenter() {
                 { label: "Staging", value: "Staging" },
                 { label: "Development", value: "Development" }
               ])}
+              activeOpacity={0.7}
             >
               <Text style={styles.dropdownValue}>{envFilter === "all" ? "All Environments" : envFilter}</Text>
               <ChevronDown size={14} color={colors.text} />
@@ -652,6 +652,7 @@ export default function ComplianceCenter() {
                 { label: "E-Commerce", value: "E-Commerce" },
                 { label: "Operations", value: "Operations" }
               ])}
+              activeOpacity={0.7}
             >
               <Text style={styles.dropdownValue}>{buFilter === "all" ? "All Units" : buFilter}</Text>
               <ChevronDown size={14} color={colors.text} />
@@ -760,7 +761,7 @@ export default function ComplianceCenter() {
                         )}
                       </View>
                       <View style={{ width: 120, justifyContent: "center", alignItems: "flex-end" }}>
-                        <TouchableOpacity style={[styles.button, styles.btnOutline, styles.flexRow]} onPress={() => openComplianceDrawer(site)}>
+                        <TouchableOpacity style={[styles.button, styles.btnOutline, styles.flexRow]} onPress={() => openComplianceDrawer(site)} activeOpacity={0.7}>
                           <Text style={styles.btnOutlineText}>View Checklist</Text>
                           <ArrowRight size={12} color={colors.text} style={styles.marginLeft4} />
                         </TouchableOpacity>
@@ -813,12 +814,12 @@ export default function ComplianceCenter() {
       {/* =========================================================================
           MODAL 1: REGISTER NEW WEBSITE LAUNCH PROJECT
           ========================================================================= */}
-      <Modal visible={isCreateOpen} animationType="slide" transparent>
+      <Modal visible={isCreateOpen} animationType="slide" transparent onRequestClose={() => setIsCreateOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContentLarge}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Register Website Launch</Text>
-              <TouchableOpacity onPress={() => setIsCreateOpen(false)}>
+              <TouchableOpacity onPress={() => setIsCreateOpen(false)} activeOpacity={0.7}>
                 <X size={20} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -847,8 +848,6 @@ export default function ComplianceCenter() {
                 />
               </View>
 
-              
-
               <View style={styles.inputGroup}>
                 <Text style={styles.fieldLabel}>Website Type</Text>
                 <TouchableOpacity
@@ -857,6 +856,7 @@ export default function ComplianceCenter() {
                     { label: "Active Project", value: "active" },
                     { label: "Future Pipeline", value: "future" }
                   ])}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>
                     {newSite.websiteType === "active" ? "Active Project" : "Future Pipeline"}
@@ -865,7 +865,7 @@ export default function ComplianceCenter() {
                 </TouchableOpacity>
               </View>
 
-               <View style={styles.inputGroup}>
+              <View style={styles.inputGroup}>
                 <Text style={styles.fieldLabel}>Environment</Text>
                 <TouchableOpacity
                   style={styles.dropdownTrigger}
@@ -874,6 +874,7 @@ export default function ComplianceCenter() {
                     { label: "Staging", value: "Staging" },
                     { label: "Development", value: "Development" }
                   ])}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>{newSite.environment}</Text>
                   <ChevronDown size={14} color={colors.text} />
@@ -890,6 +891,7 @@ export default function ComplianceCenter() {
                     { label: "E-Commerce", value: "E-Commerce" },
                     { label: "Operations", value: "Operations" }
                   ])}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>{newSite.businessUnit}</Text>
                   <ChevronDown size={14} color={colors.text} />
@@ -908,7 +910,7 @@ export default function ComplianceCenter() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>Platform </Text>
+                <Text style={styles.fieldLabel}>Platform</Text>
                 <TextInput
                   style={styles.modalTextInput}
                   placeholder="e.g., Next.js, WordPress, React Native Web"
@@ -917,11 +919,13 @@ export default function ComplianceCenter() {
                   onChangeText={(txt) => setNewSite(p => ({ ...p, platform: txt }))}
                 />
               </View>
-               <View style={styles.inputGroup}>
+
+              <View style={styles.inputGroup}>
                 <Text style={styles.fieldLabel}>Compliance Template</Text>
                 <TouchableOpacity
                   style={styles.dropdownTrigger}
                   onPress={() => openPicker("complianceTemplate", templateOptions)}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>
                     {templates.find(t => t.key === newSite.complianceTemplate)?.name || "Select standard criteria track..."}
@@ -940,66 +944,14 @@ export default function ComplianceCenter() {
                   onChangeText={(txt) => setNewSite(p => ({ ...p, launchDate: txt }))}
                 />
               </View>
-            {/*
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>Hosting Provider</Text>
-                <TextInput
-                  style={styles.modalTextInput}
-                  placeholder="e.g., AWS, Vercel, Hostinger"
-                  placeholderTextColor={colors.mutedText}
-                  value={newSite.hostingProvider}
-                  onChangeText={(txt) => setNewSite(p => ({ ...p, hostingProvider: txt }))}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>Current Launch Status</Text>
-                <TouchableOpacity
-                  style={styles.dropdownTrigger}
-                  onPress={() => openPicker("siteStatus", [
-                    { label: "Development", value: "Development" },
-                    { label: "Live", value: "Live" },
-                    { label: "Maintenance", value: "Maintenance" },
-                    { label: "Offline", value: "Offline" }
-                  ])}
-                >
-                  <Text style={styles.dropdownValue}>{newSite.status}</Text>
-                  <ChevronDown size={14} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>Product Owner</Text>
-                <TextInput
-                  style={styles.modalTextInput}
-                  placeholder="Manager name"
-                  placeholderTextColor={colors.mutedText}
-                  value={newSite.owner}
-                  onChangeText={(txt) => setNewSite(p => ({ ...p, owner: txt }))}
-                />
-              </View>
-             <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>Operational Notes</Text>
-                <TextInput
-                  style={[styles.modalTextInput, styles.multilineInput]}
-                  placeholder="Add administrative deployment summaries..."
-                  placeholderTextColor={colors.mutedText}
-                  multiline
-                  numberOfLines={3}
-                  value={newSite.notes}
-                  onChangeText={(txt) => setNewSite(p => ({ ...p, notes: txt }))}
-                />
-              </View>
-
-              */}
             </ScrollView>
 
             <View style={styles.modalFooterActions}>
-              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setIsCreateOpen(false)}>
+              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setIsCreateOpen(false)} activeOpacity={0.7}>
                 <Text style={styles.btnOutlineText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, styles.btnPrimary, styles.flex1]} onPress={handleCreateWebsite} disabled={actionLoading}>
-                {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.btnPrimaryText}>Save Record</Text>}
+              <TouchableOpacity style={[styles.button, styles.btnPrimary, styles.flex1]} onPress={handleCreateWebsite} disabled={actionLoading} activeOpacity={0.8}>
+                {actionLoading ? <ActivityIndicator size="small" color={colors.primaryText} /> : <Text style={styles.btnPrimaryText}>Save Record</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -1009,108 +961,126 @@ export default function ComplianceCenter() {
       {/* =========================================================================
           MODAL 2: DETAILED WEBSITE CHECKLIST DRAWER PANEL
           ========================================================================= */}
-      <Modal visible={isDrawerOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContentLarge}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle} numberOfLines={1}>{selectedWebsite?.siteName}</Text>
-                <Text style={styles.modalSubTitleText} numberOfLines={1}>{selectedWebsite?.url}</Text>
-              </View>
-              <TouchableOpacity onPress={closeDrawer}>
-                <X size={20} color={colors.text} />
+      <Modal 
+  visible={isDrawerOpen} 
+  animationType="slide" 
+  transparent={true} 
+  onRequestClose={closeDrawer}
+>
+  <View style={styles.modalBackdrop}>
+    <View style={styles.modalContentLarge}>
+      {/* Modal Header */}
+      <View style={styles.modalHeader}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.modalTitle} numberOfLines={1}>
+            {selectedWebsite?.siteName}
+          </Text>
+          <Text style={styles.modalSubTitleText} numberOfLines={1}>
+            {selectedWebsite?.url}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={closeDrawer} activeOpacity={0.7}>
+          <X size={20} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      {actionLoading && checklistItems.length === 0 ? (
+        <View style={styles.centeredLoader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.modalFormScroll} showsVerticalScrollIndicator={false}>
+          
+          {/* Admin Override Action Banner */}
+          {isAdmin && (
+            <View style={styles.adminActionBanner}>
+              <Lock size={14} color={colors.text} style={styles.marginRight6} />
+              <Text style={styles.adminBannerText}>Privileged Administrative Core Mode</Text>
+              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.miniBtnOverride]} onPress={() => setIsOverrideOpen(true)} activeOpacity={0.7}>
+                <Text style={styles.btnOutlineText}>Override Parameters</Text>
               </TouchableOpacity>
             </View>
+          )}
 
-            {actionLoading && checklistItems.length === 0 ? (
-              <View style={styles.centeredLoader}>
-                <ActivityIndicator size="large" color={colors.primary} />
-              </View>
-            ) : (
-              <ScrollView contentContainerStyle={styles.modalFormScroll} showsVerticalScrollIndicator={false}>
-                
-                {/* Admin Override Action Banner */}
-                {isAdmin && (
-                  <View style={styles.adminActionBanner}>
-                    <Lock size={14} color={colors.text} style={styles.marginRight6} />
-                    <Text style={styles.adminBannerText}>Privileged Administrative Core Mode</Text>
-                    <TouchableOpacity style={[styles.button, styles.btnOutline, styles.miniBtnOverride]} onPress={() => setIsOverrideOpen(true)}>
-                      <Text style={styles.btnOutlineText}>Override Parameters</Text>
-                    </TouchableOpacity>
+          {/* Score Status Layout */}
+          <View style={styles.drawerScoreBlock}>
+            <Text style={styles.fieldLabel}>Current Compliance Summary</Text>
+            <Text style={styles.drawerScoreValue}>{selectedWebsite?.readinessScore}% Complete</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressBar, { width: `${selectedWebsite?.readinessScore || 0}%`, backgroundColor: colors.primary }]} />
+            </View>
+          </View>
+
+          {/* Categorized Verification Checks Accordion */}
+          <Text style={styles.categoryDividerTitle}>Compliance Checkpoints</Text>
+          {Object.keys(groupedChecklistItems).map((catName) => {
+            const isExpanded = !!expandedCategories[catName];
+            return (
+              <View key={catName} style={styles.accordionContainer}>
+                <TouchableOpacity style={styles.accordionHeader} onPress={() => toggleCategory(catName)} activeOpacity={0.7}>
+                  <Text style={styles.accordionTitleText}>{catName}</Text>
+                  <ChevronDown size={16} color={colors.text} style={isExpanded ? { transform: [{ rotate: "180deg" }] } : undefined} />
+                </TouchableOpacity>
+
+                {isExpanded && (
+                  <View style={styles.accordionBodyContent}>
+                    {groupedChecklistItems[catName].map((item) => (
+                      <View key={item._id} style={styles.checkItemCard}>
+                        <View style={styles.flexRowHeaderItem}>
+                          <View style={styles.flex1}>
+                            <Text style={styles.checkItemTitle}>{item.title}</Text>
+                            <Text style={styles.checkItemDesc}>{item.description}</Text>
+                          </View>
+                          <View style={[styles.statusIndicatorTag, { backgroundColor: item.status === "completed" ? colors.green : item.status === "in-progress" ? colors.purple : item.status === "blocked" ? colors.red : colors.mutedText }]}>
+                            <Text style={styles.statusIndicatorText}>{item.status}</Text>
+                          </View>
+                        </View>
+
+                        {item.notes ? (
+                          <View style={styles.evidenceNotesContainer}>
+                            <Text style={styles.evidenceNotesPreview}>
+                              <Text style={{ fontWeight: "700" }}>Notes: </Text>
+                              {item.notes}
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        <TouchableOpacity
+                          style={[styles.button, styles.btnOutline, styles.marginTop6, styles.flexRow]}
+                          onPress={() => {
+                            setEditingItem(item);
+                            setItemStatus(item.status);
+                            setItemNotes(item.notes || "");
+                            setItemEvidenceUrl(item.evidenceUrl || "");
+                            setItemEvidenceFile(item.evidenceFile || "");
+                            setItemBlockedReason(item.blockedReason || "");
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.btnOutlineText}>Update Verification Status</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
                   </View>
                 )}
-
-                {/* Score Status Layout */}
-                <View style={styles.drawerScoreBlock}>
-                  <Text style={styles.fieldLabel}>Current Compliance Summary</Text>
-                  <Text style={styles.drawerScoreValue}>{selectedWebsite?.readinessScore}% Complete</Text>
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressBar, { width: `${selectedWebsite?.readinessScore || 0}%`, backgroundColor: colors.primary }]} />
-                  </View>
-                </View>
-
-                {/* Categorized Verification Checks Accordion */}
-                <Text style={styles.categoryDividerTitle}>Compliance Checkpoints</Text>
-                {Object.keys(groupedChecklistItems).map((catName) => {
-                  const isExpanded = !!expandedCategories[catName];
-                  return (
-                    <View key={catName} style={styles.accordionContainer}>
-                      <TouchableOpacity style={styles.accordionHeader} onPress={() => toggleCategory(catName)}>
-                        <Text style={styles.accordionTitleText}>{catName}</Text>
-                        <ChevronDown size={16} color={colors.text} style={isExpanded && { transform: [{ rotate: "180deg" }] }} />
-                      </TouchableOpacity>
-
-                      {isExpanded && (
-                        <View style={styles.accordionBodyContent}>
-                          {groupedChecklistItems[catName].map((item) => (
-                            <View key={item._id} style={styles.checkItemCard}>
-                              <View style={styles.flexRowHeaderItem}>
-                                <View style={styles.flex1}>
-                                  <Text style={styles.checkItemTitle}>{item.title}</Text>
-                                  <Text style={styles.checkItemDesc}>{item.description}</Text>
-                                </View>
-                                <View style={[styles.statusIndicatorTag, { backgroundColor: item.status === "completed" ? colors.green : item.status === "in-progress" ? colors.purple : item.status === "blocked" ? colors.red : colors.mutedText }]}>
-                                  <Text style={styles.statusIndicatorText}>{item.status}</Text>
-                                </View>
-                              </View>
-
-                              {item.notes ? <Text style={styles.evidenceNotesPreview}>Notes: {item.notes}</Text> : null}
-
-                              <TouchableOpacity
-                                style={[styles.button, styles.btnOutline, styles.marginTop6, styles.flexRow]}
-                                onPress={() => {
-                                  setEditingItem(item);
-                                  setItemStatus(item.status);
-                                  setItemNotes(item.notes || "");
-                                  setItemEvidenceUrl(item.evidenceUrl || "");
-                                  setItemEvidenceFile(item.evidenceFile || "");
-                                  setItemBlockedReason(item.blockedReason || "");
-                                }}
-                              >
-                                <Text style={styles.btnOutlineText}>Update Verification Status</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  </View>
+</Modal>
 
       {/* =========================================================================
           MODAL 3: UPDATE SPECIFIC CHECKLIST ITEM LOGS / EVIDENCE
           ========================================================================= */}
-      <Modal visible={editingItem !== null} animationType="fade" transparent>
+      <Modal visible={editingItem !== null} animationType="fade" transparent onRequestClose={() => setEditingItem(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContentMedium}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle} numberOfLines={1}>Verify: {editingItem?.title}</Text>
-              <TouchableOpacity onPress={() => setEditingItem(null)}>
+              <TouchableOpacity onPress={() => setEditingItem(null)} activeOpacity={0.7}>
                 <X size={18} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -1126,6 +1096,7 @@ export default function ComplianceCenter() {
                     { label: "Blocked / Flagged", value: "blocked" },
                     { label: "Completed Verification", value: "completed" }
                   ])}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>{itemStatus}</Text>
                   <ChevronDown size={14} color={colors.text} />
@@ -1159,7 +1130,7 @@ export default function ComplianceCenter() {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.fieldLabel}>Attachment Asset Evidence (Screenshot/PDF)</Text>
-                <TouchableOpacity style={[styles.button, styles.btnOutline, styles.flexRow]} onPress={handleDocumentPick}>
+                <TouchableOpacity style={[styles.button, styles.btnOutline, styles.flexRow]} onPress={handleDocumentPick} activeOpacity={0.7}>
                   <Upload size={14} color={colors.text} style={styles.marginRight6} />
                   <Text style={styles.btnOutlineText} numberOfLines={1}>
                     {itemEvidenceFile ? "Replace Embedded Asset Reference" : "Upload Verification File"}
@@ -1183,11 +1154,11 @@ export default function ComplianceCenter() {
             </ScrollView>
 
             <View style={styles.modalFooterActions}>
-              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setEditingItem(null)}>
+              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setEditingItem(null)} activeOpacity={0.7}>
                 <Text style={styles.btnOutlineText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, styles.btnPrimary, { flex: 1 }]} onPress={() => editingItem && saveChecklistItem(editingItem)} disabled={actionLoading}>
-                {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.btnPrimaryText}>Commit Verification</Text>}
+              <TouchableOpacity style={[styles.button, styles.btnPrimary, { flex: 1 }]} onPress={() => editingItem && saveChecklistItem(editingItem)} disabled={actionLoading} activeOpacity={0.8}>
+                {actionLoading ? <ActivityIndicator size="small" color={colors.primaryText} /> : <Text style={styles.btnPrimaryText}>Commit Verification</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -1197,12 +1168,12 @@ export default function ComplianceCenter() {
       {/* =========================================================================
           MODAL 4: ADMIN PARAMETER OVERRIDE CONTROLS
           ========================================================================= */}
-      <Modal visible={isOverrideOpen} animationType="fade" transparent>
+      <Modal visible={isOverrideOpen} animationType="fade" transparent onRequestClose={() => setIsOverrideOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContentMedium}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Privileged Parameter Override</Text>
-              <TouchableOpacity onPress={() => setIsOverrideOpen(false)}>
+              <TouchableOpacity onPress={() => setIsOverrideOpen(false)} activeOpacity={0.7}>
                 <X size={18} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -1231,6 +1202,7 @@ export default function ComplianceCenter() {
                     { label: "Development", value: "Development" },
                     { label: "Offline", value: "Offline" }
                   ])}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.dropdownValue}>{overrideStatus || "Keep Current Status"}</Text>
                   <ChevronDown size={14} color={colors.text} />
@@ -1252,11 +1224,11 @@ export default function ComplianceCenter() {
             </ScrollView>
 
             <View style={styles.modalFooterActions}>
-              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setIsOverrideOpen(false)}>
+              <TouchableOpacity style={[styles.button, styles.btnOutline, styles.marginRight8]} onPress={() => setIsOverrideOpen(false)} activeOpacity={0.7}>
                 <Text style={styles.btnOutlineText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, styles.btnPrimary, { backgroundColor: colors.red, flex: 1 }]} onPress={submitOverride} disabled={actionLoading}>
-                {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.btnPrimaryText}>Apply Override</Text>}
+              <TouchableOpacity style={[styles.button, styles.btnPrimary, { backgroundColor: colors.red, flex: 1 }]} onPress={submitOverride} disabled={actionLoading} activeOpacity={0.8}>
+                {actionLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={[styles.btnPrimaryText, { color: "#ffffff" }]}>Apply Override</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -1264,21 +1236,31 @@ export default function ComplianceCenter() {
       </Modal>
 
       {/* =========================================================================
-          MODAL 5: CUSTOM MULTI-SELECT DROPDOWN PICKER SELECTOR PANEL
+          MODAL 5: CUSTOM DROPDOWN PICKER SELECTOR PANEL
           ========================================================================= */}
-      <Modal visible={pickerField.visible} animationType="fade" transparent>
-        <TouchableOpacity style={styles.pickerBackdropOuter} activeOpacity={1} onPress={() => setPickerField({ visible: false, type: "", options: null })}>
+      <Modal visible={pickerField.visible} animationType="fade" transparent onRequestClose={() => setPickerField({ visible: false, type: "", options: null })}>
+        <View style={styles.pickerBackdropOuter}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setPickerField({ visible: false, type: "", options: null })} />
           <View style={styles.pickerInnerPanelCard}>
-            <Text style={styles.pickerTitleHeaderText}>Select Configuration Parameter</Text>
-            <ScrollView style={styles.pickerOptionsContainerScroll} showsVerticalScrollIndicator={false}>
-              {pickerField.options?.map((opt) => (
-                <TouchableOpacity key={opt.value} style={styles.pickerOptionItemRow} onPress={() => handlePickerSelect(opt.value)}>
-                  <Text style={styles.pickerOptionLabelText}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitleHeaderText}>Select Option</Text>
+              <TouchableOpacity onPress={() => setPickerField({ visible: false, type: "", options: null })} activeOpacity={0.7}>
+                <X size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerOptionsContainerScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {pickerField.options && pickerField.options.length > 0 ? (
+                pickerField.options.map((opt) => (
+                  <TouchableOpacity key={opt.value} style={styles.pickerOptionItemRow} onPress={() => handlePickerSelect(opt.value)} activeOpacity={0.7}>
+                    <Text style={styles.pickerOptionLabelText}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={styles.emptyStateText}>No options available</Text>
+              )}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
     </SafeAreaView>
@@ -1288,55 +1270,67 @@ export default function ComplianceCenter() {
 // =========================================================================
 // STYLE ENGINE CREATOR
 // =========================================================================
-function createStyles(colors: any, isMetallic: boolean) {
+function createStyles(
+  colors: any,
+  isMetallic: boolean,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  windowHeight: number,
+  windowWidth: number,
+  isDark: boolean
+) {
   return StyleSheet.create({
     safeContainer: {
       flex: 1,
       backgroundColor: colors.background,
     },
     mainScroll: {
-      padding: 16,
+      paddingHorizontal: isTablet ? wp(6) : wp(4),
+      paddingTop: hp(2),
+      paddingBottom: hp(6),
     },
     headerRow: {
-      marginBottom: 16,
+      marginBottom: hp(2),
     },
     titleWrapper: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: 6,
+      marginBottom: hp(0.6),
     },
     headerIcon: {
-      marginRight: 8,
+      marginRight: wp(2),
     },
     mainTitleText: {
-      fontSize: 20,
-      fontWeight: "700",
+      fontSize: isTablet ? 24 : 20,
+      fontWeight: "800",
       color: colors.text,
       letterSpacing: -0.3,
     },
     subtitleText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 12,
       color: colors.mutedText,
-      lineHeight: 18,
+      lineHeight: isTablet ? 20 : 17,
     },
     actionButtonsRow: {
       flexDirection: "row",
-      marginBottom: 16,
+      marginBottom: hp(2),
     },
     button: {
-      height: 40,
-      borderRadius: 8,
+      height: hp(4.8),
+      borderRadius: wp(2),
       justifyContent: "center",
       alignItems: "center",
-      paddingHorizontal: 14,
+      paddingHorizontal: wp(3.5),
     },
     btnOutline: {
-      backgroundColor: "transparent",
+      backgroundColor: colors.primary,
       borderWidth: 1,
       borderColor: colors.border,
     },
     btnOutlineText: {
-      fontSize: 13,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
       color: colors.text,
     },
@@ -1344,9 +1338,9 @@ function createStyles(colors: any, isMetallic: boolean) {
       backgroundColor: isMetallic ? colors.metallicGold : colors.primary,
     },
     btnPrimaryText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: isMetallic ? "#000" : "#fff",
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
+      color: colors.primaryText,
     },
     flexRow: {
       flexDirection: "row",
@@ -1374,28 +1368,29 @@ function createStyles(colors: any, isMetallic: boolean) {
       flexDirection: "row",
       flexWrap: "wrap",
       justifyContent: "space-between",
-      marginBottom: 8,
+      marginBottom: hp(1),
+      gap: wp(2),
     },
     card: {
-      width: (SCREEN_WIDTH - 40) / 2,
+      width: isTablet ? "23.5%" : "48%",
       backgroundColor: colors.cardBg,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 12,
+      borderRadius: wp(3),
+      padding: wp(3.5),
+      marginBottom: hp(1.2),
       position: "relative",
     },
     cardDesc: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       color: colors.mutedText,
       fontWeight: "500",
     },
     cardTitle: {
-      fontSize: 22,
-      fontWeight: "700",
+      fontSize: isTablet ? 24 : 20,
+      fontWeight: "800",
       color: colors.text,
-      marginVertical: 4,
+      marginVertical: hp(0.5),
     },
     cardTitleSub: {
       fontSize: 12,
@@ -1416,12 +1411,12 @@ function createStyles(colors: any, isMetallic: boolean) {
       height: "100%",
     },
     miniCardText: {
-      fontSize: 10,
+      fontSize: isTablet ? 11 : 10,
       color: colors.mutedText,
     },
     dotContainer: {
       flexDirection: "row",
-      marginTop: 6,
+      marginTop: hp(0.8),
     },
     indicatorDot: {
       width: 6,
@@ -1435,46 +1430,47 @@ function createStyles(colors: any, isMetallic: boolean) {
       backgroundColor: colors.cardBg,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      padding: 14,
-      marginBottom: 16,
+      borderRadius: wp(3),
+      padding: wp(4),
+      marginBottom: hp(2),
       position: "relative",
     },
     filterCardTitle: {
-      fontSize: 14,
+      fontSize: isTablet ? 15 : 14,
       fontWeight: "700",
       color: colors.text,
     },
     filterCardDesc: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       color: colors.mutedText,
-      marginBottom: 8,
+      marginBottom: hp(1.2),
     },
     inputGroup: {
-      marginBottom: 12,
+      marginBottom: hp(1.5),
     },
     fieldLabel: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
-      color: colors.text,
-      marginBottom: 5,
+      color: colors.mutedText,
+      marginBottom: hp(0.6),
     },
     searchContainer: {
       flexDirection: "row",
       alignItems: "center",
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      height: 38,
-      paddingHorizontal: 10,
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(3),
     },
     searchIconNative: {
-      marginRight: 6,
+      marginRight: wp(2),
     },
     nativeInputStyle: {
       flex: 1,
-      color: colors.text,
-      fontSize: 13,
+      color: colors.mutedText,
+      fontSize: isTablet ? 13 : 12,
     },
     dropdownTrigger: {
       flexDirection: "row",
@@ -1482,13 +1478,15 @@ function createStyles(colors: any, isMetallic: boolean) {
       justifyContent: "space-between",
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      height: 38,
-      paddingHorizontal: 12,
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(3),
     },
     dropdownValue: {
-      fontSize: 13,
-      color: colors.text,
+      fontSize: isTablet ? 13 : 12,
+      color: colors.mutedText,
+      fontWeight: "500",
     },
     
     // Leaderboard Blocks
@@ -1496,7 +1494,7 @@ function createStyles(colors: any, isMetallic: boolean) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingVertical: 8,
+      paddingVertical: hp(1),
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
@@ -1514,13 +1512,13 @@ function createStyles(colors: any, isMetallic: boolean) {
       color: colors.text,
     },
     leaderboardName: {
-      fontSize: 13,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "500",
       color: colors.text,
     },
     badgeWrapperInline: {
-      backgroundColor: colors.border,
-      paddingHorizontal: 6,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 2,
       paddingVertical: 2,
       borderRadius: 4,
     },
@@ -1529,10 +1527,10 @@ function createStyles(colors: any, isMetallic: boolean) {
       color: colors.text,
     },
     emptyStateText: {
-      fontSize: 12,
+      fontSize: isTablet ? 12 : 11,
       color: colors.mutedText,
       textAlign: "center",
-      paddingVertical: 8,
+      paddingVertical: hp(1),
     },
 
     // Horizontal Datatable Layout
@@ -1540,18 +1538,18 @@ function createStyles(colors: any, isMetallic: boolean) {
       backgroundColor: colors.cardBg,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      paddingVertical: 14,
-      marginBottom: 16,
+      borderRadius: wp(3),
+      paddingVertical: hp(1.8),
+      marginBottom: hp(2),
       position: "relative",
     },
     tableHeaderContainer: {
-      paddingHorizontal: 14,
-      marginBottom: 10,
+      paddingHorizontal: wp(4),
+      marginBottom: hp(1.2),
     },
     tableLoaderWrapper: {
       alignItems: "center",
-      paddingVertical: 20,
+      paddingVertical: hp(3),
     },
     loaderSubText: {
       fontSize: 12,
@@ -1559,11 +1557,11 @@ function createStyles(colors: any, isMetallic: boolean) {
       marginTop: 6,
     },
     tableEmptyText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       color: colors.mutedText,
       textAlign: "center",
-      paddingHorizontal: 14,
-      paddingVertical: 16,
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(2),
     },
     horizontalTableContainer: {
       flexDirection: "column",
@@ -1572,9 +1570,9 @@ function createStyles(colors: any, isMetallic: boolean) {
       flexDirection: "row",
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      backgroundColor: isMetallic ? "#1a1a1a" : "transparent",
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1.2),
+      backgroundColor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
     },
     tableCellHeader: {
       fontSize: 11,
@@ -1586,11 +1584,11 @@ function createStyles(colors: any, isMetallic: boolean) {
       flexDirection: "row",
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingHorizontal: wp(4),
+      paddingVertical: hp(1.4),
     },
     siteNameTextTable: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
       color: colors.text,
     },
@@ -1609,7 +1607,7 @@ function createStyles(colors: any, isMetallic: boolean) {
     miniBadgeText: {
       fontSize: 9,
       fontWeight: "600",
-      color: colors.text,
+      color: colors.primary,
     },
     marginBackdropOutline: {
       backgroundColor: "transparent",
@@ -1617,7 +1615,7 @@ function createStyles(colors: any, isMetallic: boolean) {
       borderColor: colors.mutedText,
     },
     leadDevText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
       color: colors.text,
     },
@@ -1626,7 +1624,7 @@ function createStyles(colors: any, isMetallic: boolean) {
       color: colors.mutedText,
     },
     dateLabelText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       color: colors.text,
     },
     countdownValueText: {
@@ -1663,15 +1661,15 @@ function createStyles(colors: any, isMetallic: boolean) {
 
     // Audit logs engine styles
     auditLogContainer: {
-      paddingHorizontal: 14,
+      paddingHorizontal: wp(4),
     },
     auditEmptyText: {
       fontSize: 12,
       color: colors.mutedText,
-      paddingVertical: 10,
+      paddingVertical: hp(1.2),
     },
     auditLogRow: {
-      paddingVertical: 8,
+      paddingVertical: hp(1.2),
       borderBottomWidth: 0.5,
       borderBottomColor: colors.border,
     },
@@ -1712,28 +1710,30 @@ function createStyles(colors: any, isMetallic: boolean) {
     // Modals Engineering Layout
     modalBackdrop: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: "rgba(0,0,0,0.75)",
       justifyContent: "center",
       alignItems: "center",
-      padding: 16,
+      padding: wp(4),
     },
     modalContentLarge: {
-      backgroundColor: colors.cardBg,
+      backgroundColor: colors.primaryBg,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 16,
+      borderRadius: wp(4),
       width: "100%",
-      maxHeight: SCREEN_HEIGHT * 0.85,
-      padding: 16,
+      maxWidth: isTablet ? 650 : "100%",
+      maxHeight: windowHeight * 0.85,
+      padding: wp(4),
     },
     modalContentMedium: {
-      backgroundColor: colors.cardBg,
+      backgroundColor: colors.primaryBg,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 16,
+      borderRadius: wp(4),
       width: "100%",
-      maxHeight: SCREEN_HEIGHT * 0.7,
-      padding: 16,
+      maxWidth: isTablet ? 550 : "100%",
+      maxHeight: windowHeight * 0.75,
+      padding: wp(4),
     },
     modalHeader: {
       flexDirection: "row",
@@ -1741,46 +1741,46 @@ function createStyles(colors: any, isMetallic: boolean) {
       alignItems: "center",
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
-      paddingBottom: 12,
-      marginBottom: 12,
+      paddingBottom: hp(1.4),
+      marginBottom: hp(1.4),
     },
     modalTitle: {
-      fontSize: 16,
+      fontSize: isTablet ? 17 : 15,
       fontWeight: "700",
       color: colors.text,
     },
     modalSubTitleText: {
-      fontSize: 12,
+      fontSize: isTablet ? 12 : 11,
       color: colors.mutedText,
       marginTop: 2,
     },
     modalFormScroll: {
-      paddingBottom: 16,
+      paddingBottom: hp(2),
     },
     modalTextInput: {
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.background,
-      borderRadius: 8,
-      height: 40,
-      paddingHorizontal: 12,
-      fontSize: 13,
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2),
+      height: hp(4.8),
+      paddingHorizontal: wp(3),
+      fontSize: isTablet ? 13 : 12,
       color: colors.text,
     },
     multilineInput: {
-      height: 70,
-      paddingTop: 8,
+      height: hp(9),
+      paddingTop: hp(1),
       textAlignVertical: "top",
     },
     modalFooterActions: {
       flexDirection: "row",
       borderTopWidth: 1,
       borderTopColor: colors.border,
-      paddingTop: 12,
-      marginTop: 4,
+      paddingTop: hp(1.4),
+      marginTop: hp(1),
     },
     centeredLoader: {
-      paddingVertical: 40,
+      paddingVertical: hp(5),
       alignItems: "center",
     },
 
@@ -1791,76 +1791,79 @@ function createStyles(colors: any, isMetallic: boolean) {
       backgroundColor: "rgba(239, 68, 68, 0.08)",
       borderWidth: 1,
       borderColor: "rgba(239, 68, 68, 0.2)",
-      borderRadius: 8,
-      padding: 10,
-      marginBottom: 14,
+      borderRadius: wp(2),
+      padding: wp(2.5),
+      marginBottom: hp(1.5),
     },
     adminBannerText: {
-      fontSize: 12,
+      fontSize: isTablet ? 12 : 11,
       fontWeight: "600",
       color: colors.text,
       flex: 1,
     },
     miniBtnOverride: {
-      height: 28,
-      paddingHorizontal: 8,
+      height: hp(3.6),
+      paddingHorizontal: wp(2.5),
     },
     drawerScoreBlock: {
-      backgroundColor: colors.background,
-      borderRadius: 10,
-      padding: 12,
-      marginBottom: 16,
+      backgroundColor: colors.inputBg,
+      borderRadius: wp(2.5),
+      padding: wp(3),
+      marginBottom: hp(2),
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     drawerScoreValue: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: colors.text,
-      marginBottom: 4,
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: "800",
+      color: colors.mutedText,
+      marginBottom: hp(0.6),
     },
     categoryDividerTitle: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: "700",
       color: colors.mutedText,
       textTransform: "uppercase",
-      marginBottom: 8,
+      marginBottom: hp(1),
+      letterSpacing: 0.5,
     },
     accordionContainer: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      marginBottom: 10,
+      borderRadius: wp(2.5),
+      marginBottom: hp(1.2),
       overflow: "hidden",
+      backgroundColor: colors.cardBg,
     },
     accordionHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      padding: 12,
-      backgroundColor: colors.background,
+      padding: wp(3.5),
+      backgroundColor: colors.inputBg,
     },
     accordionTitleText: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
-      color: colors.text,
+      color: colors.mutedText,
     },
     accordionBodyContent: {
-      padding: 12,
-      backgroundColor: colors.cardBg,
+      padding: wp(3),
     },
     checkItemCard: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      padding: 10,
-      marginBottom: 10,
-      backgroundColor: colors.background,
+      borderRadius: wp(2),
+      padding: wp(2.5),
+      marginBottom: hp(1.2),
+      backgroundColor: colors.inputBg,
     },
     flexRowHeaderItem: {
       flexDirection: "row",
       justifyContent: "space-between",
     },
     checkItemTitle: {
-      fontSize: 13,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
       color: colors.text,
     },
@@ -1899,38 +1902,56 @@ function createStyles(colors: any, isMetallic: boolean) {
     // Custom selector layout
     pickerBackdropOuter: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.4)",
-      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: wp(4),
     },
     pickerInnerPanelCard: {
-      backgroundColor: colors.cardBg,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
-      maxHeight: SCREEN_HEIGHT * 0.45,
-      padding: 16,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      backgroundColor: colors.modalBg,
+      borderRadius: wp(3),
+      width: "100%",
+      maxWidth: isTablet ? 400 : 320,
+      maxHeight: windowHeight * 0.5,
+      padding: wp(4),
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 5,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    pickerHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingBottom: hp(1),
+      marginBottom: hp(1),
     },
     pickerTitleHeaderText: {
-      fontSize: 14,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
-      color: colors.text,
-      marginBottom: 12,
-      textAlign: "center",
+      color: colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
     },
     pickerOptionsContainerScroll: {
-      marginBottom: 10,
+      marginBottom: hp(1),
     },
     pickerOptionItemRow: {
-      paddingVertical: 12,
+      paddingVertical: hp(1.4),
       borderBottomWidth: 0.5,
       borderBottomColor: colors.border,
       alignItems: "center",
     },
     pickerOptionLabelText: {
-      fontSize: 14,
-      color: colors.text,
-      fontWeight: "500",
+      fontSize: isTablet ? 14 : 13,
+      color: colors.textMuted,
+      fontWeight: "600",
+      textAlign: "left"
     },
   });
 }

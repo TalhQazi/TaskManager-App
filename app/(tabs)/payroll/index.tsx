@@ -25,6 +25,9 @@ import { getEmployeeProfile, apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
 
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 const { width } = Dimensions.get("window");
 
 interface TimeEntry {
@@ -201,10 +204,145 @@ export default function EmployeePayroll() {
     setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  const handleExportPDF = () => {
-    Alert.alert("Export", "Generating payroll report summary...");
-  };
+const handleExportPDF = async () => {
+    if (!calculatedPayroll || !employeeProfile) return;
 
+    try {
+      const monthName = getMonthName(currentMonth);
+
+      // Clean HTML structure for professional PDF document formatting
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Payroll Summary - ${monthName}</title>
+            <style>
+              body {
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                color: #1f2937;
+                padding: 40px;
+                margin: 0;
+                background-color: #ffffff;
+              }
+              .header {
+                border-bottom: 2px solid #e5e7eb;
+                padding-bottom: 20px;
+                margin-bottom: 30px;
+              }
+              h1 {
+                font-size: 24px;
+                margin: 0 0 5px 0;
+                color: #111827;
+              }
+              .subtitle {
+                font-size: 14px;
+                color: #6b7280;
+                margin: 0;
+              }
+              .section-title {
+                font-size: 16px;
+                font-weight: bold;
+                color: #374151;
+                margin-top: 25px;
+                margin-bottom: 10px;
+                border-bottom: 1px solid #e5e7eb;
+                padding-bottom: 5px;
+              }
+              .row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 14px;
+                padding: 6px 0;
+              }
+              .row span:last-child {
+                font-weight: 600;
+              }
+              .total-row {
+                font-weight: bold;
+                font-size: 16px;
+                border-top: 2px solid #111827;
+                margin-top: 15px;
+                padding-top: 10px;
+              }
+              .net-pay {
+                background-color: #ecfdf5;
+                border: 1px solid #10b981;
+                padding: 15px;
+                border-radius: 8px;
+                margin-top: 30px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              }
+              .net-pay span:first-child {
+                font-size: 16px;
+                font-weight: bold;
+                color: #065f46;
+              }
+              .net-pay span:last-child {
+                font-size: 20px;
+                font-weight: bold;
+                color: #059669;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Payroll Summary Report</h1>
+              <p class="subtitle">Pay Period: ${monthName}</p>
+            </div>
+
+            <div class="section-title">Employee Details</div>
+            <div class="row"><span>Name:</span><span>${employeeProfile.name || "N/A"}</span></div>
+            <div class="row"><span>Email:</span><span>${employeeProfile.email || "N/A"}</span></div>
+
+            <div class="section-title">Worked Hours</div>
+            <div class="row"><span>Total Hours:</span><span>${calculatedPayroll.totalHours.toFixed(2)} hrs</span></div>
+            <div class="row"><span>Regular Hours:</span><span>${calculatedPayroll.regularHours.toFixed(2)} hrs</span></div>
+            <div class="row"><span>Overtime Hours:</span><span>${calculatedPayroll.overtimeHours.toFixed(2)} hrs</span></div>
+
+            <div class="section-title">Earnings Breakdown</div>
+            <div class="row"><span>Pay Type:</span><span>${calculatedPayroll.isMonthly ? "Monthly Salary" : "Hourly Wage"}</span></div>
+            <div class="row"><span>Hourly Rate:</span><span>${formatCurrency(calculatedPayroll.hourlyRate)}/hr</span></div>
+            ${calculatedPayroll.isMonthly ? `<div class="row"><span>Monthly Salary:</span><span>${formatCurrency(calculatedPayroll.monthlySalary)}</span></div>` : ""}
+            <div class="row"><span>Regular Pay:</span><span>${formatCurrency(calculatedPayroll.regularPay)}</span></div>
+            ${calculatedPayroll.overtimePay > 0 ? `<div class="row"><span>Overtime Pay (1.5x):</span><span>${formatCurrency(calculatedPayroll.overtimePay)}</span></div>` : ""}
+            <div class="row total-row"><span>Gross Pay:</span><span>${formatCurrency(calculatedPayroll.totalPay)}</span></div>
+
+            <div class="section-title">Tax Deductions</div>
+            <div class="row"><span>Federal Tax (12%):</span><span style="color: #dc2626;">-${formatCurrency(calculatedPayroll.federalTax)}</span></div>
+            <div class="row"><span>State Tax (5%):</span><span style="color: #dc2626;">-${formatCurrency(calculatedPayroll.stateTax)}</span></div>
+            <div class="row"><span>Social Security (6.2%):</span><span style="color: #dc2626;">-${formatCurrency(calculatedPayroll.socialSecurity)}</span></div>
+            <div class="row"><span>Medicare (1.45%):</span><span style="color: #dc2626;">-${formatCurrency(calculatedPayroll.medicare)}</span></div>
+            <div class="row total-row"><span>Total Deductions:</span><span style="color: #dc2626;">-${formatCurrency(calculatedPayroll.totalDeductions)}</span></div>
+
+            <div class="net-pay">
+              <span>Net Take-Home Pay</span>
+              <span>${formatCurrency(calculatedPayroll.netPay)}</span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // Compile HTML into a real PDF file using expo-print
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+
+      // Trigger native share/save sheet specifying PDF mime type
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: `Payroll Summary - ${monthName}`,
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        Alert.alert("Success", `PDF successfully generated at: ${uri}`);
+      }
+    } catch (error: any) {
+      console.error("Export PDF Error:", error);
+      Alert.alert("Export Error", error?.message || "Failed to generate PDF document.");
+    }
+  };
   const handleDownloadStub = async (url: string) => {
     try {
       const supported = await Linking.canOpenURL(url);

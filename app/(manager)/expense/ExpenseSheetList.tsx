@@ -1,240 +1,46 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  TextInput,
-  Alert,
-} from 'react-native';
+import React, { useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from "react-native";
+import { DollarSign, Layers, PlusCircle, PieChart } from "lucide-react-native";
 
-import Colors from '@/constants/colors';
-import { apiRequest } from '@/services/api';
+import { MobileCostManager } from "@/components/cost-manager/MobileCostManager";
+import CreateExpenseSheet from "../expense/CreateExpenseSheet";
+import ExpenseSheetList from "../expense/ExpenseSheetList";
 
-interface Props {
+interface ExpenseSheetProps {
   projectId: string;
+  projectName?: string;
+  onClose?: () => void;
 }
 
-export default function ExpenseSheetList({
-  projectId,
-}: Props) {
-  const [loading, setLoading] = useState(false);
-  const [sheets, setSheets] = useState<any[]>([]);
-  const [selectedSheet, setSelectedSheet] =
-    useState<any>(null);
+export default function ExpenseSheet({ projectId, projectName = "Project", onClose }: ExpenseSheetProps) {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 375;
 
-  const [items, setItems] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    loadSheets();
-  }, [projectId]);
-
-  const loadSheets = async () => {
-    try {
-      setLoading(true);
-
-      const res = await apiRequest(
-        `/expense-sheets/${projectId}`
-      );
-
-      setSheets(res.data?.data || res.data || []);
-    } catch (err) {
-      console.log(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openSheet = async (sheet: any) => {
-    try {
-      setSelectedSheet(sheet);
-
-      const res = await apiRequest(
-        `/expense-items/${sheet._id}`
-      );
-
-      setItems(res.data?.data || res.data || []);
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  const approveSheet = async (id: string) => {
-    try {
-      await apiRequest(
-        `/expense-sheets/${id}/approve`,
-        {
-          method: 'POST',
-        }
-      );
-
-      Alert.alert('Success', 'Approved');
-
-      loadSheets();
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  const rejectSheet = async (id: string) => {
-    try {
-      await apiRequest(
-        `/expense-sheets/${id}/reject`,
-        {
-          method: 'POST',
-        }
-      );
-
-      Alert.alert('Rejected');
-
-      loadSheets();
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  const filteredSheets = sheets.filter((s) =>
-    s.name
-      ?.toLowerCase()
-      .includes(search.toLowerCase())
-  );
-
-  if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator
-          size="large"
-          color={Colors.primary}
-        />
-      </View>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<"cost-sheet" | "list" | "create">("cost-sheet");
 
   return (
     <View style={styles.container}>
-      {/* Search */}
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search expenses..."
-        placeholderTextColor={Colors.textTertiary}
-        value={search}
-        onChangeText={setSearch}
-      />
+      {/* Tab Controls Navigation */}
+     
 
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {filteredSheets.map((sheet) => (
-          <View
-            key={sheet._id}
-            style={styles.sheetCard}
-          >
-            {/* Header */}
-            <TouchableOpacity
-              onPress={() => openSheet(sheet)}
-            >
-              <View style={styles.rowBetween}>
-                <View>
-                  <Text style={styles.sheetTitle}>
-                    {sheet.name}
-                  </Text>
+      {/* Tab Panels */}
+      <View style={styles.contentView}>
+        {activeTab === "cost-sheet" && (
+          <MobileCostManager projectId={projectId} projectName={projectName} />
+        )}
 
-                  <Text style={styles.sheetDate}>
-                    {new Date(
-                      sheet.createdAt
-                    ).toLocaleDateString()}
-                  </Text>
-                </View>
+        {activeTab === "list" && <ExpenseSheetList projectId={projectId} />}
 
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.sheetAmount}>
-                    ₹{sheet.totalAmount || 0}
-                  </Text>
-
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      sheet.status === 'approved' &&
-                        styles.approved,
-                      sheet.status === 'rejected' &&
-                        styles.rejected,
-                      sheet.status === 'submitted' &&
-                        styles.submitted,
-                    ]}
-                  >
-                    <Text style={styles.statusText}>
-                      {sheet.status}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {/* Items */}
-            {selectedSheet?._id === sheet._id && (
-              <View style={styles.itemsContainer}>
-                {items.map((item) => (
-                  <View
-                    key={item._id}
-                    style={styles.itemCard}
-                  >
-                    <Text style={styles.itemTitle}>
-                      {item.itemName}
-                    </Text>
-
-                    <Text style={styles.itemText}>
-                      Vendor: {item.vendorName}
-                    </Text>
-
-                    <Text style={styles.itemText}>
-                      Qty: {item.quantity}
-                    </Text>
-
-                    <Text style={styles.itemText}>
-                      Cost: ₹
-                      {item.estimatedCost}
-                    </Text>
-                  </View>
-                ))}
-
-                {/* Actions */}
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      styles.approveButton,
-                    ]}
-                    onPress={() =>
-                      approveSheet(sheet._id)
-                    }
-                  >
-                    <Text style={styles.actionText}>
-                      Approve
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      styles.rejectButton,
-                    ]}
-                    onPress={() =>
-                      rejectSheet(sheet._id)
-                    }
-                  >
-                    <Text style={styles.actionText}>
-                      Reject
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        ))}
-      </ScrollView>
+        {activeTab === "create" && (
+          <CreateExpenseSheet
+            projectId={projectId}
+            onClose={() => {
+              if (onClose) onClose();
+              else setActiveTab("list");
+            }}
+          />
+        )}
+      </View>
     </View>
   );
 }
@@ -242,132 +48,45 @@ export default function ExpenseSheetList({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    backgroundColor: "#0d1117",
   },
-
-  loader: {
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#161b22",
+    borderBottomWidth: 1,
+    borderBottomColor: "#30363d",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  tabBtn: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  searchInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: "#21262d",
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-    color: Colors.text,
+    borderColor: "#30363d",
   },
-
-  sheetCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+  tabBtnActive: {
+    backgroundColor: "rgba(31, 111, 235, 0.15)",
+    borderColor: "#1f6feb",
   },
-
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  tabBtnText: {
+    color: "#8b949e",
+    fontSize: 11,
+    fontWeight: "600",
   },
-
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
+  tabBtnTextActive: {
+    color: "#58a6ff",
+    fontWeight: "bold",
   },
-
-  sheetDate: {
-    marginTop: 4,
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-
-  sheetAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: Colors.background,
-  },
-
-  approved: {
-    backgroundColor: '#dcfce7',
-  },
-
-  rejected: {
-    backgroundColor: '#fee2e2',
-  },
-
-  submitted: {
-    backgroundColor: '#fef3c7',
-  },
-
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-  },
-
-  itemsContainer: {
-    marginTop: 16,
-  },
-
-  itemCard: {
-    backgroundColor: Colors.background,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-
-  itemTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-
-  itemText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: 2,
-  },
-
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
-
-  actionButton: {
+  contentView: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-
-  approveButton: {
-    backgroundColor: Colors.success,
-  },
-
-  rejectButton: {
-    backgroundColor: Colors.error,
-  },
-
-  actionText: {
-    color: '#fff',
-    fontWeight: '700',
+    paddingHorizontal: 12,
+    paddingTop: 8,
   },
 });

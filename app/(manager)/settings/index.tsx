@@ -11,15 +11,19 @@ import {
   Switch,
   Image,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Shield, Save, Camera, Bell } from "lucide-react-native";
+
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
+import { useAuth } from "@/contexts/AuthContext";
+import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 
 interface SettingsItem {
   fullName: string;
@@ -34,27 +38,73 @@ interface SettingsItem {
     employeeUpdates?: boolean;
     weeklyReports?: boolean;
   };
+  emailPreferences?: Record<string, boolean>;
+  webPreferences?: Record<string, boolean>;
   language?: string;
   timezone?: string;
 }
 
+/**
+ * Image URL resolution logic matching ManagerHeader
+ */
+const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
+  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
+
+  if (
+    rawPath.startsWith("data:") ||
+    rawPath.startsWith("file://") ||
+    rawPath.startsWith("content://")
+  ) {
+    return rawPath;
+  }
+
+  let path = rawPath.trim();
+  if (path.includes("token=")) return path;
+
+  if (path.startsWith("/uploads/")) {
+    path = path.replace("/uploads/", "/api/s3-proxy/");
+  } else if (path.startsWith("uploads/")) {
+    path = path.replace("uploads/", "/api/s3-proxy/");
+  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
+    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
+  }
+
+  if (!path.startsWith("http://") && !path.startsWith("https://")) {
+    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  try {
+    const proxied = toProxiedUrl(path);
+    if (proxied && proxied.includes("token=")) {
+      return proxied;
+    }
+  } catch (e) {}
+
+  if (activeToken) {
+    const separator = path.includes("?") ? "&" : "?";
+    return `${path}${separator}token=${activeToken}`;
+  }
+
+  return path;
+};
+
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = uiTheme?.theme !== "crystal-white";
   return {
-    background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
-    cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
-    text:            uiTheme.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
-    textSecondary:   isDark ? "#a1a1aa" : "#475569",
-    border:          isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
-    primary:         uiTheme.customColors?.primary                || "#ffd27a",
-    inputBg:         isDark ? "#09090b" : "#ffffff",
-    disabledBg:      isDark ? "#18181b" : "#f1f5f9",
-    disabledText:    isDark ? "#52525b" : "#94a3b8",
-    avatarFallback:  isDark ? "#27272a" : "#e2e8f0"
+    background:     uiTheme?.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
+    cardBg:         uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
+    text:           uiTheme?.panelColors?.dashboardTextColor      || (isDark ? "#f8fafc" : "#000000"),
+    textSecondary:  isDark ? "#a1a1aa" : "#475569",
+    border:         isDark ? "#27272a" : "rgba(0, 0, 0, 0.08)",
+    primary:        uiTheme?.customColors?.primary                || "#ffd27a",
+    inputBg:        isDark ? "#09090b" : "#ffffff",
+    disabledBg:     isDark ? "#18181b" : "#f1f5f9",
+    disabledText:   isDark ? "#52525b" : "#94a3b8",
+    avatarFallback: isDark ? "#27272a" : "#e2e8f0",
   };
 }
 
-function createStyles(colors: ReturnType<typeof buildColors>) {
+function createStyles(colors: ReturnType<typeof buildColors>, isDesktop: boolean, isTablet: boolean) {
   return StyleSheet.create({
     viewport: {
       flex: 1,
@@ -72,15 +122,18 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       fontSize: 14,
     },
     scrollContainer: {
-      paddingHorizontal: 16,
+      paddingHorizontal: isDesktop ? 32 : isTablet ? 24 : 16,
       paddingTop: 16,
       paddingBottom: 40,
+      maxWidth: 1024,
+      width: "100%",
+      alignSelf: "center",
     },
     headerBlock: {
       marginBottom: 24,
     },
     pageTitle: {
-      fontSize: 26,
+      fontSize: isDesktop ? 30 : 26,
       fontWeight: "800",
       color: colors.text,
       letterSpacing: 0.3,
@@ -95,7 +148,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 12,
-      padding: 16,
+      padding: isDesktop ? 24 : 16,
       marginBottom: 20,
     },
     cardHeader: {
@@ -115,8 +168,8 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       color: colors.text,
     },
     avatarUploadContainer: {
-      flexDirection: "row",
-      alignItems: "center",
+      flexDirection: isTablet ? "row" : "column",
+      alignItems: isTablet ? "center" : "flex-start",
       gap: 16,
       marginBottom: 20,
     },
@@ -147,7 +200,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       bottom: -2,
       right: -2,
       backgroundColor: colors.primary,
-      padding: 6,
+      padding: 8,
       borderRadius: 99,
     },
     avatarMetaBlock: {
@@ -169,10 +222,14 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       opacity: 0.8,
     },
     formRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
       gap: 14,
     },
     formGroup: {
-      width: "100%",
+      width: isDesktop ? "48.5%" : isTablet ? "48%" : "100%",
+      minWidth: isTablet ? 240 : "100%",
+      flexGrow: 1,
     },
     formLabel: {
       fontSize: 13,
@@ -186,7 +243,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       borderColor: colors.border,
       borderRadius: 6,
       paddingHorizontal: 12,
-      height: 40,
+      height: 44,
       color: colors.text,
       fontSize: 14,
     },
@@ -198,7 +255,9 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingVertical: 8,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
     },
     toggleMetaArea: {
       flex: 1,
@@ -218,12 +277,12 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 6,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
       alignItems: "center",
       justifyContent: "center",
       marginTop: 8,
-      alignSelf: "flex-start",
+      alignSelf: isTablet ? "flex-start" : "stretch",
     },
     securityActionBtnText: {
       fontSize: 13,
@@ -234,11 +293,12 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       flexDirection: "row",
       backgroundColor: colors.primary,
       borderRadius: 8,
-      height: 44,
+      height: 48,
       alignItems: "center",
       justifyContent: "center",
       gap: 8,
-      marginTop: 4,
+      marginTop: 8,
+      width: "100%",
     },
     submitGlobalBtnText: {
       fontSize: 14,
@@ -249,12 +309,18 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 }
 
 export default function Settings() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+  const isTablet = width >= 640;
+
   const { uiTheme } = useTheme();
+  const { user } = useAuth();
   const colors = useMemo(() => buildColors(uiTheme), [uiTheme]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isDesktop, isTablet), [colors, isDesktop, isTablet]);
 
   const queryClient = useQueryClient();
 
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
   const [draft, setDraft] = useState<SettingsItem | null>(null);
   const [passwordDraft, setPasswordDraft] = useState({
     currentPassword: "",
@@ -262,11 +328,52 @@ export default function Settings() {
     confirmNewPassword: "",
   });
 
+  const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        await initToken();
+        let token =
+          (user as any)?.token ||
+          (user as any)?.accessToken ||
+          (user as any)?.jwt ||
+          (user as any)?.user?.token;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) =>
+            /token|jwt|auth|session/i.test(k)
+          );
+
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === "string" && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error("Failed to load JWT token in Settings:", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
-      const res = await apiFetch<{ item: SettingsItem }>("/api/settings");
-      return res.item;
+      const res = await apiFetch<any>("/api/settings");
+      return res?.item ? res.item : res;
     },
   });
 
@@ -280,7 +387,7 @@ export default function Settings() {
   });
 
   const changePasswordMutation = useMutation({
-    mutationFn: async (payload: any) => {
+    mutationFn: async (payload: { currentPassword: string; newPassword: string }) => {
       return apiFetch<{ ok: boolean }>("/api/auth/change-password", {
         method: "PUT",
         body: JSON.stringify(payload),
@@ -304,10 +411,20 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    if (settingsQuery.data) {
-      setDraft(settingsQuery.data);
+    if (!draft && settingsQuery.data) {
+      const item = settingsQuery.data;
+      const initialAvatar = item.avatarDataUrl || item.avatarUrl || "";
+      setDraft({
+        ...item,
+        avatarUrl: initialAvatar,
+      });
     }
-  }, [settingsQuery.data]);
+  }, [settingsQuery.data, draft]);
+
+  const resolvedAvatarUri = useMemo(() => {
+    const raw = draft?.avatarUrl || draft?.avatarDataUrl;
+    return getDisplayImageUrl(raw, jwtToken);
+  }, [draft?.avatarUrl, draft?.avatarDataUrl, jwtToken]);
 
   const onSave = () => {
     if (!draft) return;
@@ -321,18 +438,44 @@ export default function Settings() {
     saveMutation.mutate(payload, {
       onSuccess: (res) => {
         if (res?.item) {
-          setDraft(res.item);
+          const item = res.item;
+          setDraft({
+            ...item,
+            avatarUrl: item.avatarDataUrl || item.avatarUrl || "",
+          });
         }
         queryClient.invalidateQueries({ queryKey: ["settings"] });
         Alert.alert("Saved", "Settings updated.");
       },
-      borderColor: () => {
-        Alert.alert("Error", "Failed to finalize structural settings update.");
+      onError: (err) => {
+        Alert.alert(
+          "Failed to save",
+          err instanceof Error ? err.message : "Something went wrong"
+        );
       },
     });
   };
 
-  const setNotification = (key: string, value: boolean) => {
+  const setPreference = (type: "email" | "web", key: string, val: boolean) => {
+    if (!draft) return;
+    const prefKey = type === "email" ? "emailPreferences" : "webPreferences";
+    const next: SettingsItem = {
+      ...draft,
+      [prefKey]: {
+        ...((draft && draft[prefKey]) || {}),
+        [key]: val,
+      },
+    };
+    setDraft(next);
+
+    saveMutation.mutate(next, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["settings"] });
+      },
+    });
+  };
+
+  const setNotificationToggle = (key: string, value: boolean) => {
     if (!draft) return;
     const next: SettingsItem = {
       ...draft,
@@ -358,7 +501,6 @@ export default function Settings() {
       return;
     }
     if (newPassword !== confirmNewPassword) {
-
       Alert.alert("Password mismatch", "New password and confirm password do not match.");
       return;
     }
@@ -395,9 +537,16 @@ export default function Settings() {
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
 
+    if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES) {
+      Alert.alert("File too large", "Please select an image up to 10MB.");
+      return;
+    }
+
     const targetUri = asset.uri;
     const filename = targetUri.split("/").pop() || "avatar.jpg";
     const type = asset.mimeType || "image/jpeg";
+
+    setDraft((prev: any) => ({ ...prev, avatarUrl: targetUri }));
 
     avatarUploadMutation.mutate(
       { uri: targetUri, name: filename, type },
@@ -430,67 +579,68 @@ export default function Settings() {
 
   if (settingsQuery.isLoading) {
     return (
-      <View style={s(styles.centered)}>
+      <View style={styles.centered}>
         <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={s(styles.loadingText)}>Loading Configuration...</Text>
+        <Text style={styles.loadingText}>Loading Configuration...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={s(styles.viewport)} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.viewport} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={s(styles.scrollContainer)} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           
-          <View style={s(styles.headerBlock)}>
-            <Text style={s(styles.pageTitle)}>Settings</Text>
-            <Text style={s(styles.pageSubtitle)}>Manage your account and preferences</Text>
+          <View style={styles.headerBlock}>
+            <Text style={styles.pageTitle}>Settings</Text>
+            <Text style={styles.pageSubtitle}>Manage your account and preferences</Text>
           </View>
 
-          <View style={s(styles.card)}>
-            <View style={{ display: "none" }}>
-              <Text>Profile Settings Update your personal information</Text>
-            </View>
-            <View style={s(styles.cardHeader)}>
-              <View style={s(styles.iconWrapper)}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.iconWrapper}>
                 <User size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={s(styles.cardTitleText)}>Profile Settings</Text>
-                <Text style={s(styles.avatarMetaSecondary)}>Update your personal information</Text>
+                <Text style={styles.cardTitleText}>Profile Settings</Text>
+                <Text style={styles.avatarMetaSecondary}>Update your personal information</Text>
               </View>
             </View>
 
-            <View style={s(styles.avatarUploadContainer)}>
-              <View style={s(styles.avatarWrapper)}>
-                {draft?.avatarUrl ? (
-                  <Image source={{ uri: draft.avatarUrl }} style={s(styles.avatarFrame)} />
+            <View style={styles.avatarUploadContainer}>
+              <View style={styles.avatarWrapper}>
+                {resolvedAvatarUri ? (
+                  <Image
+                    source={{ uri: resolvedAvatarUri }}
+                    style={styles.avatarFrame}
+                    onError={(e) => console.warn("Settings Avatar load error:", e.nativeEvent.error, "URI:", resolvedAvatarUri)}
+                  />
                 ) : (
-                  <View style={s([styles.avatarFrame, styles.avatarFallback])}>
-                    <Text style={s(styles.avatarFallbackText)}>{initials}</Text>
+                  <View style={[styles.avatarFrame, styles.avatarFallback]}>
+                    <Text style={styles.avatarFallbackText}>{initials}</Text>
                   </View>
                 )}
-                <TouchableOpacity style={s(styles.cameraBadge)} onPress={handleAvatarPicker} disabled={avatarUploadMutation.isPending}>
+                <TouchableOpacity style={styles.cameraBadge} onPress={handleAvatarPicker} disabled={avatarUploadMutation.isPending}>
                   {avatarUploadMutation.isPending ? (
                     <ActivityIndicator size="small" color={colors.inputBg} />
                   ) : (
-                    <Camera size={12} color={colors.inputBg} />
+                    <Camera size={14} color={colors.inputBg} />
                   )}
                 </TouchableOpacity>
               </View>
 
-              <View style={s(styles.avatarMetaBlock)}>
-                <Text style={s(styles.avatarMetaPrimary)}>Profile Picture</Text>
-                <Text style={s(styles.avatarMetaSecondary)}>Click the camera icon to upload a new photo</Text>
-                <Text style={s(styles.avatarMetaSizeInfo)}>Max size: 10MB (JPEG, PNG, GIF)</Text>
+              <View style={styles.avatarMetaBlock}>
+                <Text style={styles.avatarMetaPrimary}>Profile Picture</Text>
+                <Text style={styles.avatarMetaSecondary}>Click the camera icon to upload a new photo</Text>
+                <Text style={styles.avatarMetaSizeInfo}>Max size: 10MB (JPEG, PNG, GIF)</Text>
               </View>
             </View>
 
-            <View style={s(styles.formRow)}>
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Full Name</Text>
+            <View style={styles.formRow}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Full Name</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   value={draft?.fullName ?? ""}
                   onChangeText={(t) => setDraft((prev: any) => ({ ...prev, fullName: t }))}
                   placeholderTextColor={colors.textSecondary}
@@ -498,10 +648,10 @@ export default function Settings() {
                 />
               </View>
 
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Email Address</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Email Address</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   value={draft?.email ?? ""}
                   onChangeText={(t) => setDraft((prev: any) => ({ ...prev, email: t }))}
                   keyboardType="email-address"
@@ -511,10 +661,10 @@ export default function Settings() {
                 />
               </View>
 
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Phone Number</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Phone Number</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   value={draft?.phone ?? ""}
                   onChangeText={(t) => setDraft((prev: any) => ({ ...prev, phone: t }))}
                   keyboardType="phone-pad"
@@ -522,10 +672,10 @@ export default function Settings() {
                 />
               </View>
 
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Role</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Role</Text>
                 <TextInput
-                  style={s([styles.formInput, styles.formInputDisabled])}
+                  style={[styles.formInput, styles.formInputDisabled]}
                   value={draft?.role ?? ""}
                   editable={false}
                 />
@@ -533,90 +683,96 @@ export default function Settings() {
             </View>
           </View>
 
-          <View style={s(styles.card)}>
-            <View style={{ display: "none" }}>
-              <Text>Notification Settings Configure your email and alert preferences</Text>
-            </View>
-            <View style={s(styles.cardHeader)}>
-              <View style={s(styles.iconWrapper)}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.iconWrapper}>
                 <Bell size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={s(styles.cardTitleText)}>Notification Settings</Text>
-                <Text style={s(styles.avatarMetaSecondary)}>Configure your email and alert preferences</Text>
+                <Text style={styles.cardTitleText}>Notification Settings</Text>
+                <Text style={styles.avatarMetaSecondary}>Configure your email and alert preferences</Text>
               </View>
             </View>
 
-            <View style={{ gap: 12 }}>
-              <View style={s(styles.toggleStrip)}>
-                <View style={s(styles.toggleMetaArea)}>
-                  <Text style={s(styles.toggleLabelText)}>Email Notifications</Text>
-                  <Text style={s(styles.toggleSubtitleText)}>Receive daily system update emails</Text>
+            <View style={{ gap: 4 }}>
+              <View style={styles.toggleStrip}>
+                <View style={styles.toggleMetaArea}>
+                  <Text style={styles.toggleLabelText}>Email Notifications</Text>
+                  <Text style={styles.toggleSubtitleText}>Receive daily system update emails</Text>
                 </View>
                 <Switch
-                  value={Boolean(draft?.notifications?.emailNotifications)}
-                  onValueChange={(val) => setNotification("emailNotifications", val)}
+                  value={Boolean(draft?.notifications?.emailNotifications ?? draft?.emailPreferences?.emailNotifications)}
+                  onValueChange={(val) => {
+                    setNotificationToggle("emailNotifications", val);
+                    setPreference("email", "emailNotifications", val);
+                  }}
                   trackColor={{ true: colors.primary }}
                 />
               </View>
 
-              <View style={s(styles.toggleStrip)}>
-                <View style={s(styles.toggleMetaArea)}>
-                  <Text style={s(styles.toggleLabelText)}>Task Alerts</Text>
-                  <Text style={s(styles.toggleSubtitleText)}>Receive real-time alerts when tasks are updated</Text>
+              <View style={styles.toggleStrip}>
+                <View style={styles.toggleMetaArea}>
+                  <Text style={styles.toggleLabelText}>Task Alerts</Text>
+                  <Text style={styles.toggleSubtitleText}>Receive real-time alerts when tasks are updated</Text>
                 </View>
                 <Switch
-                  value={Boolean(draft?.notifications?.taskAlerts)}
-                  onValueChange={(val) => setNotification("taskAlerts", val)}
+                  value={Boolean(draft?.notifications?.taskAlerts ?? draft?.webPreferences?.taskAlerts)}
+                  onValueChange={(val) => {
+                    setNotificationToggle("taskAlerts", val);
+                    setPreference("web", "taskAlerts", val);
+                  }}
                   trackColor={{ true: colors.primary }}
                 />
               </View>
 
-              <View style={s(styles.toggleStrip)}>
-                <View style={s(styles.toggleMetaArea)}>
-                  <Text style={s(styles.toggleLabelText)}>Employee Updates</Text>
-                  <Text style={s(styles.toggleSubtitleText)}>Get notified when employees check in/out</Text>
+              <View style={styles.toggleStrip}>
+                <View style={styles.toggleMetaArea}>
+                  <Text style={styles.toggleLabelText}>Employee Updates</Text>
+                  <Text style={styles.toggleSubtitleText}>Get notified when employees check in/out</Text>
                 </View>
                 <Switch
-                  value={Boolean(draft?.notifications?.employeeUpdates)}
-                  onValueChange={(val) => setNotification("employeeUpdates", val)}
+                  value={Boolean(draft?.notifications?.employeeUpdates ?? draft?.webPreferences?.employeeUpdates)}
+                  onValueChange={(val) => {
+                    setNotificationToggle("employeeUpdates", val);
+                    setPreference("web", "employeeUpdates", val);
+                  }}
                   trackColor={{ true: colors.primary }}
                 />
               </View>
 
-              <View style={s(styles.toggleStrip)}>
-                <View style={s(styles.toggleMetaArea)}>
-                  <Text style={s(styles.toggleLabelText)}>Weekly Reports</Text>
-                  <Text style={s(styles.toggleSubtitleText)}>Receive a summary report at the end of the week</Text>
+              <View style={[styles.toggleStrip, { borderBottomWidth: 0 }]}>
+                <View style={styles.toggleMetaArea}>
+                  <Text style={styles.toggleLabelText}>Weekly Reports</Text>
+                  <Text style={styles.toggleSubtitleText}>Receive a summary report at the end of the week</Text>
                 </View>
                 <Switch
-                  value={Boolean(draft?.notifications?.weeklyReports)}
-                  onValueChange={(val) => setNotification("weeklyReports", val)}
+                  value={Boolean(draft?.notifications?.weeklyReports ?? draft?.emailPreferences?.weeklyReports)}
+                  onValueChange={(val) => {
+                    setNotificationToggle("weeklyReports", val);
+                    setPreference("email", "weeklyReports", val);
+                  }}
                   trackColor={{ true: colors.primary }}
                 />
               </View>
             </View>
           </View>
 
-          <View style={s(styles.card)}>
-            <View style={{ display: "none" }}>
-              <Text>Security Manage your security preferences</Text>
-            </View>
-            <View style={s(styles.cardHeader)}>
-              <View style={s(styles.iconWrapper)}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.iconWrapper}>
                 <Shield size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={s(styles.cardTitleText)}>Security</Text>
-                <Text style={s(styles.avatarMetaSecondary)}>Manage your security preferences</Text>
+                <Text style={styles.cardTitleText}>Security</Text>
+                <Text style={styles.avatarMetaSecondary}>Manage your security preferences</Text>
               </View>
             </View>
 
-            <View style={s(styles.formRow)}>
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Current Password</Text>
+            <View style={styles.formRow}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Current Password</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   secureTextEntry
                   placeholder="••••••••"
                   placeholderTextColor={colors.textSecondary}
@@ -626,10 +782,10 @@ export default function Settings() {
                 />
               </View>
 
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>New Password</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>New Password</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   secureTextEntry
                   placeholder="••••••••"
                   placeholderTextColor={colors.textSecondary}
@@ -639,10 +795,10 @@ export default function Settings() {
                 />
               </View>
 
-              <View style={s(styles.formGroup)}>
-                <Text style={s(styles.formLabel)}>Confirm New Password</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Confirm New Password</Text>
                 <TextInput
-                  style={s(styles.formInput)}
+                  style={styles.formInput}
                   secureTextEntry
                   placeholder="••••••••"
                   placeholderTextColor={colors.textSecondary}
@@ -652,19 +808,21 @@ export default function Settings() {
                 />
               </View>
 
-              <TouchableOpacity style={s(styles.securityActionBtn)} onPress={onChangePassword} disabled={changePasswordMutation.isPending}>
-                <Text style={s(styles.securityActionBtnText)}>Change Password</Text>
-              </TouchableOpacity>
+              <View style={{ width: "100%" }}>
+                <TouchableOpacity style={styles.securityActionBtn} onPress={onChangePassword} disabled={changePasswordMutation.isPending}>
+                  <Text style={styles.securityActionBtnText}>Change Password</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
-          <TouchableOpacity style={s(styles.submitGlobalBtn)} onPress={onSave} disabled={saveMutation.isPending}>
+          <TouchableOpacity style={styles.submitGlobalBtn} onPress={onSave} disabled={saveMutation.isPending || settingsQuery.isLoading}>
             {saveMutation.isPending ? (
               <ActivityIndicator size="small" color={colors.inputBg} />
             ) : (
               <>
                 <Save size={16} color={colors.inputBg} />
-                <Text style={s(styles.submitGlobalBtnText)}>Save Changes</Text>
+                <Text style={styles.submitGlobalBtnText}>Save Changes</Text>
               </>
             )}
           </TouchableOpacity>

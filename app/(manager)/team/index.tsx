@@ -15,12 +15,14 @@ import {
   Platform,
   SafeAreaView,
   KeyboardTypeOptions,
+  Image,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Search,
   Phone,
@@ -34,10 +36,13 @@ import {
   Edit2,
   Trash2,
 } from "lucide-react-native";
+
 import { apiFetch, listResource } from "@/lib/admin/apiClient";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { s } from "@/util/styles";
+import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 import MilestoneBadge from "./MilestoneBadge";
 
 interface Employee {
@@ -85,8 +90,9 @@ interface EmployeeApi {
   hireDate: string;
   location: string;
   joinDate: string;
-  avatar: string;
+  avatar?: string;
   avatarUrl?: string;
+  avatarDataUrl?: string;
   imageUrl?: string;
   milestoneLevel?: string;
   milestoneLabel?: string;
@@ -96,7 +102,54 @@ interface EmployeeApi {
   break_start_time?: string | null;
 }
 
+/**
+ * Normalizes image paths and appends authenticated S3 proxy token
+ */
+const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
+  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
+
+  if (rawPath.startsWith("data:") || rawPath.startsWith("file://") || rawPath.startsWith("content://")) {
+    return rawPath;
+  }
+
+  let path = rawPath.trim();
+
+  if (path.includes("token=")) return path;
+
+  if (path.startsWith("/uploads/")) {
+    path = path.replace("/uploads/", "/api/s3-proxy/");
+  } else if (path.startsWith("uploads/")) {
+    path = path.replace("uploads/", "/api/s3-proxy/");
+  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
+    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
+  }
+
+  if (!path.startsWith("http://") && !path.startsWith("https://")) {
+    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  try {
+    const proxied = toProxiedUrl(path);
+    if (proxied && proxied.includes("token=")) return proxied;
+  } catch (e) {
+    // Fall back to manual token attachment
+  }
+
+  if (activeToken) {
+    const separator = path.includes("?") ? "&" : "?";
+    return `${path}${separator}token=${activeToken}`;
+  }
+
+  return path;
+};
+
 function normalizeEmployee(e: EmployeeApi): Employee {
+  const rawImage =
+    e.avatarUrl ||
+    e.avatarDataUrl ||
+    e.imageUrl ||
+    (e.avatar && e.avatar.includes("/") ? e.avatar : undefined);
+
   return {
     id: e._id,
     name: e.name,
@@ -111,8 +164,8 @@ function normalizeEmployee(e: EmployeeApi): Employee {
     hireDate: e.hireDate,
     location: e.location,
     joinDate: e.joinDate,
-    avatar: e.avatar,
-    imageUrl: e.avatarUrl || e.imageUrl,
+    avatar: e.avatar || "",
+    imageUrl: rawImage,
     milestoneLevel: e.milestoneLevel,
     milestoneLabel: e.milestoneLabel,
     current_status: e.current_status || "AVAILABLE",
@@ -158,7 +211,7 @@ function formatStatusTime(timeStr?: string | null) {
   if (!timeStr) return "";
   try {
     const date = new Date(timeStr);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } catch (e) {
     return "";
   }
@@ -298,6 +351,12 @@ function createStyles(colors: ThemeColors) {
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "#334155",
+      overflow: "hidden",
+    },
+    avatarImage: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 22,
     },
     avatarText: {
       fontWeight: "600",
@@ -481,6 +540,12 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
       marginBottom: 8,
       backgroundColor: "#334155",
+      overflow: "hidden",
+    },
+    largeAvatarImage: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 30,
     },
     largeAvatarText: {
       fontSize: 20,
@@ -625,11 +690,14 @@ function createStyles(colors: ThemeColors) {
 
 export default function Employees() {
   const localParams = useLocalSearchParams();
+  const { user } = useAuth();
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [imageErrorMap, setImageErrorMap] = useState<Record<string, boolean>>({});
   
-  const { uiTheme, updateTheme } = useTheme();
-  const { panelColors } = uiTheme;
+  const { uiTheme } = useTheme();
 
   const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
@@ -652,6 +720,42 @@ export default function Employees() {
   const { socket } = useSocket();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Retrieve JWT Token
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        await initToken();
+        let token =
+          (user as any)?.token ||
+          (user as any)?.accessToken ||
+          (user as any)?.jwt;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) =>
+            /token|jwt|auth|session/i.test(k)
+          );
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === "string" && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error("Failed to load token in Employees screen:", err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [user]);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -659,31 +763,6 @@ export default function Employees() {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
-
-  useEffect(() => {
-    if (panelColors.dashboardBackground !== "#09090b") {
-      void updateTheme({
-        theme: "metallic-elite",
-        customColors: {
-          primary: "#ffd27a",
-          secondary: "#a1a1aa",
-          accent: "#ffd27a"
-        },
-        panelColors: {
-          headerBackground: "#09090b",
-          headerOverlayColor: "#000000",
-          headerOverlayOpacity: 0,
-          sidebarBackground: "#09090b",
-          dashboardBackground: "#09090b",     
-          sidebarIconColor: "#ffd27a",
-          dashboardIconColor: "#ffd27a",
-          sidebarTextColor: "#ffffff",
-          dashboardCardBackground: "#18181b", 
-          dashboardTextColor: "#ffffff",
-        }
-      });
-    }
-  }, [panelColors.dashboardBackground, updateTheme]);
 
   useEffect(() => {
     if (!socket) return;
@@ -730,8 +809,9 @@ export default function Employees() {
   const employeesQuery = useQuery({
     queryKey: ["employees"],
     queryFn: async () => {
-      const res = (await apiFetch("/api/employees")) as { items: EmployeeApi[] };
-      return res.items.map(normalizeEmployee);
+      const res = (await apiFetch("/api/employees")) as { items?: EmployeeApi[] } | EmployeeApi[];
+      const itemsList = Array.isArray(res) ? res : res.items || [];
+      return itemsList.map(normalizeEmployee);
     },
   });
   const employees = employeesQuery.data ?? [];
@@ -896,7 +976,9 @@ export default function Employees() {
 
   const renderEmployeeCard = ({ item: employee }: { item: Employee }) => {
     const isOnLeaveOrBreak = employee.current_status && employee.current_status !== "AVAILABLE";
-    
+    const imageUri = getDisplayImageUrl(employee.imageUrl, jwtToken);
+    const hasError = imageErrorMap[employee.id];
+
     return (
       <TouchableOpacity
         style={s([styles.card, isOnLeaveOrBreak && { opacity: 0.75 }])}
@@ -913,7 +995,16 @@ export default function Employees() {
         <View style={s(styles.cardHeader)}>
           <View style={s(styles.avatarContainer)}>
             <View style={s([styles.avatar, isOnLeaveOrBreak && { borderColor: colors.accent, borderWidth: 2 }])}>
-              <Text style={s(styles.avatarText)}>{getInitials(employee.name)}</Text>
+              {imageUri && !hasError ? (
+                <Image
+                  source={{ uri: imageUri }}
+                  style={s(styles.avatarImage)}
+                  resizeMode="cover"
+                  onError={() => setImageErrorMap((prev) => ({ ...prev, [employee.id]: true }))}
+                />
+              ) : (
+                <Text style={s(styles.avatarText)}>{getInitials(employee.name)}</Text>
+              )}
             </View>
             <View style={s([styles.statusDot, { backgroundColor: statusColors[employee.status] }])} />
           </View>
@@ -956,6 +1047,9 @@ export default function Employees() {
       </TouchableOpacity>
     );
   };
+
+  const selectedImageUri = selectedEmployee ? getDisplayImageUrl(selectedEmployee.imageUrl, jwtToken) : null;
+  const selectedHasError = selectedEmployee ? imageErrorMap[selectedEmployee.id] : false;
 
   return (
     <SafeAreaView style={s(styles.safeContainer)}>
@@ -1125,7 +1219,16 @@ export default function Employees() {
                 <View style={s(styles.viewDetailsBody)}>
                   <View style={s(styles.viewDetailsHeaderArea)}>
                     <View style={s(styles.largeAvatar)}>
-                      <Text style={s(styles.largeAvatarText)}>{getInitials(selectedEmployee.name)}</Text>
+                      {selectedImageUri && !selectedHasError ? (
+                        <Image
+                          source={{ uri: selectedImageUri }}
+                          style={s(styles.largeAvatarImage)}
+                          resizeMode="cover"
+                          onError={() => setImageErrorMap((prev) => ({ ...prev, [selectedEmployee.id]: true }))}
+                        />
+                      ) : (
+                        <Text style={s(styles.largeAvatarText)}>{getInitials(selectedEmployee.name)}</Text>
+                      )}
                     </View>
                     <Text style={s(styles.viewDetailsName)}>{selectedEmployee.name}</Text>
                     <Text style={s(styles.viewDetailsRole)}>{selectedEmployee.role}</Text>

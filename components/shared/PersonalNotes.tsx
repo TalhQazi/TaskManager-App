@@ -521,16 +521,17 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
       gap: wp(2),
       marginTop: hp(0.5),
     },
-    canvasInlineFormInput: {
+   canvasInlineFormInput: {
       flex: 1,
       backgroundColor: "#0B0F17",
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.05)",
       borderRadius: wp(2.5),
-      height: hp(4.2),
       paddingHorizontal: wp(2.5),
+      paddingVertical: hp(1.2), 
       fontSize: fs(3),
       color: colors.text,
+      textAlignVertical: "center", 
     },
     canvasInlineFormBtn: {
       height: hp(4.2),

@@ -14,12 +14,15 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { toProxiedUrlUpload, initToken } from "@/util/toProxiedUrl";
+import * as DocumentPicker from "expo-document-picker";
 import {
   getEmployeeConversations,
   getConversation,
@@ -27,6 +30,7 @@ import {
   markMessagesAsRead,
   getEmployeeProfile,
   toggleMessageReaction,
+  uploadMessageAttachment,
 } from "@/lib/admin/apiClient";
 
 const { width, height } = Dimensions.get("window");
@@ -73,6 +77,18 @@ interface Message {
 }
 
 const normalizeMessage = (m: any): Message => {
+  if (!m) {
+    return {
+      id: "",
+      sender: "",
+      recipient: "",
+      content: "",
+      timestamp: new Date().toISOString(),
+      type: "direct",
+      status: "sent",
+      reactions: [],
+    };
+  }
   return {
     id: String(m.id || m._id || ""),
     sender: String(m.sender || ""),
@@ -107,6 +123,27 @@ export default function EmployeeMessages() {
   const { uiTheme } = useTheme();
   const { socket } = useSocket();
 
+  const [tokenReady, setTokenReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      await initToken();
+      setTokenReady(true);
+    })();
+  }, []);
+
+  const getResolvedAvatarUri = (avatarRaw?: string) => {
+    if (!avatarRaw) return null;
+    let url = avatarRaw;
+    if (url.startsWith("/uploads/avatars/")) {
+      url = url.replace("/uploads/avatars/", "/api/s3-proxy/avatars/");
+    }
+    if (!url.startsWith("http") && !url.startsWith("data:")) {
+      url = `https://task.se7eninc.com${url.startsWith("/") ? "" : "/"}${url}`;
+    }
+    return tokenReady ? toProxiedUrlUpload(url) : null;
+  };
+
   const isLightTheme = useMemo(() => {
     return uiTheme.theme?.includes("crystal") || uiTheme.panelColors?.dashboardTextColor === "#000000";
   }, [uiTheme]);
@@ -126,6 +163,7 @@ export default function EmployeeMessages() {
   const [messageInput, setMessageInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
   const [nowTime, setNowTime] = useState(Date.now());
 
@@ -157,7 +195,7 @@ export default function EmployeeMessages() {
     if (!socket || !employeeName) return;
 
     const handleNewMessage = (data: any) => {
-      if (data.sender === employeeName || data.recipient === employeeName) {
+      if (data && (data.sender === employeeName || data.recipient === employeeName)) {
         const normalized = normalizeMessage(data);
         if (!normalized.id) return;
 
@@ -298,8 +336,9 @@ export default function EmployeeMessages() {
       };
 
       const res = await sendMessage(newMessage);
+      const resItem = res?.item || res;
       setMessages((prev) => {
-        const normalized = normalizeMessage(res.item);
+        const normalized = normalizeMessage(resItem);
         if (!normalized.id) return prev;
         if (isDuplicateMessage(prev, normalized)) return prev;
         return [...prev, normalized].sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
@@ -308,7 +347,7 @@ export default function EmployeeMessages() {
 
       setConversations((prev) =>
         prev.map((c) =>
-          c.employee.id === selectedConversation.employee.id ? { ...c, lastMessage: res.item } : c
+          c.employee.id === selectedConversation.employee.id ? { ...c, lastMessage: resItem } : c
         )
       );
     } catch (err) {
@@ -318,12 +357,66 @@ export default function EmployeeMessages() {
     }
   };
 
+  const handlePickDocument = async () => {
+    if (!selectedConversation || !employeeName) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+
+      setUploading(true);
+      const fileObj = {
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType || "application/octet-stream",
+      } as any;
+
+      const up = await uploadMessageAttachment(fileObj);
+      const attachment = up?.attachment || up;
+
+      const payload = {
+        sender: employeeName,
+        recipient: selectedConversation.employee.name,
+        content: messageInput.trim(),
+        timestamp: new Date().toISOString(),
+        type: "direct" as const,
+        status: "sent",
+        attachment,
+      };
+
+      const res = await sendMessage(payload);
+      const resItem = res?.item || res;
+      setMessages((prev) => {
+        const normalized = normalizeMessage(resItem);
+        if (!normalized.id) return prev;
+        if (isDuplicateMessage(prev, normalized)) return prev;
+        return [...prev, normalized].sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      });
+      setMessageInput("");
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.employee.id === selectedConversation.employee.id ? { ...c, lastMessage: resItem } : c
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to send attachment");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!employeeName) return;
     try {
       const res = await toggleMessageReaction(messageId, emoji, employeeName);
       setMessages((prev) =>
-        prev.map((m) => (m.id === res.messageId ? { ...m, reactions: res.reactions } : m))
+        prev.map((m) => (m.id === res?.messageId ? { ...m, reactions: res?.reactions || [] } : m))
       );
     } catch (err) {
       console.error(err);
@@ -332,11 +425,12 @@ export default function EmployeeMessages() {
 
   const filteredConversations = useMemo(() => {
     return conversations.filter((c) =>
-      c.employee.name.toLowerCase().includes(searchTerm.toLowerCase())
+      c.employee?.name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [conversations, searchTerm]);
 
   const formatTime = (timestamp: string) => {
+    if (!timestamp) return "";
     const date = new Date(timestamp);
     const now = new Date();
     if (date.toDateString() === now.toDateString()) {
@@ -378,6 +472,7 @@ export default function EmployeeMessages() {
   }
 
   if (selectedConversation) {
+    const avatarUri = getResolvedAvatarUri(selectedConversation.employee.avatarUrl);
     return (
       <SafeAreaView style={s([styles.container, { backgroundColor: bg }])}>
         <StatusBar barStyle={isLightTheme ? "dark-content" : "light-content"} backgroundColor={bg} />
@@ -388,8 +483,12 @@ export default function EmployeeMessages() {
             </TouchableOpacity>
             
             <View style={s(styles.avatarContainer)}>
-              <View style={s([styles.avatarCircle, { backgroundColor: primaryColor }])}>
-                <Text style={s(styles.avatarText)}>{selectedConversation.employee.initials}</Text>
+              <View style={s([styles.avatarCircle, { backgroundColor: primaryColor, overflow: "hidden" }])}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={s(styles.avatarImage)} />
+                ) : (
+                  <Text style={s(styles.avatarText)}>{selectedConversation.employee.initials}</Text>
+                )}
               </View>
               {selectedConversation.employee.status === "active" && (
                 <View style={s([styles.statusDot, { backgroundColor: selectedConversation.employee.current_status === "LUNCH" ? "#f59e0b" : selectedConversation.employee.current_status === "BREAK" ? "#8b5cf6" : "#22c55e" }])} />
@@ -429,12 +528,33 @@ export default function EmployeeMessages() {
             ) : (
               messages.map((msg) => {
                 const isMe = msg.sender === employeeName;
+                const attachmentUrl = msg.attachment?.url || "";
+                const attachmentName = msg.attachment?.fileName || "attachment";
+                const isImage = msg.attachment?.mimeType?.startsWith("image/") || false;
+                const resolvedAttachmentUri = attachmentUrl ? (toProxiedUrlUpload(attachmentUrl) || attachmentUrl) : "";
+
                 return (
                   <View key={msg.id} style={s([styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowPartner])}>
                     <View style={s([styles.messageBubble, isMe ? { backgroundColor: primaryColor } : { backgroundColor: cardBg, borderColor: border, borderWidth: 1 }])}>
-                      <Text style={s([styles.messageContent, isMe ? { color: "#ffffff" } : { color: tintColor }])}>
-                        {msg.content}
-                      </Text>
+                      {attachmentUrl ? (
+                        isImage ? (
+                          <TouchableOpacity onPress={() => setPreview({ url: resolvedAttachmentUri, fileName: attachmentName })}>
+                            <Image source={{ uri: resolvedAttachmentUri }} style={s(styles.messageImagePreview)} resizeMode="cover" />
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity onPress={() => setPreview({ url: resolvedAttachmentUri, fileName: attachmentName })} style={s({ marginBottom: hp(1) })}>
+                            <Text style={s([styles.messageContent, { textDecorationLine: "underline" }, isMe ? { color: "#ffffff" } : { color: tintColor }])}>
+                              📎 {attachmentName}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      ) : null}
+
+                      {msg.content?.trim() ? (
+                        <Text style={s([styles.messageContent, isMe ? { color: "#ffffff" } : { color: tintColor }])}>
+                          {msg.content}
+                        </Text>
+                      ) : null}
                       
                       <View style={s(styles.messageMeta)}>
                         <Text style={s([styles.messageTime, isMe ? { color: "rgba(255,255,255,0.7)" } : { color: mutedText }])}>
@@ -467,6 +587,14 @@ export default function EmployeeMessages() {
           </ScrollView>
 
           <View style={s([styles.inputContainer, { borderColor: border, backgroundColor: bg }])}>
+            <TouchableOpacity
+              onPress={handlePickDocument}
+              disabled={uploading}
+              style={s([styles.attachButton, { borderColor: border }])}
+            >
+              <Ionicons name="attach" size={fs(4.5)} color={mutedText} />
+            </TouchableOpacity>
+
             <TextInput
               value={messageInput}
               onChangeText={setMessageInput}
@@ -477,7 +605,7 @@ export default function EmployeeMessages() {
             />
             <TouchableOpacity
               onPress={handleSendMessage}
-              disabled={!messageInput.trim() || sending}
+              disabled={(!messageInput.trim() && !uploading) || sending}
               style={s([styles.sendButton, { backgroundColor: messageInput.trim() ? primaryColor : mutedText }])}
             >
               <Ionicons name="send" size={fs(3.8)} color="#ffffff" />
@@ -526,55 +654,62 @@ export default function EmployeeMessages() {
             </Text>
           </View>
         ) : (
-          filteredConversations.map((conversation) => (
-            <TouchableOpacity
-              key={conversation.employee.id}
-              onPress={() => setSelectedConversation(conversation)}
-              style={s([styles.conversationRow, { borderBottomColor: border }])}
-              activeOpacity={0.7}
-            >
-              <View style={s(styles.avatarContainer)}>
-                <View style={s([styles.avatarCircle, { backgroundColor: primaryColor }])}>
-                  <Text style={s(styles.avatarText)}>{conversation.employee.initials}</Text>
-                </View>
-                {conversation.employee.status === "active" && (
-                  <View style={s([styles.statusDot, { backgroundColor: conversation.employee.current_status === "LUNCH" ? "#f59e0b" : conversation.employee.current_status === "BREAK" ? "#8b5cf6" : "#22c55e" }])} />
-                )}
-              </View>
-
-              <View style={s({ flex: 1, marginLeft: wp(3) })}>
-                <View style={s({ flexDirection: "row", justifyContent: "space-between", alignItems: "center" })}>
-                  <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(1.5) })}>
-                    <Text style={s([styles.convName, { color: tintColor }])} numberOfLines={1}>
-                      {conversation.employee.name}
-                    </Text>
-                    {conversation.employee.current_status && conversation.employee.current_status !== "AVAILABLE" && (
-                      <View style={s([styles.statusPill, { backgroundColor: conversation.employee.current_status === "LUNCH" ? "rgba(245,158,11,0.15)" : "rgba(139,92,246,0.15)" }])}>
-                        <Text style={s([styles.statusPillText, { color: conversation.employee.current_status === "LUNCH" ? "#d97706" : "#7c3aed", fontSize: fs(2.2) }])}>
-                          {conversation.employee.current_status === "LUNCH" ? "Lunch" : "Break"}
-                        </Text>
-                      </View>
+          filteredConversations.map((conversation) => {
+            const avatarUri = getResolvedAvatarUri(conversation.employee.avatarUrl);
+            return (
+              <TouchableOpacity
+                key={conversation.employee.id}
+                onPress={() => setSelectedConversation(conversation)}
+                style={s([styles.conversationRow, { borderBottomColor: border }])}
+                activeOpacity={0.7}
+              >
+                <View style={s(styles.avatarContainer)}>
+                  <View style={s([styles.avatarCircle, { backgroundColor: primaryColor, overflow: "hidden" }])}>
+                    {avatarUri ? (
+                      <Image source={{ uri: avatarUri }} style={s(styles.avatarImage)} />
+                    ) : (
+                      <Text style={s(styles.avatarText)}>{conversation.employee.initials}</Text>
                     )}
                   </View>
-                  {conversation.lastMessage && (
-                    <Text style={s({ color: mutedText, fontSize: fs(2.5) })}>
-                      {formatTime(conversation.lastMessage.timestamp)}
-                    </Text>
+                  {conversation.employee.status === "active" && (
+                    <View style={s([styles.statusDot, { backgroundColor: conversation.employee.current_status === "LUNCH" ? "#f59e0b" : conversation.employee.current_status === "BREAK" ? "#8b5cf6" : "#22c55e" }])} />
                   )}
                 </View>
 
-                <Text style={s([styles.convMessage, { color: mutedText }])} numberOfLines={1}>
-                  {conversation.lastMessage ? conversation.lastMessage.content : "No messages yet"}
-                </Text>
-              </View>
+                <View style={s({ flex: 1, marginLeft: wp(3) })}>
+                  <View style={s({ flexDirection: "row", justifyContent: "space-between", alignItems: "center" })}>
+                    <View style={s({ flexDirection: "row", alignItems: "center", gap: wp(1.5) })}>
+                      <Text style={s([styles.convName, { color: tintColor }])} numberOfLines={1}>
+                        {conversation.employee.name}
+                      </Text>
+                      {conversation.employee.current_status && conversation.employee.current_status !== "AVAILABLE" && (
+                        <View style={s([styles.statusPill, { backgroundColor: conversation.employee.current_status === "LUNCH" ? "rgba(245,158,11,0.15)" : "rgba(139,92,246,0.15)" }])}>
+                          <Text style={s([styles.statusPillText, { color: conversation.employee.current_status === "LUNCH" ? "#d97706" : "#7c3aed", fontSize: fs(2.2) }])}>
+                            {conversation.employee.current_status === "LUNCH" ? "Lunch" : "Break"}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {conversation.lastMessage && (
+                      <Text style={s({ color: mutedText, fontSize: fs(2.5) })}>
+                        {formatTime(conversation.lastMessage.timestamp)}
+                      </Text>
+                    )}
+                  </View>
 
-              {conversation.unreadCount > 0 && (
-                <View style={s([styles.unreadBadge, { backgroundColor: primaryColor }])}>
-                  <Text style={s(styles.unreadBadgeText)}>{conversation.unreadCount}</Text>
+                  <Text style={s([styles.convMessage, { color: mutedText }])} numberOfLines={1}>
+                    {conversation.lastMessage ? conversation.lastMessage.content : "No messages yet"}
+                  </Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          ))
+
+                {conversation.unreadCount > 0 && (
+                  <View style={s([styles.unreadBadge, { backgroundColor: primaryColor }])}>
+                    <Text style={s(styles.unreadBadgeText)}>{conversation.unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -587,6 +722,7 @@ const styles = StyleSheet.create({
   backButton: { marginRight: wp(2), padding: wp(1) },
   avatarContainer: { position: "relative" },
   avatarCircle: { width: wp(10), height: wp(10), borderRadius: wp(5), justifyContent: "center", alignItems: "center" },
+  avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
   avatarText: { color: "#ffffff", fontWeight: "700", fontSize: fs(3.2) },
   statusDot: { position: "absolute", bottom: 0, right: 0, width: wp(2.8), height: wp(2.8), borderRadius: wp(1.4), borderWidth: 2, borderColor: "#ffffff" },
   headerTitle: { fontSize: fs(3.8), fontWeight: "700" },
@@ -602,12 +738,14 @@ const styles = StyleSheet.create({
   messageRowPartner: { alignItems: "flex-start" },
   messageBubble: { padding: wp(3), borderRadius: wp(4), maxWidth: "75%", minWidth: wp(15) },
   messageContent: { fontSize: fs(3.2), lineHeight: fs(4.2) },
+  messageImagePreview: { width: wp(50), height: hp(20), borderRadius: wp(2), marginBottom: hp(1) },
   messageMeta: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: hp(0.5) },
   messageTime: { fontSize: fs(2.2) },
   reactionsWrapper: { flexDirection: "row", gap: wp(1), marginTop: hp(0.3) },
   reactionBadge: { paddingHorizontal: wp(1.5), paddingVertical: hp(0.3), borderRadius: wp(2.5), borderWidth: 1 },
   reactionEmojiText: { fontSize: fs(2.8) },
   inputContainer: { flexDirection: "row", alignItems: "center", padding: wp(3), borderTopWidth: 1, gap: wp(2.5) },
+  attachButton: { width: wp(10), height: wp(10), borderRadius: wp(5), borderWidth: 1, justifyContent: "center", alignItems: "center" },
   textInput: { flex: 1, height: hp(5), borderWidth: 1, borderRadius: wp(5), paddingHorizontal: wp(4), fontSize: fs(3.2), paddingTop: hp(1) },
   sendButton: { width: wp(10), height: wp(10), borderRadius: wp(5), justifyContent: "center", alignItems: "center" },
   modalContainer: { flex: 1, backgroundColor: "#000000", justifyContent: "center", alignItems: "center" },

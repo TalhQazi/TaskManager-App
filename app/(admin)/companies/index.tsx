@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   SafeAreaView,
   Image,
-  Alert
+  Alert,
+  Platform,
 } from "react-native";
 import { 
   Building2, 
@@ -39,7 +40,6 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { createResource, deleteResource, listResource, updateResource, apiFetch } from "@/lib/admin/apiClient";
 import * as ImagePicker from "expo-image-picker";
-const { width, height } = Dimensions.get("window");
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
@@ -114,8 +114,15 @@ type FolderItem = {
 };
 
 export default function Companies() {
+  const { width, height } = useWindowDimensions();
+  const wp = useCallback((percentage: number) => (width * percentage) / 100, [width]);
+  const hp = useCallback((percentage: number) => (height * percentage) / 100, [height]);
+  const isTablet = width >= 768;
+  const isSmallScreen = width < 375;
+
   const { uiTheme } = useTheme();
-  
+  const isDark = (uiTheme.theme as string)?.includes("dark") || (uiTheme.theme as string)?.includes("metallic") || uiTheme.panelColors?.dashboardTextColor === "#f4f4f5" || uiTheme.panelColors?.dashboardTextColor === "#ffffff";
+
   const [loading, setLoading] = useState<boolean>(true);
   const [isBackgroundRefetching, setIsBackgroundRefetching] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -201,7 +208,10 @@ export default function Companies() {
     annualReportDueDate: "",
   });
 
-  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
+  const styles = useMemo(
+    () => getThemedStyles(uiTheme, wp, hp, isTablet, isSmallScreen, height, width, isDark),
+    [uiTheme, wp, hp, isTablet, isSmallScreen, height, width, isDark]
+  );
 
   const toProxiedUrl = (url: string): string => {
     if (!url || url.startsWith("data:")) return url;
@@ -508,7 +518,6 @@ export default function Companies() {
   };
 
   const handleLocalImageUpload = async (target: "add" | "edit") => {
-    // Request permission to access media library
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (permissionResult.granted === false) {
@@ -516,7 +525,6 @@ export default function Companies() {
       return;
     }
 
-    // Launch the native image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -592,15 +600,15 @@ export default function Companies() {
     <SafeAreaView style={styles.rootContainer}>
       <View style={styles.headerDeck}>
         <View style={styles.headerTitleRow}>
-          <View style={{ flex: 1, paddingRight: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Building2 size={20} color={uiTheme.customColors.primary} />
+          <View style={{ flex: 1, paddingRight: wp(2) }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: wp(1.5) }}>
+              <Building2 size={isTablet ? 24 : 20} color={uiTheme.customColors.primary} />
               <Text style={styles.screenHeading}>Companies</Text>
             </View>
             <Text style={styles.screenCaption}>Manage your organizations, companies, and business entities with ease.</Text>
           </View>
-          <TouchableOpacity style={styles.addCompanyHeaderButton} onPress={() => setAddCompanyOpen(true)}>
-            <Plus size={14} color="#09090b" style={{ marginRight: 4 }} />
+          <TouchableOpacity style={styles.addCompanyHeaderButton} onPress={() => setAddCompanyOpen(true)} activeOpacity={0.8}>
+            <Plus size={14} color={isDark ? "#ffffff" : "#09090b"} style={{ marginRight: 4 }} />
             <Text style={styles.addCompanyHeaderButtonText}>Add Company</Text>
           </TouchableOpacity>
         </View>
@@ -614,7 +622,7 @@ export default function Companies() {
       )}
 
       <View style={styles.summaryGridContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: wp(2), paddingHorizontal: isTablet ? wp(6) : wp(4) }}>
           <View style={styles.summaryKpiCard}>
             <Text style={styles.kpiCardMetaLabel}>Total Companies</Text>
             <Text style={styles.kpiCardMetricValue}>{Array.isArray(companiesList) ? companiesList.length : 0}</Text>
@@ -645,7 +653,7 @@ export default function Companies() {
             onChangeText={setSearchQuery}
           />
         </View>
-        <TouchableOpacity style={styles.pickerSelectorAnchor} onPress={() => setStatusFilterPickerOpen(true)}>
+        <TouchableOpacity style={styles.pickerSelectorAnchor} onPress={() => setStatusFilterPickerOpen(true)} activeOpacity={0.7}>
           <Text style={styles.pickerSelectorValueText}>{statusFilter.toUpperCase()}</Text>
         </TouchableOpacity>
       </View>
@@ -673,70 +681,73 @@ export default function Companies() {
             <Text style={styles.emptyResultsSubText}>Try adjusting your filters or add a new company</Text>
           </View>
         ) : (
-          filteredCompanies.map((company) => (
-            <View key={company.id} style={styles.companyCardNodeFrame}>
-              <View style={styles.cardHeaderTopInlineRow}>
-                <View style={styles.companyProfileAvatarGroup}>
-                  <View style={styles.avatarFallbackWell}>
-                    {company.logo ? (
-                      <Image source={{ uri: toProxiedUrl(company.logo) }} style={styles.avatarLogoImage} />
-                    ) : (
-                      <Text style={styles.avatarFallbackText}>{company.code?.slice(0, 2).toUpperCase() || "CO"}</Text>
-                    )}
+          <View style={isTablet ? styles.tabletGridContainer : undefined}>
+            {filteredCompanies.map((company) => (
+              <View key={company.id} style={styles.companyCardNodeFrame}>
+                <View style={styles.cardHeaderTopInlineRow}>
+                  <View style={styles.companyProfileAvatarGroup}>
+                    <View style={styles.avatarFallbackWell}>
+                      {company.logo ? (
+                        <Image source={{ uri: toProxiedUrl(company.logo) }} style={styles.avatarLogoImage} />
+                      ) : (
+                        <Text style={styles.avatarFallbackText}>{company.code?.slice(0, 2).toUpperCase() || "CO"}</Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, paddingRight: 4 }}>
+                      <Text style={styles.companyCardTitleName} numberOfLines={1}>{company.name}</Text>
+                      <Text style={styles.companyCardSubCode}>{company.code}</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1, paddingRight: 4 }}>
-                    <Text style={styles.companyCardTitleName} numberOfLines={1}>{company.name}</Text>
-                    <Text style={styles.companyCardSubCode}>{company.code}</Text>
+                  <TouchableOpacity style={styles.actionMenuTriggerButton} onPress={() => openActionMenu(company)} activeOpacity={0.7}>
+                    <MoreHorizontal size={16} color={uiTheme.panelColors.dashboardTextColor} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.cardMiddleBadgesContainer}>
+                  <View style={[
+                    styles.statusBadgeBase,
+                    company.status === "active" && styles.statusBadgeActive,
+                    company.status === "inactive" && styles.statusBadgeInactive,
+                    company.status === "suspended" && styles.statusBadgeSuspended
+                  ]}>
+                    <Text style={[
+                      styles.statusBadgeText,
+                      company.status === "active" && { color: "#4ade80" },
+                      company.status === "inactive" && { color: "#94a3b8" },
+                      company.status === "suspended" && { color: "#fca5a5" }
+                    ]}>{company.status.toUpperCase()}</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.actionMenuTriggerButton} onPress={() => openActionMenu(company)}>
-                  <MoreHorizontal size={16} color={uiTheme.panelColors.dashboardTextColor} />
-                </TouchableOpacity>
-              </View>
 
-              <View style={styles.cardMiddleBadgesContainer}>
-                <View style={[
-                  styles.statusBadgeBase,
-                  company.status === "active" && styles.statusBadgeActive,
-                  company.status === "inactive" && styles.statusBadgeInactive,
-                  company.status === "suspended" && styles.statusBadgeSuspended
-                ]}>
-                  <Text style={[
-                    styles.statusBadgeText,
-                    company.status === "active" && { color: "#4ade80" },
-                    company.status === "inactive" && { color: "#94a3b8" },
-                    company.status === "suspended" && { color: "#fca5a5" }
-                  ]}>{company.status.toUpperCase()}</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardInfoMetaGridSpec}>
-                {company.contact?.email ? (
+                <View style={styles.cardInfoMetaGridSpec}>
+                  {company.contact?.email ? (
+                    <View style={styles.metaRowItemInline}>
+                      <Mail size={12} color="rgba(148,163,184,0.5)" />
+                      <Text style={[styles.metaRowItemText, { flexShrink: 1 }]}>{company.contact.email}</Text>
+                    </View>
+                  ) : null}
+                  {company.contact?.phone ? (
+                    <View style={styles.metaRowItemInline}>
+                      <Phone size={12} color="rgba(148,163,184,0.5)" />
+                      <Text style={[styles.metaRowItemText, { flexShrink: 1 }]}>
+                        {company.contact.phone}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.metaRowItemInline}>
-                    <Mail size={12} color="rgba(148,163,184,0.5)" />
-                    <Text style={[styles.metaRowItemText, { flexShrink: 1 }]}>{company.contact.email}</Text>
-                  </View>
-                ) : null}
-                {company.contact?.phone ? (
-                  <View style={styles.metaRowItemInline}>
-                    <Phone size={12} color="rgba(148,163,184,0.5)" />
-                    <Text style={[styles.metaRowItemText, { flexShrink: 1 }]} >
-                      {company.contact.phone}
+                    <MapPin size={12} color="rgba(148,163,184,0.5)" />
+                    <Text style={[styles.metaRowItemText, { flexShrink: 1 }]}>
+                      {[company.address?.city, company.address?.state, company.address?.country].filter(Boolean).join(", ") || "—"}
                     </Text>
                   </View>
-                ) : null}
-                <View style={styles.metaRowItemInline}>
-                  <MapPin size={12} color="rgba(148,163,184,0.5)" />
-                  <Text style={[styles.metaRowItemText, { flexShrink: 1 }]} >
-                    {[company.address?.city, company.address?.state, company.address?.country].filter(Boolean).join(", ") || "—"}
-                  </Text>
                 </View>
               </View>
-            </View>
-          ))
+            ))}
+          </View>
         )}
       </ScrollView>
 
+      {/* Filter Status Modal */}
       <Modal visible={statusFilterPickerOpen} transparent animationType="fade" onRequestClose={() => setStatusFilterPickerOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setStatusFilterPickerOpen(false)}>
           <View style={styles.modalSelectionBoxSurface}>
@@ -749,6 +760,7 @@ export default function Companies() {
                   setStatusFilter(opt);
                   setStatusFilterPickerOpen(false);
                 }}
+                activeOpacity={0.7}
               >
                 <Text style={[styles.selectionOptionRowText, statusFilter === opt && { color: uiTheme.customColors.primary, fontWeight: "700" }]}>
                   {opt.toUpperCase()}
@@ -759,19 +771,20 @@ export default function Companies() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Action Menu Modal */}
       <Modal visible={actionMenuOpen} transparent animationType="fade" onRequestClose={() => setActionMenuOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setActionMenuOpen(false)}>
           <View style={styles.modalSelectionBoxSurface}>
             <Text style={styles.selectionModalTitleHeading} numberOfLines={1}>{selectedCompany?.name || "Options"}</Text>
-            <TouchableOpacity style={styles.actionMenuRowItemOption} onPress={() => selectedCompany && handleViewCompany(selectedCompany)}>
-              <Eye size={16} color={uiTheme.panelColors.dashboardTextColor} />
+            <TouchableOpacity style={styles.actionMenuRowItemOption} onPress={() => selectedCompany && handleViewCompany(selectedCompany)} activeOpacity={0.7}>
+              <Eye size={16} color={styles.modalTextColor.color} />
               <Text style={styles.actionMenuRowItemOptionText}>View Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionMenuRowItemOption} onPress={() => selectedCompany && handleEditCompany(selectedCompany)}>
-              <Edit size={16} color={uiTheme.panelColors.dashboardTextColor} />
+            <TouchableOpacity style={styles.actionMenuRowItemOption} onPress={() => selectedCompany && handleEditCompany(selectedCompany)} activeOpacity={0.7}>
+              <Edit size={16} color={styles.modalTextColor.color} />
               <Text style={styles.actionMenuRowItemOptionText}>Edit Company</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionMenuRowItemOption, { borderBottomWidth: 0 }]} onPress={() => selectedCompany && handleDeleteConfirm(selectedCompany)}>
+            <TouchableOpacity style={[styles.actionMenuRowItemOption, { borderBottomWidth: 0 }]} onPress={() => selectedCompany && handleDeleteConfirm(selectedCompany)} activeOpacity={0.7}>
               <Trash2 size={16} color="#ef4444" />
               <Text style={[styles.actionMenuRowItemOptionText, { color: "#ef4444" }]}>Delete</Text>
             </TouchableOpacity>
@@ -779,31 +792,33 @@ export default function Companies() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Delete Confirmation Modal */}
       <Modal visible={deleteConfirmOpen} transparent animationType="fade" onRequestClose={() => setDeleteConfirmOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setDeleteConfirmOpen(false)}>
           <View style={styles.modalSelectionBoxSurface}>
             <Text style={[styles.selectionModalTitleHeading, { color: "#ef4444" }]}>Delete Company</Text>
-            <Text style={{ fontSize: 13, color: uiTheme.panelColors.dashboardTextColor, opacity: 0.7, marginBottom: 16 }}>
+            <Text style={{ fontSize: isTablet ? 14 : 13, color: styles.modalTextColor.color, opacity: 0.8, marginBottom: hp(2) }}>
               This action cannot be undone. The company will be permanently removed from the system.
             </Text>
             {selectedCompany ? (
               <View style={styles.deleteTargetHighlightCard}>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: uiTheme.panelColors.dashboardTextColor }}>{selectedCompany.name}</Text>
-                <Text style={{ fontSize: 11, color: uiTheme.panelColors.dashboardTextColor, opacity: 0.5, marginTop: 2 }}>{selectedCompany.code}</Text>
+                <Text style={{ fontSize: isTablet ? 14 : 13, fontWeight: "700", color: styles.modalTextColor.color }}>{selectedCompany.name}</Text>
+                <Text style={{ fontSize: 11, color: styles.modalTextColor.color, opacity: 0.6, marginTop: 2 }}>{selectedCompany.code}</Text>
               </View>
             ) : null}
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
-              <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setDeleteConfirmOpen(false)}>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: uiTheme.panelColors.dashboardTextColor }}>Cancel</Text>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: wp(2.5), marginTop: hp(1.5) }}>
+              <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setDeleteConfirmOpen(false)} activeOpacity={0.7}>
+                <Text style={{ fontSize: isTablet ? 13 : 12, fontWeight: "600", color: styles.modalTextColor.color }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.formSubmitActionModalButton, { backgroundColor: "#ef4444" }]} onPress={confirmDelete}>
-                <Text style={{ fontSize: 12, fontWeight: "700", color: "#ffffff" }}>Delete</Text>
+              <TouchableOpacity style={[styles.formSubmitActionModalButton, { backgroundColor: "#ef4444" }]} onPress={confirmDelete} activeOpacity={0.8}>
+                <Text style={{ fontSize: isTablet ? 13 : 12, fontWeight: "700", color: "#ffffff" }}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
         </TouchableOpacity>
       </Modal>
 
+      {/* Add Company Solid Opaque Modal */}
       <Modal visible={addCompanyOpen} transparent animationType="slide" onRequestClose={() => setAddCompanyOpen(false)}>
         <SafeAreaView style={styles.fullscreenModalContainer}>
           <View style={styles.fullscreenModalHeaderTopBar}>
@@ -811,12 +826,12 @@ export default function Companies() {
               <Text style={styles.fullscreenModalMainTitleHeading}>Add New Company</Text>
               <Text style={styles.fullscreenModalMainSubtitleCap}>Create a new company profile and add it to the directory</Text>
             </View>
-            <TouchableOpacity onPress={() => { setAddCompanyOpen(false); resetAddForm(); }}>
-              <X size={20} color={uiTheme.panelColors.dashboardTextColor} />
+            <TouchableOpacity onPress={() => { setAddCompanyOpen(false); resetAddForm(); }} style={styles.closeIconButton} activeOpacity={0.7}>
+              <X size={20} color={styles.modalTextColor.color} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.fullscreenModalFormScrollBody}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.fullscreenModalFormScrollBody} keyboardShouldPersistTaps="handled">
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Company Name *</Text>
               <TextInput
@@ -824,18 +839,18 @@ export default function Companies() {
                 value={addFormData.name}
                 onChangeText={(val) => setAddFormData({ ...addFormData, name: val })}
                 placeholder="e.g., TaskFlow Inc."
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
               />
             </View>
 
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Company Code (Auto-generated)</Text>
               <TextInput
-                style={[styles.formTextInputWidgetContainer, { backgroundColor: "rgba(148,163,184,0.06)", color: "rgba(148,163,184,0.5)" }]}
+                style={[styles.formTextInputWidgetContainer, { backgroundColor: isDark ? "#1e293b" : "rgba(148,163,184,0.12)", color: styles.modalSecondaryTextColor.color }]}
                 value={addFormData.name ? `${generatePrefix(addFormData.name)}-${String(getNextSequence()).padStart(3, "0")}` : ""}
                 editable={false}
                 placeholder="Will be generated automatically"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
               />
               <Text style={styles.formFieldHelperInfoCaptionText}>Code is automatically generated based on company name</Text>
             </View>
@@ -847,7 +862,7 @@ export default function Companies() {
                 value={addFormData.description}
                 onChangeText={(val) => setAddFormData({ ...addFormData, description: val })}
                 placeholder="Brief description of the company"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
@@ -856,8 +871,8 @@ export default function Companies() {
 
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Status</Text>
-              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setStatusAddPickerOpen(true)}>
-                <Text style={{ fontSize: 13, color: uiTheme.panelColors.dashboardTextColor }}>
+              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setStatusAddPickerOpen(true)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 13, color: styles.modalTextColor.color }}>
                   {addFormData.status.charAt(0).toUpperCase() + addFormData.status.slice(1)}
                 </Text>
               </TouchableOpacity>
@@ -869,8 +884,8 @@ export default function Companies() {
 
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Country</Text>
-              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setCountryAddPickerOpen(true)}>
-                <Text style={{ fontSize: 13, color: uiTheme.panelColors.dashboardTextColor }}>{addFormData.country || "Select Country"}</Text>
+              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setCountryAddPickerOpen(true)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 13, color: styles.modalTextColor.color }}>{addFormData.country || "Select Country"}</Text>
               </TouchableOpacity>
             </View>
 
@@ -881,7 +896,7 @@ export default function Companies() {
                 value={addFormData.street}
                 onChangeText={(val) => setAddFormData({ ...addFormData, street: val })}
                 placeholder="Street Address"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
               />
             </View>
 
@@ -893,7 +908,7 @@ export default function Companies() {
                   value={addFormData.city}
                   onChangeText={(val) => setAddFormData({ ...addFormData, city: val })}
                   placeholder="City"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
               <View style={{ flex: 1, gap: 6 }}>
@@ -903,7 +918,7 @@ export default function Companies() {
                   value={addFormData.state}
                   onChangeText={(val) => setAddFormData({ ...addFormData, state: val })}
                   placeholder="State"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
             </View>
@@ -915,7 +930,7 @@ export default function Companies() {
                 value={addFormData.zipCode}
                 onChangeText={(val) => setAddFormData({ ...addFormData, zipCode: val })}
                 placeholder="Zip Code"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
               />
             </View>
 
@@ -930,7 +945,7 @@ export default function Companies() {
                 value={addFormData.email}
                 onChangeText={(val) => setAddFormData({ ...addFormData, email: val })}
                 placeholder="Email Address"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -943,7 +958,7 @@ export default function Companies() {
                 value={addFormData.phone}
                 onChangeText={(val) => setAddFormData({ ...addFormData, phone: val })}
                 placeholder="Phone Number"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
                 keyboardType="phone-pad"
               />
             </View>
@@ -955,7 +970,7 @@ export default function Companies() {
                 value={addFormData.website}
                 onChangeText={(val) => setAddFormData({ ...addFormData, website: val })}
                 placeholder="Website URL"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
                 keyboardType="url"
                 autoCapitalize="none"
               />
@@ -976,7 +991,7 @@ export default function Companies() {
                   value={addFormData.einNumber}
                   onChangeText={(val) => setAddFormData({ ...addFormData, einNumber: val })}
                   placeholder="XX-XXXXXXX"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
               <View style={{ flex: 1, gap: 6 }}>
@@ -986,7 +1001,7 @@ export default function Companies() {
                   value={addFormData.charterNumber}
                   onChangeText={(val) => setAddFormData({ ...addFormData, charterNumber: val })}
                   placeholder="Charter #"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
             </View>
@@ -998,7 +1013,7 @@ export default function Companies() {
                 value={addFormData.stateOfIncorporation}
                 onChangeText={(val) => setAddFormData({ ...addFormData, stateOfIncorporation: val })}
                 placeholder="Delaware"
-                placeholderTextColor="rgba(148,163,184,0.3)"
+                placeholderTextColor={styles.modalSecondaryTextColor.color}
               />
             </View>
 
@@ -1010,7 +1025,7 @@ export default function Companies() {
                   value={addFormData.originalFilingDate}
                   onChangeText={(val) => setAddFormData({ ...addFormData, originalFilingDate: val })}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
               <View style={{ flex: 1, gap: 6 }}>
@@ -1020,7 +1035,7 @@ export default function Companies() {
                   value={addFormData.annualReportDueDate}
                   onChangeText={(val) => setAddFormData({ ...addFormData, annualReportDueDate: val })}
                   placeholder="YYYY-MM-DD"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                 />
               </View>
             </View>
@@ -1034,6 +1049,7 @@ export default function Companies() {
                     ...prev,
                     foreignEntities: [...prev.foreignEntities, { state: "", documentNumber: "" }]
                   }))}
+                  activeOpacity={0.7}
                 >
                   <Plus size={10} color={uiTheme.customColors.primary} style={{ marginRight: 2 }} />
                   <Text style={styles.inlineActionRowMiniButtonText}>Add State</Text>
@@ -1044,9 +1060,9 @@ export default function Companies() {
             {addFormData.foreignEntities.map((entity, index) => (
               <View key={index} style={styles.dynamicRowBlockContainer}>
                 <TextInput
-                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: 32 }]}
+                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: hp(4.2) }]}
                   placeholder="State"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                   value={entity.state}
                   onChangeText={(val) => {
                     const cloned = [...addFormData.foreignEntities];
@@ -1055,9 +1071,9 @@ export default function Companies() {
                   }}
                 />
                 <TextInput
-                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: 32 }]}
+                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: hp(4.2) }]}
                   placeholder="Doc #"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                   value={entity.documentNumber}
                   onChangeText={(val) => {
                     const cloned = [...addFormData.foreignEntities];
@@ -1071,6 +1087,7 @@ export default function Companies() {
                     setAddFormData(p => ({ ...p, foreignEntities: cloned }));
                   }}
                   style={{ padding: 4 }}
+                  activeOpacity={0.7}
                 >
                   <X size={14} color="#ef4444" />
                 </TouchableOpacity>
@@ -1085,17 +1102,17 @@ export default function Companies() {
               {addFormData.logo ? (
                 <View style={styles.uploadedImagePreviewCanvas}>
                   <Image source={{ uri: toProxiedUrl(addFormData.logo) }} style={styles.uploadedCoreImageElement} />
-                  <TouchableOpacity style={styles.removeImageAbsoluteBadge} onPress={() => setAddFormData(p => ({ ...p, logo: "" }))}>
+                  <TouchableOpacity style={styles.removeImageAbsoluteBadge} onPress={() => setAddFormData(p => ({ ...p, logo: "" }))} activeOpacity={0.7}>
                     <X size={12} color="#ffffff" />
                   </TouchableOpacity>
                 </View>
               ) : null}
-              <View style={{ flexDirection: "row", gap: 10, flex: 1 }}>
-                <TouchableOpacity style={styles.mediaActionUploadButton} onPress={() => handleLocalImageUpload("add")}>
+              <View style={{ flexDirection: "row", gap: wp(2.5), flex: 1 }}>
+                <TouchableOpacity style={styles.mediaActionUploadButton} onPress={() => handleLocalImageUpload("add")} activeOpacity={0.7}>
                   <Upload size={14} color={uiTheme.customColors.primary} />
                   <Text style={styles.mediaActionUploadButtonText}>Upload Logo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.mediaActionUploadButton, { borderColor: "rgba(99,102,241,0.2)" }]} onPress={() => triggerImagePicker("add")}>
+                <TouchableOpacity style={[styles.mediaActionUploadButton, { borderColor: "rgba(99,102,241,0.2)" }]} onPress={() => triggerImagePicker("add")} activeOpacity={0.7}>
                   <ImageIcon size={14} color="#818cf8" />
                   <Text style={[styles.mediaActionUploadButtonText, { color: "#818cf8" }]}>Pick from Images</Text>
                 </TouchableOpacity>
@@ -1104,16 +1121,17 @@ export default function Companies() {
           </ScrollView>
 
           <View style={styles.fullscreenModalFooterButtonBar}>
-            <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => { setAddCompanyOpen(false); resetAddForm(); }}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: uiTheme.panelColors.dashboardTextColor }}>Cancel</Text>
+            <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => { setAddCompanyOpen(false); resetAddForm(); }} activeOpacity={0.7}>
+              <Text style={{ fontSize: isTablet ? 14 : 13, fontWeight: "600", color: styles.modalTextColor.color }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.formSubmitActionModalButton, { backgroundColor: uiTheme.customColors.primary }]} 
               onPress={handleAddCompany}
               disabled={isAdding || !addFormData.name.trim()}
+              activeOpacity={0.8}
             >
               {isAdding ? (
-                <ActivityIndicator size="small" color="#09090b" />
+                <ActivityIndicator size="small" color={isDark ? "#ffffff" : "#09090b"} />
               ) : (
                 <Text style={styles.formSubmitActionModalButtonText}>Add Company</Text>
               )}
@@ -1122,6 +1140,7 @@ export default function Companies() {
         </SafeAreaView>
       </Modal>
 
+      {/* Edit Company Solid Opaque Modal */}
       <Modal visible={editCompanyOpen} transparent animationType="slide" onRequestClose={() => setEditCompanyOpen(false)}>
         <SafeAreaView style={styles.fullscreenModalContainer}>
           <View style={styles.fullscreenModalHeaderTopBar}>
@@ -1129,12 +1148,12 @@ export default function Companies() {
               <Text style={styles.fullscreenModalMainTitleHeading}>Edit Company</Text>
               <Text style={styles.fullscreenModalMainSubtitleCap}>Update company information and save changes</Text>
             </View>
-            <TouchableOpacity onPress={() => setEditCompanyOpen(false)}>
-              <X size={20} color={uiTheme.panelColors.dashboardTextColor} />
+            <TouchableOpacity onPress={() => setEditCompanyOpen(false)} style={styles.closeIconButton} activeOpacity={0.7}>
+              <X size={20} color={styles.modalTextColor.color} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.fullscreenModalFormScrollBody}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.fullscreenModalFormScrollBody} keyboardShouldPersistTaps="handled">
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Company Name *</Text>
               <TextInput
@@ -1147,7 +1166,7 @@ export default function Companies() {
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Company Code</Text>
               <TextInput
-                style={[styles.formTextInputWidgetContainer, { backgroundColor: "rgba(148,163,184,0.06)", color: "rgba(148,163,184,0.5)" }]}
+                style={[styles.formTextInputWidgetContainer, { backgroundColor: isDark ? "#1e293b" : "rgba(148,163,184,0.12)", color: styles.modalSecondaryTextColor.color }]}
                 value={editFormData.code}
                 editable={false}
               />
@@ -1167,8 +1186,8 @@ export default function Companies() {
 
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Status</Text>
-              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setStatusEditPickerOpen(true)}>
-                <Text style={{ fontSize: 13, color: uiTheme.panelColors.dashboardTextColor }}>
+              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setStatusEditPickerOpen(true)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 13, color: styles.modalTextColor.color }}>
                   {editFormData.status.charAt(0).toUpperCase() + editFormData.status.slice(1)}
                 </Text>
               </TouchableOpacity>
@@ -1180,8 +1199,8 @@ export default function Companies() {
 
             <View style={styles.formFieldLayoutRowStack}>
               <Text style={styles.formInputGroupFieldNameLabel}>Country</Text>
-              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setCountryEditPickerOpen(true)}>
-                <Text style={{ fontSize: 13, color: uiTheme.panelColors.dashboardTextColor }}>{editFormData.country || "Select Country"}</Text>
+              <TouchableOpacity style={styles.formPickerInlineTriggerElement} onPress={() => setCountryEditPickerOpen(true)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 13, color: styles.modalTextColor.color }}>{editFormData.country || "Select Country"}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1321,6 +1340,7 @@ export default function Companies() {
                     ...prev,
                     foreignEntities: [...prev.foreignEntities, { state: "", documentNumber: "" }]
                   }))}
+                  activeOpacity={0.7}
                 >
                   <Plus size={10} color={uiTheme.customColors.primary} style={{ marginRight: 2 }} />
                   <Text style={styles.inlineActionRowMiniButtonText}>Add State</Text>
@@ -1331,9 +1351,9 @@ export default function Companies() {
             {editFormData.foreignEntities.map((entity, index) => (
               <View key={index} style={styles.dynamicRowBlockContainer}>
                 <TextInput
-                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: 32 }]}
+                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: hp(4.2) }]}
                   placeholder="State"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                   value={entity.state}
                   onChangeText={(val) => {
                     const cloned = [...editFormData.foreignEntities];
@@ -1342,9 +1362,9 @@ export default function Companies() {
                   }}
                 />
                 <TextInput
-                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: 32 }]}
+                  style={[styles.formTextInputWidgetContainer, { flex: 1, height: hp(4.2) }]}
                   placeholder="Doc #"
-                  placeholderTextColor="rgba(148,163,184,0.3)"
+                  placeholderTextColor={styles.modalSecondaryTextColor.color}
                   value={entity.documentNumber}
                   onChangeText={(val) => {
                     const cloned = [...editFormData.foreignEntities];
@@ -1358,6 +1378,7 @@ export default function Companies() {
                     setEditFormData(p => ({ ...p, foreignEntities: cloned }));
                   }}
                   style={{ padding: 4 }}
+                  activeOpacity={0.7}
                 >
                   <X size={14} color="#ef4444" />
                 </TouchableOpacity>
@@ -1372,17 +1393,17 @@ export default function Companies() {
               {editFormData.logo ? (
                 <View style={styles.uploadedImagePreviewCanvas}>
                   <Image source={{ uri: toProxiedUrl(editFormData.logo) }} style={styles.uploadedCoreImageElement} />
-                  <TouchableOpacity style={styles.removeImageAbsoluteBadge} onPress={() => setEditFormData(p => ({ ...p, logo: "" }))}>
+                  <TouchableOpacity style={styles.removeImageAbsoluteBadge} onPress={() => setEditFormData(p => ({ ...p, logo: "" }))} activeOpacity={0.7}>
                     <X size={12} color="#ffffff" />
                   </TouchableOpacity>
                 </View>
               ) : null}
-              <View style={{ flexDirection: "row", gap: 10, flex: 1 }}>
-                <TouchableOpacity style={styles.mediaActionUploadButton} onPress={() => handleLocalImageUpload("edit")}>
+              <View style={{ flexDirection: "row", gap: wp(2.5), flex: 1 }}>
+                <TouchableOpacity style={styles.mediaActionUploadButton} onPress={() => handleLocalImageUpload("edit")} activeOpacity={0.7}>
                   <Upload size={14} color={uiTheme.customColors.primary} />
                   <Text style={styles.mediaActionUploadButtonText}>Upload Logo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.mediaActionUploadButton, { borderColor: "rgba(99,102,241,0.2)" }]} onPress={() => triggerImagePicker("edit")}>
+                <TouchableOpacity style={[styles.mediaActionUploadButton, { borderColor: "rgba(99,102,241,0.2)" }]} onPress={() => triggerImagePicker("edit")} activeOpacity={0.7}>
                   <ImageIcon size={14} color="#818cf8" />
                   <Text style={[styles.mediaActionUploadButtonText, { color: "#818cf8" }]}>Pick from Images</Text>
                 </TouchableOpacity>
@@ -1391,13 +1412,14 @@ export default function Companies() {
           </ScrollView>
 
           <View style={styles.fullscreenModalFooterButtonBar}>
-            <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setEditCompanyOpen(false)}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: uiTheme.panelColors.dashboardTextColor }}>Cancel</Text>
+            <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setEditCompanyOpen(false)} activeOpacity={0.7}>
+              <Text style={{ fontSize: isTablet ? 14 : 13, fontWeight: "600", color: styles.modalTextColor.color }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.formSubmitActionModalButton, { backgroundColor: uiTheme.customColors.primary }]} 
               onPress={saveEditCompany}
               disabled={!editFormData.name.trim()}
+              activeOpacity={0.8}
             >
               <Text style={styles.formSubmitActionModalButtonText}>Save Changes</Text>
             </TouchableOpacity>
@@ -1405,12 +1427,13 @@ export default function Companies() {
         </SafeAreaView>
       </Modal>
 
+      {/* View Company Solid Opaque Modal */}
       <Modal visible={viewCompanyOpen} transparent animationType="slide" onRequestClose={() => setViewCompanyOpen(false)}>
         <SafeAreaView style={styles.fullscreenModalContainer}>
           <View style={styles.fullscreenModalHeaderTopBar}>
             <Text style={styles.fullscreenModalMainTitleHeading}>Company Details</Text>
-            <TouchableOpacity onPress={() => setViewCompanyOpen(false)}>
-              <X size={20} color={uiTheme.panelColors.dashboardTextColor} />
+            <TouchableOpacity onPress={() => setViewCompanyOpen(false)} style={styles.closeIconButton} activeOpacity={0.7}>
+              <X size={20} color={styles.modalTextColor.color} />
             </TouchableOpacity>
           </View>
 
@@ -1527,19 +1550,20 @@ export default function Companies() {
           ) : null}
 
           <View style={styles.fullscreenModalFooterButtonBar}>
-            <TouchableOpacity style={[styles.formSubmitActionModalButton, { backgroundColor: uiTheme.customColors.primary, width: "100%" }]} onPress={() => setViewCompanyOpen(false)}>
+            <TouchableOpacity style={[styles.formSubmitActionModalButton, { backgroundColor: uiTheme.customColors.primary, width: "100%" }]} onPress={() => setViewCompanyOpen(false)} activeOpacity={0.8}>
               <Text style={styles.formSubmitActionModalButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
       </Modal>
 
+      {/* Select Status Modals */}
       <Modal visible={statusAddPickerOpen} transparent animationType="fade" onRequestClose={() => setStatusAddPickerOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setStatusAddPickerOpen(false)}>
           <View style={styles.modalSelectionBoxSurface}>
             <Text style={styles.selectionModalTitleHeading}>Select Status</Text>
             {["active", "inactive", "suspended"].map((st) => (
-              <TouchableOpacity key={st} style={styles.selectionOptionRowElement} onPress={() => { setAddFormData({ ...addFormData, status: st as any }); setStatusAddPickerOpen(false); }}>
+              <TouchableOpacity key={st} style={styles.selectionOptionRowElement} onPress={() => { setAddFormData({ ...addFormData, status: st as any }); setStatusAddPickerOpen(false); }} activeOpacity={0.7}>
                 <Text style={styles.selectionOptionRowText}>{st.charAt(0).toUpperCase() + st.slice(1)}</Text>
               </TouchableOpacity>
             ))}
@@ -1552,7 +1576,7 @@ export default function Companies() {
           <View style={styles.modalSelectionBoxSurface}>
             <Text style={styles.selectionModalTitleHeading}>Select Status</Text>
             {["active", "inactive", "suspended"].map((st) => (
-              <TouchableOpacity key={st} style={styles.selectionOptionRowElement} onPress={() => { setEditFormData({ ...editFormData, status: st as any }); setStatusEditPickerOpen(false); }}>
+              <TouchableOpacity key={st} style={styles.selectionOptionRowElement} onPress={() => { setEditFormData({ ...editFormData, status: st as any }); setStatusEditPickerOpen(false); }} activeOpacity={0.7}>
                 <Text style={styles.selectionOptionRowText}>{st.charAt(0).toUpperCase() + st.slice(1)}</Text>
               </TouchableOpacity>
             ))}
@@ -1560,13 +1584,14 @@ export default function Companies() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Select Country Modals */}
       <Modal visible={countryAddPickerOpen} transparent animationType="fade" onRequestClose={() => setCountryAddPickerOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setCountryAddPickerOpen(false)}>
-          <View style={[styles.modalSelectionBoxSurface, { maxHeight: height * 0.6, maxWidth: 320 }]}>
+          <View style={[styles.modalSelectionBoxSurface, { maxHeight: height * 0.6, maxWidth: isTablet ? 380 : 320 }]}>
             <Text style={styles.selectionModalTitleHeading}>Select Country</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {COUNTRIES.map((ct) => (
-                <TouchableOpacity key={ct} style={styles.selectionOptionRowElement} onPress={() => { setAddFormData({ ...addFormData, country: ct }); setCountryAddPickerOpen(false); }}>
+                <TouchableOpacity key={ct} style={styles.selectionOptionRowElement} onPress={() => { setAddFormData({ ...addFormData, country: ct }); setCountryAddPickerOpen(false); }} activeOpacity={0.7}>
                   <Text style={styles.selectionOptionRowText}>{ct}</Text>
                 </TouchableOpacity>
               ))}
@@ -1577,11 +1602,11 @@ export default function Companies() {
 
       <Modal visible={countryEditPickerOpen} transparent animationType="fade" onRequestClose={() => setCountryEditPickerOpen(false)}>
         <TouchableOpacity style={styles.modalBackdropOverlay} activeOpacity={1} onPress={() => setCountryEditPickerOpen(false)}>
-          <View style={[styles.modalSelectionBoxSurface, { maxHeight: height * 0.6, maxWidth: 320 }]}>
+          <View style={[styles.modalSelectionBoxSurface, { maxHeight: height * 0.6, maxWidth: isTablet ? 380 : 320 }]}>
             <Text style={styles.selectionModalTitleHeading}>Select Country</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {COUNTRIES.map((ct) => (
-                <TouchableOpacity key={ct} style={styles.selectionOptionRowElement} onPress={() => { setEditFormData({ ...editFormData, country: ct }); setCountryEditPickerOpen(false); }}>
+                <TouchableOpacity key={ct} style={styles.selectionOptionRowElement} onPress={() => { setEditFormData({ ...editFormData, country: ct }); setCountryEditPickerOpen(false); }} activeOpacity={0.7}>
                   <Text style={styles.selectionOptionRowText}>{ct}</Text>
                 </TouchableOpacity>
               ))}
@@ -1590,6 +1615,7 @@ export default function Companies() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Image Library Picker Modal */}
       <Modal visible={imageLibraryOpen} transparent animationType="fade" onRequestClose={() => setImageLibraryOpen(false)}>
         <SafeAreaView style={styles.imagePickerOverlayContainer}>
           <View style={styles.imagePickerModalSurface}>
@@ -1598,8 +1624,8 @@ export default function Companies() {
                 <Text style={styles.imagePickerMainTitleHeading}>Pick Image Asset</Text>
                 <Text style={styles.imagePickerMainSubtitleCap}>Select an image from the remote asset catalog</Text>
               </View>
-              <TouchableOpacity onPress={() => setImageLibraryOpen(false)} style={{ padding: 4 }}>
-                <X size={20} color={uiTheme.panelColors.dashboardTextColor} />
+              <TouchableOpacity onPress={() => setImageLibraryOpen(false)} style={styles.closeIconButton} activeOpacity={0.7}>
+                <X size={20} color={styles.modalTextColor.color} />
               </TouchableOpacity>
             </View>
 
@@ -1608,6 +1634,7 @@ export default function Companies() {
                 <TouchableOpacity 
                   style={[styles.imagePickerFolderNavigationRowAnchor, !selectedFolderId && styles.imagePickerFolderNavigationActiveAnchor]}
                   onPress={() => { setSelectedFolderId(""); setAssetPage(1); }}
+                  activeOpacity={0.7}
                 >
                   <FolderOpen size={14} color={!selectedFolderId ? uiTheme.customColors.primary : "rgba(148,163,184,0.5)"} />
                   <Text style={[styles.imagePickerFolderNavigationItemText, !selectedFolderId && { color: uiTheme.customColors.primary, fontWeight: "700" }]} numberOfLines={1}>All Files</Text>
@@ -1618,6 +1645,7 @@ export default function Companies() {
                       key={f.id}
                       style={[styles.imagePickerFolderNavigationRowAnchor, selectedFolderId === f.id && styles.imagePickerFolderNavigationActiveAnchor, { paddingLeft: 8 + (f.depth * 10) }]}
                       onPress={() => { setSelectedFolderId(f.id); setAssetPage(1); }}
+                      activeOpacity={0.7}
                     >
                       <FolderOpen size={12} color={selectedFolderId === f.id ? uiTheme.customColors.primary : "rgba(148,163,184,0.4)"} />
                       <Text style={[styles.imagePickerFolderNavigationItemText, selectedFolderId === f.id && { color: uiTheme.customColors.primary, fontWeight: "700" }]} numberOfLines={1}>{f.name}</Text>
@@ -1632,7 +1660,7 @@ export default function Companies() {
                   <TextInput
                     style={styles.imagePickerWorkspaceTextInputWidget}
                     placeholder="Search images..."
-                    placeholderTextColor="rgba(148,163,184,0.3)"
+                    placeholderTextColor={styles.modalSecondaryTextColor.color}
                     value={assetSearch}
                     onChangeText={setAssetSearch}
                   />
@@ -1656,6 +1684,7 @@ export default function Companies() {
                           key={asset.id || asset._id} 
                           style={[styles.imagePickerGridAssetCardCellFrame, isAssetSelected && styles.imagePickerGridAssetCardActiveCellFrame]}
                           onPress={() => setSelectedAssetUrl(assetUrl)}
+                          activeOpacity={0.8}
                         >
                           <Image source={{ uri: toProxiedUrl(assetUrl) }} style={{ width: "100%", height: "100%", borderRadius: 6 }} resizeMode="cover" />
                           {isAssetSelected && (
@@ -1678,16 +1707,18 @@ export default function Companies() {
                       disabled={assetPage === 1 || assetsLoading} 
                       onPress={() => setAssetPage(p => Math.max(1, p - 1))}
                       style={[styles.imagePickerPaginationArrowInlineButton, assetPage === 1 && { opacity: 0.3 }]}
+                      activeOpacity={0.7}
                     >
-                      <ChevronLeft size={16} color={uiTheme.panelColors.dashboardTextColor} />
+                      <ChevronLeft size={16} color={styles.modalTextColor.color} />
                     </TouchableOpacity>
                     <Text style={styles.imagePickerPaginationMetricStatusCounterLabelText}>{assetPage} / {assetTotalPages}</Text>
                     <TouchableOpacity 
                       disabled={assetPage === assetTotalPages || assetsLoading} 
                       onPress={() => setAssetPage(p => Math.min(assetTotalPages, p + 1))}
                       style={[styles.imagePickerPaginationArrowInlineButton, assetPage === assetTotalPages && { opacity: 0.3 }]}
+                      activeOpacity={0.7}
                     >
-                      <ChevronRight size={16} color={uiTheme.panelColors.dashboardTextColor} />
+                      <ChevronRight size={16} color={styles.modalTextColor.color} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1695,13 +1726,14 @@ export default function Companies() {
             </View>
 
             <View style={styles.imagePickerModalFooterActionButtonBar}>
-              <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setImageLibraryOpen(false)}>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: uiTheme.panelColors.dashboardTextColor }}>Cancel</Text>
+              <TouchableOpacity style={styles.formDismissActionModalButton} onPress={() => setImageLibraryOpen(false)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: styles.modalTextColor.color }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.formSubmitActionModalButton, { backgroundColor: uiTheme.customColors.primary }]} 
                 disabled={!selectedAssetUrl}
                 onPress={confirmAssetSelection}
+                activeOpacity={0.8}
               >
                 <Text style={styles.formSubmitActionModalButtonText}>Select Image</Text>
               </TouchableOpacity>
@@ -1714,26 +1746,48 @@ export default function Companies() {
   );
 }
 
-const getThemedStyles = (uiTheme: any) => {
-  const isLightTheme = uiTheme.theme.includes("crystal") || uiTheme.panelColors.dashboardTextColor === "#000000";
-  const structuralBorderColor = isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
-  const surfaceAlphaColor = isLightTheme ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)";
+const getThemedStyles = (
+  uiTheme: any,
+  wp: (percentage: number) => number,
+  hp: (percentage: number) => number,
+  isTablet: boolean,
+  isSmallScreen: boolean,
+  windowHeight: number,
+  windowWidth: number,
+  isDark: boolean
+) => {
+  const bg = uiTheme?.panelColors?.dashboardBackground || (isDark ? "#09090b" : "#f8fafc");
+  const cardBg = uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141417" : "#ffffff");
+  const text = uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f4f4f5" : "#0f172a");
+  const modalPanelBg = isDark ? "#0f172a" : "#ffffff";
+  const modalText = isDark ? "#f8fafc" : "#0f172a";
+  const modalTextSecondary = isDark ? "#94a3b8" : "#64748b";
+  const modalBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "#e2e8f0";
+  const inputBg = isDark ? "#1e293b" : "#f1f5f9";
+  const structuralBorderColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+  const surfaceAlphaColor = isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.03)";
 
   return StyleSheet.create({
     rootContainer: {
       flex: 1,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
+      backgroundColor: bg,
+    },
+    modalTextColor: {
+      color: modalText,
+    },
+    modalSecondaryTextColor: {
+      color: modalTextSecondary,
     },
     centerDeck: {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
+      backgroundColor: bg,
     },
     headerDeck: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 12,
+      paddingHorizontal: isTablet ? wp(6) : wp(4.2),
+      paddingTop: hp(1.8),
+      paddingBottom: hp(1.2),
     },
     headerTitleRow: {
       flexDirection: "row",
@@ -1741,31 +1795,31 @@ const getThemedStyles = (uiTheme: any) => {
       alignItems: "center",
     },
     screenHeading: {
-      fontSize: 22,
+      fontSize: isTablet ? 26 : 22,
       fontWeight: "800",
       letterSpacing: -0.5,
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
     },
     screenCaption: {
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 13 : 12,
+      color: text,
       opacity: 0.6,
-      marginTop: 4,
+      marginTop: hp(0.4),
       lineHeight: 16,
     },
     addCompanyHeaderButton: {
-      height: 36,
-      paddingHorizontal: 12,
-      borderRadius: 8,
+      height: hp(4.8),
+      paddingHorizontal: wp(3.5),
+      borderRadius: wp(2),
       backgroundColor: uiTheme.customColors.primary,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
     },
     addCompanyHeaderButtonText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "700",
-      color: isLightTheme ? "#ffffff" : "#09090b",
+      color: isDark ? "#ffffff" : "#09090b",
     },
     alertPanelError: {
       flexDirection: "row",
@@ -1773,103 +1827,103 @@ const getThemedStyles = (uiTheme: any) => {
       backgroundColor: "rgba(239,68,68,0.1)",
       borderWidth: 1,
       borderColor: "rgba(239,68,68,0.2)",
-      marginHorizontal: 16,
-      marginVertical: 4,
-      padding: 10,
-      borderRadius: 8,
+      marginHorizontal: isTablet ? wp(6) : wp(4.2),
+      marginVertical: hp(0.5),
+      padding: wp(2.5),
+      borderRadius: wp(2),
     },
     errorTextLabel: {
       color: "#f87171",
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       flex: 1,
     },
     summaryGridContainer: {
-      marginVertical: 6,
+      marginVertical: hp(0.8),
     },
     summaryKpiCard: {
-      minWidth: 110,
+      minWidth: wp(28),
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
-      borderRadius: 10,
-      padding: 10,
+      backgroundColor: cardBg,
+      borderRadius: wp(2.5),
+      padding: wp(2.5),
       justifyContent: "center",
     },
     kpiCardMetaLabel: {
-      fontSize: 10,
+      fontSize: isTablet ? 11 : 10,
       fontWeight: "600",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
       opacity: 0.5,
     },
     kpiCardMetricValue: {
-      fontSize: 16,
+      fontSize: isTablet ? 18 : 16,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
       marginTop: 2,
     },
     searchAndFiltersDeck: {
       flexDirection: "row",
-      paddingHorizontal: 16,
-      marginVertical: 8,
-      gap: 8,
+      paddingHorizontal: isTablet ? wp(6) : wp(4.2),
+      marginVertical: hp(1),
+      gap: wp(2),
     },
     searchFieldInputFrame: {
       flex: 1,
-      height: 36,
+      height: hp(4.8),
       position: "relative",
     },
     searchIconAbsolute: {
       position: "absolute",
-      left: 10,
-      top: 11,
+      left: wp(2.5),
+      top: hp(1.4),
       zIndex: 2,
     },
     searchTextInputElement: {
       height: "100%",
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 8,
-      paddingLeft: 30,
-      paddingRight: 10,
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
+      borderRadius: wp(2),
+      paddingLeft: wp(8),
+      paddingRight: wp(2.5),
+      fontSize: isTablet ? 13 : 12,
+      color: text,
     },
     pickerSelectorAnchor: {
-      height: 36,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      height: hp(4.8),
+      backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 8,
+      borderRadius: wp(2),
       justifyContent: "center",
-      paddingHorizontal: 12,
+      paddingHorizontal: wp(3),
     },
     pickerSelectorValueText: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
     },
     scrollWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 32,
+      paddingHorizontal: isTablet ? wp(6) : wp(4.2),
+      paddingBottom: hp(5),
     },
     blockSectionHeaderRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 8,
-      marginBottom: 12,
-      gap: 8,
+      marginTop: hp(1),
+      marginBottom: hp(1.5),
+      gap: wp(2),
     },
     blockTitleText: {
-      fontSize: 14,
+      fontSize: isTablet ? 16 : 14,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
     },
     countBadgeFrame: {
       backgroundColor: "rgba(212,163,89,0.1)",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
+      paddingHorizontal: wp(1.8),
+      paddingVertical: hp(0.3),
+      borderRadius: wp(1),
     },
     countBadgeText: {
       fontSize: 10,
@@ -1877,30 +1931,37 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "600",
     },
     emptyContainerState: {
-      paddingVertical: 48,
+      paddingVertical: hp(6),
       alignItems: "center",
       justifyContent: "center",
     },
     emptyResultsWarningText: {
-      fontSize: 14,
+      fontSize: isTablet ? 15 : 14,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
       opacity: 0.6,
     },
     emptyResultsSubText: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 12 : 11,
+      color: text,
       opacity: 0.4,
       marginTop: 4,
       textAlign: "center",
     },
+    tabletGridContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: wp(3),
+    },
     companyCardNodeFrame: {
       borderWidth: 1,
       borderColor: structuralBorderColor,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 10,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      borderRadius: wp(3),
+      padding: wp(3.5),
+      marginBottom: hp(1.2),
+      backgroundColor: cardBg,
+      width: isTablet ? "48.5%" : "100%",
     },
     cardHeaderTopInlineRow: {
       flexDirection: "row",
@@ -1911,13 +1972,15 @@ const getThemedStyles = (uiTheme: any) => {
       flexDirection: "row",
       alignItems: "center",
       flex: 1,
-      gap: 10,
+      gap: wp(2.5),
     },
     avatarFallbackWell: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: isLightTheme ? "rgba(0,0,0,0.05)" : "#1e293b",
+      width: wp(8),
+      height: wp(8),
+      minWidth: 32,
+      minHeight: 32,
+      borderRadius: wp(4),
+      backgroundColor: isDark ? "#1e293b" : "rgba(0,0,0,0.05)",
       borderWidth: 1,
       borderColor: structuralBorderColor,
       alignItems: "center",
@@ -1932,32 +1995,32 @@ const getThemedStyles = (uiTheme: any) => {
     avatarFallbackText: {
       fontSize: 10,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
     },
     companyCardTitleName: {
-      fontSize: 14,
+      fontSize: isTablet ? 15 : 14,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
     },
     companyCardSubCode: {
       fontSize: 10,
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: text,
       opacity: 0.4,
       marginTop: 1,
     },
     actionMenuTriggerButton: {
-      padding: 4,
-      borderRadius: 6,
+      padding: wp(1),
+      borderRadius: wp(1.5),
     },
     cardMiddleBadgesContainer: {
       flexDirection: "row",
-      marginTop: 8,
-      marginBottom: 4,
+      marginTop: hp(1),
+      marginBottom: hp(0.5),
     },
     statusBadgeBase: {
-      paddingHorizontal: 6,
-      paddingVertical: 1.5,
-      borderRadius: 4,
+      paddingHorizontal: wp(1.8),
+      paddingVertical: hp(0.3),
+      borderRadius: wp(1),
       borderWidth: 1,
     },
     statusBadgeActive: {
@@ -1977,164 +2040,163 @@ const getThemedStyles = (uiTheme: any) => {
       fontWeight: "700",
     },
     cardInfoMetaGridSpec: {
-      marginTop: 8,
-      paddingTop: 8,
+      marginTop: hp(1),
+      paddingTop: hp(1),
       borderTopWidth: 1,
       borderTopColor: structuralBorderColor,
-      gap: 4,
+      gap: hp(0.5),
     },
     metaRowItemInline: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: wp(1.5),
       flex: 1,
     },
     metaRowItemText: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 12 : 11,
+      color: text,
       opacity: 0.6,
     },
     modalBackdropOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: "rgba(0,0,0,0.85)",
       justifyContent: "center",
       alignItems: "center",
-      padding: 24,
+      padding: wp(5),
     },
     modalSelectionBoxSurface: {
       width: "100%",
-      maxWidth: 290,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      maxWidth: isTablet ? 380 : 320,
+      backgroundColor: modalPanelBg,
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 12,
-      padding: 14,
+      borderColor: modalBorder,
+      borderRadius: wp(3),
+      padding: wp(4),
     },
     selectionModalTitleHeading: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
-      marginBottom: 8,
+      color: modalTextSecondary,
+      marginBottom: hp(1),
       textTransform: "uppercase",
       letterSpacing: 0.5,
     },
     selectionOptionRowElement: {
-      paddingVertical: 10,
+      paddingVertical: hp(1.2),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
     },
     activeSelectionOptionRowElement: {
-      backgroundColor: "rgba(212,163,89,0.04)",
+      backgroundColor: "rgba(212,163,89,0.08)",
     },
     selectionOptionRowText: {
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 14 : 13,
+      color: modalText,
     },
     actionMenuRowItemOption: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 12,
-      gap: 10,
+      paddingVertical: hp(1.4),
+      gap: wp(2.5),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
     },
     actionMenuRowItemOptionText: {
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 14 : 13,
+      color: modalText,
       fontWeight: "500",
     },
     deleteTargetHighlightCard: {
       backgroundColor: surfaceAlphaColor,
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 8,
-      padding: 10,
-      marginBottom: 12,
+      borderColor: modalBorder,
+      borderRadius: wp(2),
+      padding: wp(2.5),
+      marginBottom: hp(1.5),
     },
     fullscreenModalContainer: {
       flex: 1,
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      backgroundColor: modalPanelBg,
     },
     fullscreenModalHeaderTopBar: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      padding: 16,
+      padding: wp(4),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
+    },
+    closeIconButton: {
+      padding: wp(1),
     },
     fullscreenModalMainTitleHeading: {
-      fontSize: 18,
+      fontSize: isTablet ? 20 : 18,
       fontWeight: "800",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: modalText,
     },
     fullscreenModalMainSubtitleCap: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.5,
+      fontSize: isTablet ? 12 : 11,
+      color: modalTextSecondary,
       marginTop: 2,
     },
     fullscreenModalFormScrollBody: {
-      padding: 16,
-      paddingBottom: 40,
-      gap: 14,
+      padding: wp(4),
+      paddingBottom: hp(5),
+      gap: hp(1.8),
     },
     formFieldLayoutRowStack: {
-      gap: 6,
+      gap: hp(0.6),
     },
     formInputGroupFieldNameLabel: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.7,
+      color: modalTextSecondary,
     },
     formFieldHelperInfoCaptionText: {
       fontSize: 10,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
+      color: modalTextSecondary,
       marginTop: -2,
     },
     formTextInputWidgetContainer: {
-      height: 38,
+      height: hp(4.8),
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
-      backgroundColor: surfaceAlphaColor,
+      borderColor: modalBorder,
+      borderRadius: wp(2),
+      paddingHorizontal: wp(3),
+      fontSize: isTablet ? 14 : 13,
+      color: modalText,
+      backgroundColor: inputBg,
     },
     formTextareaInputWidgetContainer: {
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 13,
-      color: uiTheme.panelColors.dashboardTextColor,
-      backgroundColor: surfaceAlphaColor,
+      borderColor: modalBorder,
+      borderRadius: wp(2),
+      padding: wp(2.5),
+      fontSize: isTablet ? 14 : 13,
+      color: modalText,
+      backgroundColor: inputBg,
+      minHeight: hp(10),
     },
     formPickerInlineTriggerElement: {
-      height: 38,
+      height: hp(4.8),
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 8,
+      borderColor: modalBorder,
+      borderRadius: wp(2),
       justifyContent: "center",
-      paddingHorizontal: 12,
-      backgroundColor: surfaceAlphaColor,
+      paddingHorizontal: wp(3),
+      backgroundColor: inputBg,
     },
     sectionalDividerHeaderLine: {
-      marginTop: 12,
-      paddingBottom: 4,
+      marginTop: hp(1.5),
+      paddingBottom: hp(0.5),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
     },
     sectionalDividerHeaderTitle: {
       fontSize: 11,
       fontWeight: "700",
       textTransform: "uppercase",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
+      color: modalTextSecondary,
       letterSpacing: 0.5,
     },
     inlineActionRowMiniButton: {
@@ -2150,39 +2212,39 @@ const getThemedStyles = (uiTheme: any) => {
     },
     dynamicRowBlockContainer: {
       flexDirection: "row",
-      gap: 8,
+      gap: wp(2),
       alignItems: "center",
     },
     formDualColumnGridInlineInputRow: {
       flexDirection: "row",
-      gap: 12,
+      gap: wp(3),
     },
     imageUploaderComponentFrame: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: wp(3),
     },
     uploadedImagePreviewCanvas: {
-      width: 50,
-      height: 50,
-      borderRadius: 8,
+      width: wp(12),
+      height: wp(12),
+      borderRadius: wp(2),
       position: "relative",
       borderWidth: 1,
-      borderColor: structuralBorderColor,
+      borderColor: modalBorder,
     },
     uploadedCoreImageElement: {
       width: "100%",
       height: "100%",
-      borderRadius: 8,
+      borderRadius: wp(2),
     },
     removeImageAbsoluteBadge: {
       position: "absolute",
       top: -4,
       right: -4,
       backgroundColor: "#ef4444",
-      width: 16,
-      height: 16,
-      borderRadius: 8,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2190,51 +2252,50 @@ const getThemedStyles = (uiTheme: any) => {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      height: 38,
-      paddingHorizontal: 12,
-      borderRadius: 8,
+      height: hp(4.8),
+      paddingHorizontal: wp(3),
+      borderRadius: wp(2),
       borderWidth: 1,
-      borderColor: "rgba(212,163,89,0.2)",
-      backgroundColor: surfaceAlphaColor,
-      gap: 6,
+      borderColor: "rgba(212,163,89,0.3)",
+      backgroundColor: inputBg,
+      gap: wp(1.5),
     },
     mediaActionUploadButtonText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "600",
       color: uiTheme.customColors.primary,
     },
     imagePickerOverlayContainer: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: "rgba(0,0,0,0.85)",
       justifyContent: "center",
       alignItems: "center",
-      paddingVertical: 24,
+      paddingVertical: hp(3),
     },
     imagePickerModalSurface: {
       width: "92%",
-      height: "82%",
-      backgroundColor: uiTheme.panelColors.dashboardCardBackground,
+      height: "85%",
+      backgroundColor: modalPanelBg,
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 12,
+      borderColor: modalBorder,
+      borderRadius: wp(3),
       overflow: "hidden",
     },
     imagePickerModalHeaderRowContainer: {
       flexDirection: "row",
-      padding: 14,
+      padding: wp(3.5),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
       alignItems: "flex-start",
     },
     imagePickerMainTitleHeading: {
-      fontSize: 15,
+      fontSize: isTablet ? 17 : 15,
       fontWeight: "800",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: modalText,
     },
     imagePickerMainSubtitleCap: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.5,
+      fontSize: isTablet ? 12 : 11,
+      color: modalTextSecondary,
       marginTop: 2,
     },
     imagePickerDualColumnWorkspaceRowLayout: {
@@ -2242,51 +2303,51 @@ const getThemedStyles = (uiTheme: any) => {
       flexDirection: "row",
     },
     imagePickerFolderSidebarLayout: {
-      width: 120,
+      width: wp(32),
       borderRightWidth: 1,
-      borderRightColor: structuralBorderColor,
-      backgroundColor: surfaceAlphaColor,
+      borderRightColor: modalBorder,
+      backgroundColor: inputBg,
     },
     imagePickerFolderNavigationRowAnchor: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      gap: 6,
+      paddingVertical: hp(1.2),
+      paddingHorizontal: wp(2.5),
+      gap: wp(1.5),
     },
     imagePickerFolderNavigationActiveAnchor: {
-      backgroundColor: "rgba(212,163,89,0.08)",
+      backgroundColor: "rgba(212,163,89,0.12)",
     },
     imagePickerFolderNavigationItemText: {
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
+      fontSize: isTablet ? 12 : 11,
+      color: modalText,
       flex: 1,
     },
     imagePickerCoreContentWorkspaceView: {
       flex: 1,
-      padding: 10,
+      padding: wp(2.5),
     },
     imagePickerWorkspaceFilterInputFrame: {
-      height: 34,
+      height: hp(4.2),
       position: "relative",
-      marginBottom: 10,
+      marginBottom: hp(1.2),
     },
     imagePickerWorkspaceSearchIconAbsolute: {
       position: "absolute",
-      left: 8,
-      top: 10,
+      left: wp(2),
+      top: hp(1.2),
       zIndex: 2,
     },
     imagePickerWorkspaceTextInputWidget: {
       height: "100%",
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 6,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
-      paddingLeft: 26,
-      paddingRight: 8,
-      fontSize: 11,
-      color: uiTheme.panelColors.dashboardTextColor,
+      borderColor: modalBorder,
+      borderRadius: wp(1.5),
+      backgroundColor: inputBg,
+      paddingLeft: wp(7),
+      paddingRight: wp(2),
+      fontSize: isTablet ? 12 : 11,
+      color: modalText,
     },
     imagePickerWorkspaceStatusCenterDeck: {
       flex: 1,
@@ -2294,22 +2355,21 @@ const getThemedStyles = (uiTheme: any) => {
       alignItems: "center",
     },
     imagePickerWorkspaceWarningEmptyStateText: {
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.5,
+      fontSize: isTablet ? 13 : 12,
+      color: modalTextSecondary,
     },
     imagePickerAssetMatrixGridDisplayLayout: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
-      paddingBottom: 16,
+      gap: wp(2),
+      paddingBottom: hp(2),
     },
     imagePickerGridAssetCardCellFrame: {
-      width: "31%",
+      width: isTablet ? "23%" : "30%",
       aspectRatio: 1,
       borderWidth: 2,
       borderColor: "transparent",
-      borderRadius: 8,
+      borderRadius: wp(2),
       position: "relative",
       overflow: "hidden",
     },
@@ -2319,7 +2379,7 @@ const getThemedStyles = (uiTheme: any) => {
     imagePickerAssetSelectionOverlayCheckBadge: {
       position: "absolute",
       inset: 0,
-      backgroundColor: "rgba(212,163,89,0.2)",
+      backgroundColor: "rgba(212,163,89,0.25)",
       justifyContent: "center",
       alignItems: "center",
     },
@@ -2328,7 +2388,7 @@ const getThemedStyles = (uiTheme: any) => {
       bottom: 0,
       left: 0,
       right: 0,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: "rgba(0,0,0,0.75)",
       paddingVertical: 2,
       paddingHorizontal: 4,
     },
@@ -2341,124 +2401,121 @@ const getThemedStyles = (uiTheme: any) => {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 16,
-      paddingVertical: 6,
+      gap: wp(4),
+      paddingVertical: hp(0.8),
       borderTopWidth: 1,
-      borderTopColor: structuralBorderColor,
+      borderTopColor: modalBorder,
     },
     imagePickerPaginationArrowInlineButton: {
-      padding: 4,
+      padding: wp(1),
     },
     imagePickerPaginationMetricStatusCounterLabelText: {
-      fontSize: 11,
+      fontSize: isTablet ? 12 : 11,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: modalText,
     },
     imagePickerModalFooterActionButtonBar: {
       flexDirection: "row",
       justifyContent: "flex-end",
-      padding: 10,
+      padding: wp(2.5),
       borderTopWidth: 1,
-      borderTopColor: structuralBorderColor,
-      gap: 8,
+      borderTopColor: modalBorder,
+      gap: wp(2),
     },
     viewSheetIdentityPlateRow: {
       flexDirection: "row",
-      gap: 14,
+      gap: wp(3.5),
       alignItems: "center",
-      paddingBottom: 14,
+      paddingBottom: hp(1.8),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
     },
     avatarFallbackWellLarge: {
-      width: 48,
-      height: 48,
-      borderRadius: 10,
-      backgroundColor: "#1e293b",
+      width: wp(12),
+      height: wp(12),
+      minWidth: 48,
+      minHeight: 48,
+      borderRadius: wp(2.5),
+      backgroundColor: isDark ? "#1e293b" : "#0f172a",
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
       borderWidth: 1,
-      borderColor: structuralBorderColor,
+      borderColor: modalBorder,
     },
     viewSheetPrimaryNameText: {
-      fontSize: 16,
+      fontSize: isTablet ? 18 : 16,
       fontWeight: "800",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: modalText,
     },
     viewSheetSubCodeText: {
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
+      fontSize: isTablet ? 13 : 12,
+      color: modalTextSecondary,
       marginTop: 1,
     },
     viewSheetRecordRowBlock: {
-      gap: 4,
-      marginTop: 4,
+      gap: hp(0.5),
+      marginTop: hp(0.5),
     },
     viewSheetRecordLabel: {
       fontSize: 11,
       fontWeight: "700",
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
+      color: modalTextSecondary,
       textTransform: "uppercase",
       letterSpacing: 0.5,
       marginBottom: 2,
     },
     viewSheetDescriptionTextWell: {
-      padding: 10,
-      borderRadius: 8,
-      backgroundColor: surfaceAlphaColor,
+      padding: wp(2.5),
+      borderRadius: wp(2),
+      backgroundColor: inputBg,
       borderWidth: 1,
-      borderColor: structuralBorderColor,
+      borderColor: modalBorder,
     },
     viewSheetDescriptionContentText: {
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
-      lineHeight: 16,
-      opacity: 0.8,
+      fontSize: isTablet ? 13 : 12,
+      color: modalText,
+      lineHeight: 18,
     },
     viewSheetDetailsGridContainer: {
-      gap: 6,
+      gap: hp(0.8),
     },
     viewSheetGridItemElement: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
+      gap: wp(2),
       paddingVertical: 2,
     },
     viewSheetGridItemValueText: {
-      fontSize: 12,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.8,
+      fontSize: isTablet ? 13 : 12,
+      color: modalText,
     },
     complianceDataMatrixGridContainer: {
       borderWidth: 1,
-      borderColor: structuralBorderColor,
-      borderRadius: 10,
+      borderColor: modalBorder,
+      borderRadius: wp(2.5),
       overflow: "hidden",
-      backgroundColor: surfaceAlphaColor,
+      backgroundColor: inputBg,
     },
     complianceDataMatrixGridCell: {
-      padding: 10,
+      padding: wp(2.5),
       borderBottomWidth: 1,
-      borderBottomColor: structuralBorderColor,
+      borderBottomColor: modalBorder,
     },
     complianceMatrixCellLabel: {
       fontSize: 9,
-      color: uiTheme.panelColors.dashboardTextColor,
-      opacity: 0.4,
+      color: modalTextSecondary,
       textTransform: "uppercase",
     },
     complianceMatrixCellValue: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "600",
-      color: uiTheme.panelColors.dashboardTextColor,
+      color: modalText,
       marginTop: 2,
     },
     complianceMatrixHighlightDueBannerCell: {
-      padding: 10,
-      backgroundColor: "rgba(212,163,89,0.05)",
+      padding: wp(2.5),
+      backgroundColor: "rgba(212,163,89,0.08)",
     },
     complianceHighlightDueLabel: {
       fontSize: 9,
@@ -2467,7 +2524,7 @@ const getThemedStyles = (uiTheme: any) => {
       textTransform: "uppercase",
     },
     complianceHighlightDueValue: {
-      fontSize: 13,
+      fontSize: isTablet ? 14 : 13,
       fontWeight: "800",
       color: uiTheme.customColors.primary,
       marginTop: 2,
@@ -2475,33 +2532,34 @@ const getThemedStyles = (uiTheme: any) => {
     fullscreenModalFooterButtonBar: {
       flexDirection: "row",
       justifyContent: "flex-end",
-      padding: 12,
+      padding: wp(3),
       borderTopWidth: 1,
-      borderTopColor: structuralBorderColor,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
-      gap: 10,
+      borderTopColor: modalBorder,
+      backgroundColor: modalPanelBg,
+      gap: wp(2.5),
     },
     formDismissActionModalButton: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 6,
+      paddingVertical: hp(1.2),
+      paddingHorizontal: wp(4),
+      borderRadius: wp(1.8),
       borderWidth: 1,
-      borderColor: structuralBorderColor,
+      borderColor: modalBorder,
       justifyContent: "center",
       alignItems: "center",
+      backgroundColor: inputBg,
     },
     formSubmitActionModalButton: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 6,
+      paddingVertical: hp(1.2),
+      paddingHorizontal: wp(4),
+      borderRadius: wp(1.8),
       justifyContent: "center",
       alignItems: "center",
-      minWidth: 100,
+      minWidth: wp(24),
     },
     formSubmitActionModalButtonText: {
-      fontSize: 12,
+      fontSize: isTablet ? 13 : 12,
       fontWeight: "700",
-      color: isLightTheme ? "#ffffff" : "#09090b",
+      color: isDark ? "#ffffff" : "#09090b",
     },
   });
 };
