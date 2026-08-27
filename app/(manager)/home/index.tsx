@@ -41,6 +41,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const CARD_WIDTH = (wp(100) - wp(8) - wp(2)) / 2.3;
 
@@ -73,7 +74,7 @@ interface CircularChartData {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: isDark ? "#090d13" : "#f8fafc",
     surface: isDark ? "#0d1117" : "#ffffff",

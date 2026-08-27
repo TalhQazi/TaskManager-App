@@ -341,6 +341,12 @@ export const apiFetch = async <T,>(
     !endpoint.includes("brand-kits") &&
     !endpoint.startsWith("/bugs") &&
     !endpoint.startsWith("bugs") &&
+    !endpoint.startsWith("/tasks") &&
+    !endpoint.startsWith("tasks") &&
+    !endpoint.startsWith("/projects") &&
+    !endpoint.startsWith("projects") &&
+    !endpoint.startsWith("/users") &&
+    !endpoint.startsWith("users") &&
     !endpoint.startsWith("/onboarding") &&
     !endpoint.startsWith("onboarding") &&
     !endpoint.startsWith("/employees") && 
@@ -398,34 +404,18 @@ export const deleteResource = async <T,>(resource: string, id: string | number):
 
 // ─── File Utilities ────────────────────────────────────────────────────────────
 
+import { toProxiedUrl as utilToProxiedUrl, toProxiedUrlUpload as utilToProxiedUrlUpload } from '@/util/toProxiedUrl';
+
+export const toProxiedUrl = (url: string | undefined): string => {
+  return utilToProxiedUrl(url) || "";
+};
+
+export const toProxiedUrlUpload = (url: string | undefined): string => {
+  return utilToProxiedUrlUpload(url) || "";
+};
+
 export async function _toProxiedUrl(url: string | undefined): Promise<string> {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-
-  const s3Pattern = /^https:\/\/([\w.-]+)\.s3\.([\w.-]+)\.amazonaws\.com\/(.+)$/;
-  const match = url.match(s3Pattern);
-
-  if (match) {
-    const key = match[3];
-    return `${API_BASE_URL}/s3-proxy/${key}`;
-  }
-
-  return url;
-}
-
-export function toProxiedUrl(url: string | undefined): string {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-
-  const s3Pattern = /^https:\/\/([\w.-]+)\.s3\.([\w.-]+)\.amazonaws\.com\/(.+)$/;
-  const match = url.match(s3Pattern);
-
-  if (match) {
-    const key = match[3];
-    return `${API_BASE_URL}/s3-proxy/${key}`;
-  }
-
-  return url;
+  return toProxiedUrl(url);
 }
 
 export const downloadViaUrl = async (url: string, fileName: string): Promise<void> => {

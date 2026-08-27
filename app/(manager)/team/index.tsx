@@ -44,6 +44,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { s } from "@/util/styles";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 import MilestoneBadge from "./MilestoneBadge";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Employee {
   id: string;
@@ -106,41 +107,7 @@ interface EmployeeApi {
  * Normalizes image paths and appends authenticated S3 proxy token
  */
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
-
-  if (rawPath.startsWith("data:") || rawPath.startsWith("file://") || rawPath.startsWith("content://")) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-
-  if (path.includes("token=")) return path;
-
-  if (path.startsWith("/uploads/")) {
-    path = path.replace("/uploads/", "/api/s3-proxy/");
-  } else if (path.startsWith("uploads/")) {
-    path = path.replace("uploads/", "/api/s3-proxy/");
-  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
-    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
-  }
-
-  if (!path.startsWith("http://") && !path.startsWith("https://")) {
-    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes("token=")) return proxied;
-  } catch (e) {
-    // Fall back to manual token attachment
-  }
-
-  if (activeToken) {
-    const separator = path.includes("?") ? "&" : "?";
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 function normalizeEmployee(e: EmployeeApi): Employee {
@@ -699,7 +666,7 @@ export default function Employees() {
   
   const { uiTheme } = useTheme();
 
-  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

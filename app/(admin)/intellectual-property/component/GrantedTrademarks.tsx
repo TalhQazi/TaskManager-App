@@ -18,9 +18,12 @@ import {
   ShieldCheck,
   X,
   ChevronDown,
+  Bell,
+  Calendar,
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Trademark {
   _id: string;
@@ -30,6 +33,10 @@ interface Trademark {
   applicationNumber: string;
   filingDate: string;
   registrationDate: string;
+  expirationDate?: string;
+  customExpirationDate?: string;
+  reminderDays?: number[];
+  reminderScheduleDays?: number[];
   status: string;
   class: string;
   description: string;
@@ -116,7 +123,7 @@ function MobileFormPicker({
 
 export function GrantedTrademarks() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
@@ -148,12 +155,14 @@ export function GrantedTrademarks() {
   const [filterSearch, setFilterSearch] = useState("");
   const [selectedTrademark, setSelectedTrademark] = useState<Trademark | null>(null);
 
-  const [formData, setFormData] = useState<Partial<Trademark>>({
+  const [formData, setFormData] = useState<Partial<Trademark> & { customExpiryDate?: string; reminderSchedule?: string }>({
     name: "",
     type: "granted",
     registrationNumber: "",
     applicationNumber: "",
     registrationDate: "",
+    customExpiryDate: "",
+    reminderSchedule: "180, 120, 90, 60, 30",
     status: "Registered",
     class: "",
     description: "",
@@ -184,6 +193,8 @@ export function GrantedTrademarks() {
       registrationNumber: "",
       applicationNumber: "",
       registrationDate: "",
+      customExpiryDate: "",
+      reminderSchedule: "180, 120, 90, 60, 30",
       status: "Registered",
       class: "",
       description: "",
@@ -191,6 +202,33 @@ export function GrantedTrademarks() {
     });
     setSelectedTrademark(null);
     setApiError(null);
+  };
+
+  const toggleReminderDay = (day: number) => {
+    const currentDays = (formData.reminderSchedule || "")
+      .split(",")
+      .map((d) => parseInt(d.trim(), 10))
+      .filter((d) => !isNaN(d) && d > 0);
+
+    let nextDays: number[];
+    if (currentDays.includes(day)) {
+      nextDays = currentDays.filter((d) => d !== day);
+    } else {
+      nextDays = [...currentDays, day].sort((a, b) => b - a);
+    }
+    setFormData({ ...formData, reminderSchedule: nextDays.join(", ") });
+  };
+
+  const handleEdit = (tm: Trademark) => {
+    setSelectedTrademark(tm);
+    const existingDays = tm.reminderDays || tm.reminderScheduleDays;
+    const reminderStr = Array.isArray(existingDays) ? existingDays.join(", ") : "180, 120, 90, 60, 30";
+    setFormData({
+      ...tm,
+      customExpiryDate: tm.customExpirationDate || tm.expirationDate || "",
+      reminderSchedule: reminderStr,
+    });
+    setIsEditDialogOpen(true);
   };
 
   const handleSave = async () => {
@@ -203,15 +241,30 @@ export function GrantedTrademarks() {
       setIsSubmitting(true);
       setApiError(null);
 
+      const parsedReminderDays = (formData.reminderSchedule || "")
+        .split(",")
+        .map((d) => parseInt(d.trim(), 10))
+        .filter((d) => !isNaN(d) && d > 0);
+
+      const reminderDays = parsedReminderDays.length > 0 ? parsedReminderDays : [180, 120, 90, 60, 30];
+
+      const payload = {
+        ...formData,
+        expirationDate: formData.customExpiryDate?.trim() || "",
+        customExpirationDate: formData.customExpiryDate?.trim() || "",
+        reminderDays,
+        reminderScheduleDays: reminderDays,
+      };
+
       if (selectedTrademark) {
         await apiFetch(`/api/trademarks/${selectedTrademark._id}`, {
           method: "PUT",
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
       } else {
         await apiFetch("/api/trademarks", {
           method: "POST",
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
       }
 
@@ -245,13 +298,6 @@ export function GrantedTrademarks() {
         },
       ]
     );
-  };
-
-  const handleEdit = (tm: Trademark) => {
-    setSelectedTrademark(tm);
-    setFormData(tm);
-    setApiError(null);
-    setIsEditDialogOpen(true);
   };
 
   const filteredTrademarks = useMemo(() => {
@@ -350,6 +396,28 @@ export function GrantedTrademarks() {
                     </Text>
                   </View>
 
+                  {(tm.customExpirationDate || tm.expirationDate) ? (
+                    <View style={styles.metaRowLabelValuePair}>
+                      <Text style={styles.metaKeyText}>Expiration / Renewal:</Text>
+                      <Text style={[styles.metaValueText, { color: colors.primary, fontWeight: "600" }]}>
+                        {new Date(tm.customExpirationDate || tm.expirationDate!).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {(tm.reminderDays || tm.reminderScheduleDays) && (
+                    <View style={styles.metaRowLabelValuePair}>
+                      <Text style={styles.metaKeyText}>Reminders:</Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, flex: 1, justifyContent: "flex-end" }}>
+                        {(tm.reminderDays || tm.reminderScheduleDays)?.map((d) => (
+                          <View key={d} style={{ backgroundColor: colors.filterBg || "#F3F4F6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.primary }}>{d}d</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
                   {tm.description ? (
                     <View style={styles.descDrawerBox}>
                       <Text style={styles.descBoxMicroTitle}>Scope Statement Description:</Text>
@@ -445,6 +513,57 @@ export function GrantedTrademarks() {
                   placeholderTextColor={colors.mutedText}
                   value={formData.registrationDate ? new Date(formData.registrationDate).toISOString().split("T")[0] : ""}
                   onChangeText={(val) => setFormData({ ...formData, registrationDate: val })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Custom Expiration / Renewal Date</Text>
+                <TextInput
+                  style={styles.formInputTextLine}
+                  placeholder="YYYY-MM-DD (e.g. 2035-10-12)"
+                  placeholderTextColor={colors.mutedText}
+                  value={formData.customExpiryDate || ""}
+                  onChangeText={(val) => setFormData({ ...formData, customExpiryDate: val })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <Bell size={14} color={colors.primary} />
+                  <Text style={styles.inputLabel}>Reminder Schedule (Days Before Expiry)</Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  {[30, 60, 90, 120, 180, 365].map((day) => {
+                    const active = (formData.reminderSchedule || "")
+                      .split(",")
+                      .map((d) => parseInt(d.trim(), 10))
+                      .includes(day);
+                    return (
+                      <TouchableOpacity
+                        key={day}
+                        onPress={() => toggleReminderDay(day)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 6,
+                          backgroundColor: active ? colors.primary : colors.inputBg,
+                          borderWidth: 1,
+                          borderColor: active ? colors.primary : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: active ? "#FFF" : colors.text }}>
+                          {active ? `✓ ${day}d` : `+ ${day}d`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={styles.formInputTextLine}
+                  placeholder="e.g., 180, 120, 90, 60, 30"
+                  placeholderTextColor={colors.mutedText}
+                  value={formData.reminderSchedule || ""}
+                  onChangeText={(val) => setFormData({ ...formData, reminderSchedule: val })}
                 />
               </View>
 

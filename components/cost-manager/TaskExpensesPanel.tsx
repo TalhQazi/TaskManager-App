@@ -129,7 +129,7 @@ export default function TaskExpensesPanel({ taskId }: TaskExpensesPanelProps) {
 
       {/* Ledger Rolling Context Subtitle Info Frame */}
       <Text style={styles.footerCaptionNoticeText}>
-        Managed in the project's Cost Manager — these expenses roll into project totals automatically.
+        Managed in the project&apos;s Cost Manager — these expenses roll into project totals automatically.
       </Text>
     </View>
   );

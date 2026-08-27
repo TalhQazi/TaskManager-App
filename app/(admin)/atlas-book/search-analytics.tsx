@@ -24,6 +24,7 @@ import {
   CreditCard,
   Box,
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface SearchResultItem {
   type: "Property" | "Tenant" | "Account" | "Transaction" | string;
@@ -359,7 +360,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 
 export default function SearchAnalytics() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

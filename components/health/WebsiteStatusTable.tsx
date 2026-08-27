@@ -19,6 +19,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface WebsiteItem {
   _id: string;
@@ -35,7 +36,7 @@ interface WebsitesResponse {
 
 export function WebsiteStatusTable() {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
 

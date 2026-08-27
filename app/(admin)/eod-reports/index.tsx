@@ -31,6 +31,7 @@ import {
 import { getAdminEODStatus, getAdminEODReports, apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
 import { Pagination } from "@/components/Pagination";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface EmployeeEODData {
   employeeId: string;
@@ -48,7 +49,7 @@ export default function AdminEODReports() {
   const router = useRouter();
   const { uiTheme } = useTheme();
 
-  const isDark = uiTheme.theme === "dark" || uiTheme.theme === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),

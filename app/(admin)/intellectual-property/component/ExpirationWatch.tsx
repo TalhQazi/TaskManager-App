@@ -10,12 +10,17 @@ import {
 import { AlertCircle, Clock, TrendingDown } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface ExpiringPatent {
   _id: string;
   patentName: string;
   status: string;
-  provisionalExpiration: string;
+  provisionalExpiration?: string;
+  expirationDate?: string;
+  customExpirationDate?: string;
+  reminderDays?: number[];
+  reminderScheduleDays?: number[];
   daysUntilExpiration: number;
   category?: string;
   applicationNumber?: string;
@@ -64,7 +69,7 @@ export function ExpirationWatch() {
   const [patents, setPatents] = useState<ExpiringPatent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
@@ -87,7 +92,20 @@ export function ExpirationWatch() {
     setIsLoading(true);
     try {
       const res = await apiFetch<{ items: ExpiringPatent[] }>("/api/patents/expiration-watch");
-      setPatents(res.items || []);
+      const items = (res.items || []).map((p) => {
+        const expStr = p.customExpirationDate || p.expirationDate || p.provisionalExpiration;
+        let days = p.daysUntilExpiration;
+        if ((days === undefined || days === null) && expStr) {
+          const expDate = new Date(expStr);
+          const today = new Date();
+          days = Math.max(0, Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+        }
+        return {
+          ...p,
+          daysUntilExpiration: typeof days === "number" ? days : 0,
+        };
+      });
+      setPatents(items);
     } catch (error) {
       console.error(error);
     } finally {
@@ -127,7 +145,7 @@ export function ExpirationWatch() {
       <View style={styles.headerBlock}>
         <Text style={styles.headerTitle}>Expiration Watch</Text>
         <Text style={styles.headerSubtitle}>
-          Monitor patent expirations with 180, 120, 90, 60, and 30-day alerts
+          Monitor intellectual property expirations with customizable reminder schedules (30, 60, 90, 120, 180 days)
         </Text>
       </View>
 
@@ -176,7 +194,9 @@ export function ExpirationWatch() {
                   <View style={styles.urgencyGroupBodyList}>
                     {group.items.map((patent) => {
                       const theme = getUrgencyTheme(group.key, isDark);
-                      const expirationDate = new Date(patent.provisionalExpiration);
+                      const expRaw = patent.customExpirationDate || patent.expirationDate || patent.provisionalExpiration;
+                      const expirationDate = expRaw ? new Date(expRaw) : null;
+                      const reminderList = patent.reminderDays || patent.reminderScheduleDays;
 
                       return (
                         <View
@@ -201,6 +221,17 @@ export function ExpirationWatch() {
                                   </Text>
                                 )}
                               </View>
+
+                              {reminderList && reminderList.length > 0 && (
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
+                                  <Text style={{ fontSize: 10, color: colors.mutedText, fontWeight: "600" }}>Alerts:</Text>
+                                  {reminderList.map((d) => (
+                                    <View key={d} style={{ backgroundColor: colors.cardBg, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, borderWidth: 0.5, borderColor: colors.border }}>
+                                      <Text style={{ fontSize: 10, color: colors.primary, fontWeight: "700" }}>{d}d</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
                             </View>
 
                             <View style={styles.patentItemMetaRight}>
@@ -211,7 +242,7 @@ export function ExpirationWatch() {
                                 </Text>
                               </View>
                               <Text style={styles.dateLabelStringText}>
-                                {expirationDate.toLocaleDateString()}
+                                {expirationDate ? expirationDate.toLocaleDateString() : "—"}
                               </Text>
                             </View>
                           </View>

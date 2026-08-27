@@ -1,4 +1,5 @@
 export const THEME_DEFAULTS: Record<string, string> = {
+  "professional-light": "#111827",
   "dark-minimal": "#f8fafc",
   "neon-tech": "#e0f7fa",
   "metallic-elite": "#d4af37",
@@ -21,6 +22,12 @@ export const THEME_PRESETS: Record<string, {
   sidebarText: string;
   glowIntensity: number;
 }> = {
+  "professional-light": {
+    primary: "#2563eb", secondary: "#3b82f6", accent: "#7c3aed",
+    headerBg: "#ffffff", sidebarBg: "#ffffff", dashboardBg: "#f6f8fa",
+    cardBg: "#ffffff", sidebarIcon: "#2563eb", dashboardIcon: "#2563eb", sidebarText: "#111827",
+    glowIntensity: 20,
+  },
   "dark-minimal": {
     primary: "#133767", secondary: "#3b82f6", accent: "#8b5cf6",
     headerBg: "#133767", sidebarBg: "#020617", dashboardBg: "#0f172a",

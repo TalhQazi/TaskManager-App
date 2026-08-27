@@ -4,6 +4,7 @@ import Svg, { Circle } from "react-native-svg";
 import { HardDrive, MemoryStick, Server } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface ResourceUsage {
   total: number;
@@ -137,7 +138,7 @@ function UsageRing({
 
 export function SystemResourcePies() {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 

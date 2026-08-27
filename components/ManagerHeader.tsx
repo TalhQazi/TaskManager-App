@@ -39,6 +39,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/services/api";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface HeaderSettings {
   _id?: string;
@@ -92,44 +93,7 @@ interface EmployeeMeResponse {
  * Bulletproof Image URL converter
  */
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
-
-  if (
-    rawPath.startsWith("data:") ||
-    rawPath.startsWith("file://") ||
-    rawPath.startsWith("content://")
-  ) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-  if (path.includes("token=")) return path;
-
-  if (path.startsWith("/uploads/")) {
-    path = path.replace("/uploads/", "/api/s3-proxy/");
-  } else if (path.startsWith("uploads/")) {
-    path = path.replace("uploads/", "/api/s3-proxy/");
-  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
-    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
-  }
-
-  if (!path.startsWith("http://") && !path.startsWith("https://")) {
-    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes("token=")) {
-      return proxied;
-    }
-  } catch (e) {}
-
-  if (activeToken) {
-    const separator = path.includes("?") ? "&" : "?";
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 const getVerticalPositionValue = (posStr: string | undefined): number => {
@@ -222,7 +186,7 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
   const [assetPage, setAssetPage] = useState(1);
   const [totalAssetPages, setTotalAssetPages] = useState(1);
 
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const isMetallic = uiTheme?.theme === "metallic-elite";
 
   useEffect(() => {
@@ -416,7 +380,15 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
     .toUpperCase();
 
   // Background Image Resolution
-  const rawBgImage = headerSettings?.imageConfig?.url || headerSettings?.imageConfig?.dataUrl || null;
+  const rawBgImage =
+    headerSettings?.imageConfig?.url ||
+    headerSettings?.imageConfig?.dataUrl ||
+    (headerSettings as any)?.imageUrl ||
+    (headerSettings as any)?.backgroundUrl ||
+    (headerSettings as any)?.coverUrl ||
+    (headerSettings as any)?.coverPhoto ||
+    (headerSettings as any)?.coverImage ||
+    null;
   const imageUri = useMemo(() => {
     return getDisplayImageUrl(rawBgImage, jwtToken);
   }, [rawBgImage, jwtToken]);
@@ -425,14 +397,28 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
     return imageUri ? { uri: imageUri } : null;
   }, [imageUri]);
 
-  const hasImageBackground = headerSettings?.backgroundType === "image" && !!imageUri && !bgLoadError;
+  const hasImageBackground =
+    (headerSettings?.backgroundType === "image" || !!rawBgImage) && !!imageUri && !bgLoadError;
 
   // Avatar Image Resolution
   const avatarRaw =
     userSettings?.item?.avatarDataUrl ||
     userSettings?.item?.avatarUrl ||
+    userSettings?.item?.avatar ||
+    userSettings?.item?.photo ||
+    userSettings?.item?.profilePicture ||
+    userSettings?.avatarDataUrl ||
+    userSettings?.avatarUrl ||
+    userSettings?.avatar ||
+    userSettings?.photo ||
+    userSettings?.profilePicture ||
     employeeStatus?.avatarUrl ||
     user?.avatarUrl ||
+    (user as any)?.avatarDataUrl ||
+    (user as any)?.avatar ||
+    (user as any)?.photo ||
+    (user as any)?.profilePicture ||
+    (user as any)?.image ||
     null;
 
   const resolvedAvatarUri = useMemo(() => {

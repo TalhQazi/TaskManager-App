@@ -3,8 +3,7 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import Colors from '@/constants/colors';
 import { apiRequest } from '@/services/api';
 
-// optional: keep same logic if you already have it in web
-const toProxiedUrl = (url?: string) => url;
+import { toProxiedUrl } from '@/util/toProxiedUrl';
 
 export function ProjectLogoImg({
   projectId,
@@ -29,7 +28,7 @@ export function ProjectLogoImg({
     setSrc(undefined);
 
     apiRequest<{ logo: { url: string } }>(
-      `/api/projects/${encodeURIComponent(projectId)}/logo`
+      `/projects/${encodeURIComponent(projectId)}/logo`
     )
       .then((res) => {
         if (!cancelled) {

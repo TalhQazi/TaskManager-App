@@ -199,24 +199,25 @@ export default function EmployeeProfile() {
     }
   }, [profile]);
 
-  const avatarUrl = useMemo(() => {
-    let avatarRaw = settingsAvatar || profile?.avatarUrl || null;
-    if (!avatarRaw) return null;
-    
-    if (avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")) {
-      return avatarRaw;
-    }
-    if (avatarRaw.startsWith("/uploads/avatars/")) {
-      avatarRaw = avatarRaw.replace("/uploads/avatars/", "/api/s3-proxy/avatars/");
-    }
-    
-    return `https://task.se7eninc.com${avatarRaw}`;
-  }, [settingsAvatar, profile?.avatarUrl]);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   const resolvedAvatarUrl = useMemo(() => {
-    if (!profile?.avatarUrl) return null;
-    return tokenReady ? toProxiedUrlUpload(profile.avatarUrl) : null;
-  }, [profile?.avatarUrl, tokenReady]);
+    const raw =
+      settingsAvatar ||
+      profile?.avatarUrl ||
+      (profile as any)?.avatar ||
+      (profile as any)?.avatarDataUrl ||
+      (profile as any)?.photo ||
+      (profile as any)?.profilePicture ||
+      (profile as any)?.profileImage ||
+      (profile as any)?.image;
+    if (!raw) return null;
+    return toProxiedUrl(raw) || null;
+  }, [settingsAvatar, profile]);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [resolvedAvatarUrl]);
 
   const loadVideoHistoryData = async () => {
     if (!profile?.id) return;
@@ -852,8 +853,12 @@ export default function EmployeeProfile() {
         <View style={s([styles.card, { backgroundColor: cardBg, borderColor: border }])}>
           <View style={s(styles.headerLayout)}>
             <View style={s(styles.avatarWrapper)}>
-              {resolvedAvatarUrl ? (
-                <Image source={{ uri: resolvedAvatarUrl }} style={s([styles.avatarImage, { borderColor: border }])} />
+              {resolvedAvatarUrl && !avatarLoadError ? (
+                <Image 
+                  source={{ uri: resolvedAvatarUrl }} 
+                  style={s([styles.avatarImage, { borderColor: border }])} 
+                  onError={() => setAvatarLoadError(true)}
+                />
               ) : (
                 <View style={s([styles.avatarFallback, { backgroundColor: primaryColor }])}>
                   <Text style={s(styles.avatarFallbackText)}>{initials}</Text>

@@ -56,6 +56,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { apiRequest } from '@/services/api';
 import { s } from '@/util/styles';
 import { toProxiedUrl, initToken } from '@/util/toProxiedUrl';
+import { isDarkTheme } from "@/constants/design/presets";
 
 const SIDEBAR_WIDTH = 270;
 
@@ -80,47 +81,9 @@ interface EmployeeMeResponse {
 
 /**
  * Bulletproof Image URL Converter
- * Converts `/uploads/xxx.png` -> `https://task.se7eninc.com/api/s3-proxy/xxx.png?token=...`
  */
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== 'string' || !rawPath.trim()) return null;
-
-  if (rawPath.startsWith('data:') || rawPath.startsWith('file://') || rawPath.startsWith('content://')) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-
-  if (path.includes('token=')) return path;
-
-  // Map /uploads/ or uploads/ -> /api/s3-proxy/
-  if (path.startsWith('/uploads/')) {
-    path = path.replace('/uploads/', '/api/s3-proxy/');
-  } else if (path.startsWith('uploads/')) {
-    path = path.replace('uploads/', '/api/s3-proxy/');
-  } else if (!path.startsWith('/api/s3-proxy/') && !path.startsWith('http')) {
-    path = `/api/s3-proxy/${path.replace(/^\//, '')}`;
-  }
-
-  if (!path.startsWith('http://') && !path.startsWith('https://')) {
-    path = `https://task.se7eninc.com${path.startsWith('/') ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes('token=')) {
-      return proxied;
-    }
-  } catch (e) {
-    // Fall back to manual token attachment
-  }
-
-  if (activeToken) {
-    const separator = path.includes('?') ? '&' : '?';
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 const baseItems: NavItem[] = [
@@ -170,7 +133,7 @@ const baseItems: NavItem[] = [
 ];
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== 'crystal-white';
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? '#133767' : '#ffffff'),
     cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? '#0f2d55' : '#f1f5f9'),
@@ -473,17 +436,28 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
         return null;
       }
     },
-    enabled: isOpen,
   });
 
   // Resolve raw avatar path across all endpoints
   const rawAvatarPath = useMemo(() => {
     return (
+      userSettings?.item?.avatarDataUrl ||
+      userSettings?.item?.avatarUrl ||
+      userSettings?.item?.avatar ||
+      userSettings?.item?.photo ||
+      userSettings?.item?.profilePicture ||
       userSettings?.avatarDataUrl ||
       userSettings?.avatarUrl ||
+      userSettings?.avatar ||
+      userSettings?.photo ||
+      userSettings?.profilePicture ||
       employeeStatus?.avatarUrl ||
-      (user as any)?.avatarUrl ||
+      user?.avatarUrl ||
       (user as any)?.avatarDataUrl ||
+      (user as any)?.avatar ||
+      (user as any)?.photo ||
+      (user as any)?.profilePicture ||
+      (user as any)?.image ||
       null
     );
   }, [userSettings, employeeStatus, user]);

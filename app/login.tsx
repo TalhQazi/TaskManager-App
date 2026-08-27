@@ -438,6 +438,9 @@ const styles = StyleSheet.create({
   topSection: {
     alignItems: 'center',
     marginBottom: 40,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   logoContainer: {
     marginBottom: 20,
@@ -475,6 +478,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 30,
     elevation: 12,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   formGradient: {
     padding: 28,
@@ -615,6 +621,9 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     marginTop: 32,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   footerText: {
     color: 'rgba(255, 255, 255, 0.4)',

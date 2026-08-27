@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, CheckCircle, XCircle, ChevronDown } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiRequest } from '@/services/api';
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface TaskPermission {
   id: string;
@@ -38,7 +39,7 @@ export default function TaskPermissions() {
   const isMetallic = uiTheme?.theme === 'metallic-elite';
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme?.theme as string) === 'dark' || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? '#080a0f' : '#f8fafc'),
       cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? '#0f1117' : '#ffffff'),

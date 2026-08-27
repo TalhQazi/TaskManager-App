@@ -21,7 +21,23 @@ export function getApiBaseUrl(): string {
 
 async function getAuthToken(): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem('auth_token');
+    const keys = ['auth_token', 'token', 'jwt', 'user_token'];
+    for (const key of keys) {
+      const val = await AsyncStorage.getItem(key);
+      if (val && typeof val === 'string' && val.trim().length > 0) {
+        return val.trim();
+      }
+    }
+    const empAuth = await AsyncStorage.getItem('employee_auth');
+    if (empAuth) {
+      try {
+        const parsed = JSON.parse(empAuth);
+        if (parsed?.token && typeof parsed.token === 'string') {
+          return parsed.token.trim();
+        }
+      } catch {}
+    }
+    return null;
   } catch {
     return null;
   }
@@ -48,7 +64,17 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE_URL}${endpoint}`;
+  let cleanEndpoint = endpoint;
+  if (cleanEndpoint.startsWith('/api/')) {
+    cleanEndpoint = cleanEndpoint.replace(/^\/api/, '');
+  } else if (cleanEndpoint.startsWith('api/')) {
+    cleanEndpoint = cleanEndpoint.replace(/^api\/?/, '');
+  }
+  if (!cleanEndpoint.startsWith('/')) {
+    cleanEndpoint = '/' + cleanEndpoint;
+  }
+
+  const url = `${API_BASE_URL}${cleanEndpoint}`;
   console.log(`[API] ${options.method || 'GET'} ${url}`);
 
   try {

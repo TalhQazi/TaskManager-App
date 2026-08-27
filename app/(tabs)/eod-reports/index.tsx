@@ -30,6 +30,7 @@ import {
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface EODComment {
   authorName: string;
@@ -581,7 +582,7 @@ function formatLocalClock(timeStr?: string | null, isoAt?: string | null): strin
 
 export default function EmployeeEODReports() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

@@ -16,6 +16,7 @@ import * as Sharing from "expo-sharing";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface TimeEntry {
   id: string;
@@ -74,7 +75,7 @@ function getMonthName(date: Date): string {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
     panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),

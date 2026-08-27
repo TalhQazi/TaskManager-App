@@ -5,6 +5,7 @@ import { Activity, ArrowUpRight, Wifi, WifiOff } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/services/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface WipSummary {
   clockedIn: number;
@@ -17,10 +18,7 @@ export function WipDashboardWidget({ className }: { className?: string }) {
   const router = useRouter();
   const { uiTheme } = useTheme() as any;
 
-  const isDark =
-    uiTheme?.theme === "dark" ||
-    uiTheme?.theme === "metallic-elite" ||
-    uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(
     () => ({

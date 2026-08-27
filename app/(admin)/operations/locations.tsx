@@ -39,6 +39,7 @@ import { createResource, listResource, updateResource, apiFetch } from "@/lib/ad
 import { getApiBaseUrl } from "@/services/api";
 import Colors from "@/constants/colors";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const LOCATION_TYPES = [
   "Property",
@@ -260,7 +261,7 @@ function createStyles(colors: ThemeColors) {
 
 export default function Locations() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
   

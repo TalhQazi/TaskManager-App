@@ -39,7 +39,12 @@ export async function employeeApiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL_EMP}${endpoint}`;
+  const base = (API_BASE_URL_EMP || "https://task.se7eninc.com").replace(/\/api\/?$/, "");
+  let cleanEndpoint = endpoint;
+  if (!cleanEndpoint.startsWith("/")) cleanEndpoint = "/" + cleanEndpoint;
+  if (!cleanEndpoint.startsWith("/api/")) cleanEndpoint = "/api" + cleanEndpoint;
+  const url = `${base}${cleanEndpoint}`;
+
   const isFormData = options.body instanceof FormData;
 
   const headers: Record<string, string> = {
@@ -60,9 +65,13 @@ export async function employeeApiFetch<T>(
   }
 
   if (!headers["Authorization"]) {
-    const token = await AsyncStorage.getItem("token");
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    const keys = ["auth_token", "token", "jwt", "user_token"];
+    for (const key of keys) {
+      const val = await AsyncStorage.getItem(key);
+      if (val && typeof val === "string" && val.trim().length > 0) {
+        headers["Authorization"] = `Bearer ${val.trim()}`;
+        break;
+      }
     }
   }
 
@@ -115,29 +124,10 @@ export async function deleteLeaveRequest(id: string) {
   });
 }
 
+import { toProxiedUrl as utilToProxiedUrl } from "@/util/toProxiedUrl";
+
 export async function toProxiedUrl(url: string | undefined): Promise<string> {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-
-  const s3Pattern = /^https:\/\/([\w.-]+)\.s3\.([\w.-]+)\.amazonaws\.com\/(.+)$/;
-  const match = url.match(s3Pattern);
-
-  if (match) {
-    const key = match[3];
-    let token = "";
-    const authRaw = await AsyncStorage.getItem("employee_auth");
-    if (authRaw) {
-      try {
-        const parsed = JSON.parse(authRaw);
-        token = parsed.token || "";
-      } catch (e) {
-        void e;
-      }
-    }
-    return `${API_BASE_URL_EMP}/s3-proxy/${key}${token ? `?token=${token}` : ""}`;
-  }
-
-  return url;
+  return utilToProxiedUrl(url) || "";
 }
 
 export async function employeeLogin(username: string, password: string) {

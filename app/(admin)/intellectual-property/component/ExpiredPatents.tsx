@@ -20,6 +20,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface FiledPatent {
   _id: string;
@@ -28,10 +29,14 @@ interface FiledPatent {
   filingType: "Provisional" | "Non-Provisional" | "International";
   filingDate: string;
   applicationNumber: string;
-  provisionalExpiration: string;
+  provisionalExpiration?: string;
+  expirationDate?: string;
+  customExpirationDate?: string;
+  reminderDays?: number[];
+  reminderScheduleDays?: number[];
   status: "Filed" | "Issued" | "Expired" | "Abandoned";
   notes: string;
-  attachments: string[];
+  attachments?: string[];
   createdAt: string;
 }
 
@@ -116,7 +121,7 @@ function MobileFormPicker({
 
 export function ExpiredPatents() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
@@ -405,8 +410,8 @@ export function ExpiredPatents() {
                       <View style={styles.metaRowLabelValuePair}>
                         <Text style={[styles.metaKeyText, { fontWeight: "600" }]}>Expiration Timeline:</Text>
                         <Text style={[styles.metaValueText, styles.alertExpirationHighlightText]}>
-                          {patent.provisionalExpiration
-                            ? new Date(patent.provisionalExpiration).toLocaleDateString()
+                          {patent.customExpirationDate || patent.expirationDate || patent.provisionalExpiration
+                            ? new Date(patent.customExpirationDate || patent.expirationDate || patent.provisionalExpiration!).toLocaleDateString()
                             : "—"}
                         </Text>
                       </View>

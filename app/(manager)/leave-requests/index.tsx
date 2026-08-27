@@ -28,6 +28,7 @@ import {
   X,
   ShieldCheck
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type LeaveStatus = "pending" | "approved" | "rejected";
 
@@ -494,7 +495,7 @@ export default function ManagerLeaveRequests() {
   const hp = useMemo(() => (p: number) => (height * p) / 100, [height]);
 
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors, wp, hp), [colors, wp, hp]);
 

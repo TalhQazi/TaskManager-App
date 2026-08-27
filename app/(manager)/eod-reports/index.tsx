@@ -29,6 +29,7 @@ import {
 import { getEODReports, getEODStatus } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface EODReport {
   id: string;
@@ -552,7 +553,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 
 export default function ManagerEODReports() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

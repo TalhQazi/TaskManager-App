@@ -37,6 +37,7 @@ import {
 
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface TimeEntry {
   id: string;
@@ -216,7 +217,7 @@ function normalizeTimeEntry(e: TimeEntryApi): TimeEntry {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: isDark ? "#090d13" : "#f8fafc",
     surface: isDark ? "#0d1117" : "#ffffff",

@@ -32,6 +32,7 @@ import * as Sharing from "expo-sharing";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const fileSystemReference = FileSystem as any;
 const documentDirectoryPath = fileSystemReference.documentDirectory || "";
@@ -330,7 +331,7 @@ export default function BreakTracking() {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.exportGradientBtn} onPress={exportToCSV}>
-            <Download size={14} color={uiTheme.theme.includes("crystal") ? "#ffffff" : "#09090b"} style={{ marginRight: 4 }} />
+            <Download size={14} color={uiTheme?.theme?.includes("crystal") ? "#ffffff" : "#09090b"} style={{ marginRight: 4 }} />
             <Text style={styles.exportText}>Export Report</Text>
           </TouchableOpacity>
         </View>
@@ -613,14 +614,14 @@ export default function BreakTracking() {
 
 // Dynamic Pure Theme Engine Sheet Mapping Definitions
 const getThemedStyles = (uiTheme: any) => {
-  const isLightTheme = uiTheme.theme.includes("crystal") || uiTheme.panelColors.dashboardTextColor === "#000000";
+  const isLightTheme = !isDarkTheme(uiTheme?.theme) || uiTheme?.panelColors?.dashboardTextColor === "#000000";
   const borderOpacityColor = isLightTheme ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)";
   const surfaceAlphaColor = isLightTheme ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)";
 
   return StyleSheet.create({
     rootContainer: {
       flex: 1,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
+      backgroundColor: uiTheme?.panelColors?.dashboardBackground || "#09090b",
     },
     centerDeck: {
       flex: 1,

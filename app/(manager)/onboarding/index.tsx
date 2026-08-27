@@ -31,6 +31,7 @@ import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface OnboardingItem {
   id: string;
@@ -74,40 +75,7 @@ function docDone(s?: string) {
 }
 
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
-
-  if (rawPath.startsWith("data:") || rawPath.startsWith("file://") || rawPath.startsWith("content://")) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-  if (path.includes("token=")) return path;
-
-  if (path.startsWith("/uploads/")) {
-    path = path.replace("/uploads/", "/api/s3-proxy/");
-  } else if (path.startsWith("uploads/")) {
-    path = path.replace("uploads/", "/api/s3-proxy/");
-  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
-    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
-  }
-
-  if (!path.startsWith("http://") && !path.startsWith("https://")) {
-    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes("token=")) return proxied;
-  } catch (e) {
-    /* Fallback */
-  }
-
-  if (activeToken) {
-    const separator = path.includes("?") ? "&" : "?";
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 function normalizeItem(i: OnboardingApiItem): OnboardingItem {
@@ -197,7 +165,7 @@ export default function OnboardingMonitoring() {
   const [imageErrorMap, setImageErrorMap] = useState<Record<string, boolean>>({});
 
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors, isTablet), [colors, isTablet]);

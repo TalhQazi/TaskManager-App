@@ -32,8 +32,10 @@ import {
   File,
   X,
 } from "lucide-react-native";
-import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
+import { apiFetch } from "@/lib/admin/apiClient";
+import { toProxiedUrl } from "@/util/toProxiedUrl";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -92,6 +94,29 @@ function flattenFolders(tree: FolderNode[], out: FolderNode[] = []): FolderNode[
   return out;
 }
 
+function isImageFile(mimeType?: string, fileName?: string, url?: string): boolean {
+  if (mimeType && mimeType.startsWith("image/")) return true;
+  if (mimeType && (mimeType.startsWith("video/") || mimeType === "application/pdf")) return false;
+  const target = (fileName || url || "").toLowerCase();
+  return /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(\?.*)?$/i.test(target);
+}
+
+function getAssetImageUrl(asset: Asset): string {
+  return (
+    asset.attachment?.url ||
+    asset.urlPreview ||
+    asset.urlThumbnail ||
+    (asset as any)?.previewUrl ||
+    (asset as any)?.thumbnailUrl ||
+    (asset as any)?.imageUrl ||
+    (asset as any)?.url ||
+    (asset as any)?.path ||
+    (asset as any)?.filePath ||
+    (asset as any)?.s3Url ||
+    ""
+  );
+}
+
 function formatBytes(bytes: number | undefined) {
   const b = Number(bytes || 0);
   if (!b) return "0 B";
@@ -109,7 +134,7 @@ export default function AssetLibrary({
   const queryClient = useQueryClient();
   const { uiTheme } = useTheme();
 
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
@@ -155,15 +180,16 @@ export default function AssetLibrary({
   const foldersQuery = useQuery({
     queryKey: ["company-information-images", "folders", moduleName],
     queryFn: async () => {
-      const res = await apiFetch<{ items: FolderNode[] }>(`/asset-library/folders?module=${moduleName}`);
-      return res.items || [];
+      const res = await apiFetch<any>(`/asset-library/folders?module=${moduleName}`);
+      return res?.items || res?.data?.items || res?.data || (Array.isArray(res) ? res : []);
     },
   });
 
   const globalStatsQuery = useQuery({
     queryKey: ["company-information-images", "stats", moduleName],
     queryFn: async () => {
-      return await apiFetch<{ totalAssets: number }>(`/asset-library/stats?module=${moduleName}`);
+      const res = await apiFetch<any>(`/asset-library/stats?module=${moduleName}`);
+      return { totalAssets: res?.totalAssets ?? res?.total ?? res?.data?.totalAssets ?? 0 };
     },
   });
 
@@ -179,7 +205,17 @@ export default function AssetLibrary({
       if (search.trim()) queryParts.push(`q=${encodeURIComponent(search.trim())}`);
       if (sort) queryParts.push(`sort=${encodeURIComponent(sort)}`);
       
-      return apiFetch<Paginated<Asset>>(`/asset-library/assets?${queryParts.join("&")}`);
+      const res = await apiFetch<any>(`/asset-library/assets?${queryParts.join("&")}`);
+      const rawItems: Asset[] = res?.items || res?.data?.items || res?.data || res?.assets || (Array.isArray(res) ? res : []);
+      const total = res?.total || res?.totalItems || res?.data?.total || rawItems.length;
+      const totalPages = res?.totalPages || res?.data?.totalPages || Math.max(1, Math.ceil(total / limit));
+      return {
+        items: rawItems,
+        total,
+        totalPages,
+        page,
+        limit,
+      };
     },
     enabled: !foldersQuery.isLoading,
   });
@@ -462,13 +498,14 @@ export default function AssetLibrary({
               numColumns={2}
               columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: 12 }}
               renderItem={({ item }) => {
-                const url = item.urlThumbnail || item.attachment?.url || "";
-                const isImage = (item.mimeType || item.attachment?.mimeType || "").startsWith("image/");
+                const rawUrl = getAssetImageUrl(item);
+                const isImage = isImageFile(item.mimeType || item.attachment?.mimeType, item.title || item.originalFilename || item.attachment?.fileName, rawUrl);
+                const proxiedUrl = rawUrl ? (toProxiedUrl(rawUrl) || rawUrl) : "";
                 return (
                   <TouchableOpacity style={styles.assetCard} onPress={() => setPreview(item)}>
                     <View style={styles.assetPreviewWrapper}>
-                      {isImage && url ? (
-                        <Image source={{ uri: toProxiedUrl(url) || url }} style={styles.assetImage} />
+                      {isImage && proxiedUrl ? (
+                        <Image source={{ uri: proxiedUrl }} style={styles.assetImage} />
                       ) : (
                         <FileText size={40} color={colors.mutedText} />
                       )}
@@ -544,18 +581,26 @@ export default function AssetLibrary({
             {preview && (
               <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
                 <View style={styles.previewVisualContainer}>
-                  {(preview.mimeType || preview.attachment?.mimeType || "").startsWith("image/") ? (
-                    <Image
-                      source={{ uri: toProxiedUrl(preview.urlPreview || preview.attachment?.url || "") }}
-                      style={styles.previewImageElement}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    <View style={styles.fallbackIconFrame}>
-                      <File size={64} color={colors.mutedText} />
-                      <Text style={{ marginTop: 8, color: colors.mutedText }}>Document Preview Limited</Text>
-                    </View>
-                  )}
+                  {(() => {
+                    const rawPreviewUrl = getAssetImageUrl(preview);
+                    const isImage = isImageFile(preview.mimeType || preview.attachment?.mimeType, preview.title || preview.originalFilename || preview.attachment?.fileName, rawPreviewUrl);
+                    const proxiedPreviewUrl = rawPreviewUrl ? (toProxiedUrl(rawPreviewUrl) || rawPreviewUrl) : "";
+                    if (isImage && proxiedPreviewUrl) {
+                      return (
+                        <Image
+                          source={{ uri: proxiedPreviewUrl }}
+                          style={styles.previewImageElement}
+                          resizeMode="contain"
+                        />
+                      );
+                    }
+                    return (
+                      <View style={styles.fallbackIconFrame}>
+                        <File size={64} color={colors.mutedText} />
+                        <Text style={{ marginTop: 8, color: colors.mutedText }}>Document Preview Limited</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <View style={styles.previewActionToolbar}>

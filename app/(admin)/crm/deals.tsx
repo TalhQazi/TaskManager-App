@@ -32,6 +32,7 @@ import {
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { apiRequest } from "../../../services/api";
+import { isDarkTheme } from "@/constants/design/presets";
 
 export interface CRMDeal {
   id: string;
@@ -169,7 +170,7 @@ export default function CRMDeals() {
   const isMetallic = uiTheme?.theme === "metallic-elite";
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme?.theme as string) === "dark" || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#080b10" : "#f8fafc"),
       cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f131a" : "#ffffff"),

@@ -18,6 +18,7 @@ import {
   Square,
   AlertCircle,
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { width } = Dimensions.get("window");
 
@@ -113,7 +114,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 const CommandCenter: React.FC = () => {
   const { timeframe, activeEntity } = useAtlasBooks();
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

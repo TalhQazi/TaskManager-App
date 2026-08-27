@@ -20,6 +20,7 @@ import { apiFetch } from "@/lib/admin/apiClient";
 import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 /* ── Interfaces ──────────────────────────────────────────────────── */
 interface Employee {
@@ -667,7 +668,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 
 export default function ItineraryBuilder() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

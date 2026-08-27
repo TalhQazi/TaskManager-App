@@ -19,12 +19,13 @@ import { FiledTrademarks } from "./component/FiledTrademarks";
 import { GrantedTrademarks } from "./component/GrantedTrademarks";
 import { ExpiredPatents } from "./component/ExpiredPatents";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 export default function IntellectualProperty() {
   const { uiTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<string>("filed-patents");
 
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),

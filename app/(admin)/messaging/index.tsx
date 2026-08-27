@@ -34,6 +34,7 @@ import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch, listResource, toProxiedUrl } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 interface Employee {
   id: string;
@@ -161,7 +162,7 @@ function MobileFormPicker({
 export default function Messaging() {
   const { user, isLoading: authLoading } = useAuth();
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0F172A" : "#F8FAFC"),

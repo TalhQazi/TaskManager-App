@@ -33,6 +33,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Colors from '@/constants/colors';
+import { ConfirmDialog } from '@/components/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSocket } from '@/contexts/SocketContext';
@@ -89,44 +90,7 @@ interface HeaderProps {
  * Bulletproof Image URL converter
  */
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== 'string' || !rawPath.trim()) return null;
-
-  if (
-    rawPath.startsWith('data:') ||
-    rawPath.startsWith('file://') ||
-    rawPath.startsWith('content://')
-  ) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-  if (path.includes('token=')) return path;
-
-  if (path.startsWith('/uploads/')) {
-    path = path.replace('/uploads/', '/api/s3-proxy/');
-  } else if (path.startsWith('uploads/')) {
-    path = path.replace('uploads/', '/api/s3-proxy/');
-  } else if (!path.startsWith('/api/s3-proxy/') && !path.startsWith('http')) {
-    path = `/api/s3-proxy/${path.replace(/^\//, '')}`;
-  }
-
-  if (!path.startsWith('http://') && !path.startsWith('https://')) {
-    path = `https://task.se7eninc.com${path.startsWith('/') ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes('token=')) {
-      return proxied;
-    }
-  } catch (e) {}
-
-  if (activeToken) {
-    const separator = path.includes('?') ? '&' : '?';
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 const getVerticalPositionValue = (posStr: string | undefined): number => {
@@ -212,6 +176,8 @@ export default function Header({
   // Header customization modal state
   const [headerModalOpen, setHeaderModalOpen] = useState(false);
   const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
+  // Signing out is one tap from every screen; gate it behind a confirmation.
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [localPosition, setLocalPosition] = useState<string>('center 50%');
 
@@ -424,6 +390,11 @@ export default function Header({
   const rawBgImage =
     headerSettings?.imageConfig?.url ||
     headerSettings?.imageConfig?.dataUrl ||
+    (headerSettings as any)?.imageUrl ||
+    (headerSettings as any)?.backgroundUrl ||
+    (headerSettings as any)?.coverUrl ||
+    (headerSettings as any)?.coverPhoto ||
+    (headerSettings as any)?.coverImage ||
     null;
 
   const bgImageUri = useMemo(() => {
@@ -436,13 +407,26 @@ export default function Header({
   }, [bgImageUri]);
 
   const hasImageBackground =
-    headerSettings?.backgroundType === 'image' && !!bgImageUri && !bgLoadError;
+    (headerSettings?.backgroundType === 'image' || !!rawBgImage) && !!bgImageUri && !bgLoadError;
 
   // Avatar Image Resolution
   const avatarRaw =
     userSettings?.item?.avatarDataUrl ||
     userSettings?.item?.avatarUrl ||
-    (user as any)?.avatarUrl ||
+    userSettings?.item?.avatar ||
+    userSettings?.item?.photo ||
+    userSettings?.item?.profilePicture ||
+    userSettings?.avatarDataUrl ||
+    userSettings?.avatarUrl ||
+    userSettings?.avatar ||
+    userSettings?.photo ||
+    userSettings?.profilePicture ||
+    user?.avatarUrl ||
+    (user as any)?.avatarDataUrl ||
+    (user as any)?.avatar ||
+    (user as any)?.photo ||
+    (user as any)?.profilePicture ||
+    (user as any)?.image ||
     null;
 
   const resolvedAvatarUri = useMemo(() => {
@@ -531,10 +515,16 @@ export default function Header({
     }
   };
 
-  const handleLogoutPress = async () => {
+  const handleLogoutPress = () => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
+    setLogoutConfirmOpen(true);
+  };
+
+  // The sign-out call itself is unchanged — it just runs after confirmation now.
+  const handleLogoutConfirm = async () => {
+    setLogoutConfirmOpen(false);
     if (logout) {
       await logout();
     }
@@ -740,7 +730,7 @@ export default function Header({
         {/* Bottom Bar Controls */}
         <View style={[styles.contentWrapper, { marginBottom: scaledHeaderHeight-(scaledHeaderHeight-18)  }]}>
           <View style={styles.leftSection}>
-            {!showBackButton && !isLargeScreen ? (
+            {!showBackButton ? (
               <TouchableOpacity
                 onPress={openSidebar}
                 style={styles.menuButton}
@@ -778,6 +768,10 @@ export default function Header({
               onPress={handleNotificationPress}
               style={styles.iconButton}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={
+                unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
+              }
             >
               <Bell color="#FFFFFF" size={fs(5)} />
               {unreadCount > 0 && (
@@ -793,6 +787,8 @@ export default function Header({
               onPress={handleProfilePress}
               style={styles.avatarButton}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Open your profile"
             >
               <View style={styles.avatar}>
                 {avatarImageSource && !avatarLoadError ? (
@@ -812,12 +808,24 @@ export default function Header({
               onPress={handleLogoutPress}
               style={styles.iconButton}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
             >
               <LogOut color="#FFFFFF" size={fs(4.8)} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      <ConfirmDialog
+        visible={logoutConfirmOpen}
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={handleLogoutConfirm}
+        title="Sign out?"
+        message="You'll need to sign in again to get back to your workspace."
+        confirmLabel="Sign out"
+        destructive
+      />
 
       {/* Main Header Edit Modal */}
       <Modal visible={headerModalOpen} transparent={true} animationType="fade">
@@ -1170,8 +1178,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuButton: {
-    width: wp(10),
-    height: wp(10),
+    width: Math.max(44, wp(10)),
+    height: Math.max(44, wp(10)),
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
@@ -1189,8 +1197,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   iconButton: {
-    width: wp(10),
-    height: wp(10),
+    width: Math.max(44, wp(10)),
+    height: Math.max(44, wp(10)),
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
@@ -1217,8 +1225,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   avatarButton: {
-    width: wp(11),
-    height: wp(11),
+    width: Math.max(44, wp(11)),
+    height: Math.max(44, wp(11)),
     borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',

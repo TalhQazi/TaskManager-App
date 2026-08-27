@@ -35,6 +35,7 @@ import {
 import { apiRequest } from "@/services/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Attachment {
   name: string;
@@ -101,7 +102,7 @@ export default function CompanyRegistry() {
   const queryClient = useQueryClient();
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme.theme as string) === "dark" || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
       cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),

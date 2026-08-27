@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { apiRequest } from "@/services/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type TaskApi = {
   _id?: string;
@@ -67,10 +68,7 @@ export function TaskCharts() {
   const router = useRouter();
   const { uiTheme } = useTheme() as any;
 
-  const isDark =
-    uiTheme?.theme === "dark" ||
-    uiTheme?.theme === "metallic-elite" ||
-    uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(
     () => ({

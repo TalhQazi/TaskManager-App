@@ -34,6 +34,7 @@ import {
 } from "@/lib/admin/travelCalendar";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Budget {
   estimated: number;
@@ -81,7 +82,7 @@ function safeFormatDate(dateValue: string | undefined | null, formatStr: string)
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: isDark ? "#090d13" : "#f8fafc",
     surface: isDark ? "#0d1117" : "#ffffff",

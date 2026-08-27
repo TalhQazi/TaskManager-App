@@ -3,15 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Animated,
   TouchableWithoutFeedback,
   Modal,
-  Platform,
   Image,
+  useWindowDimensions,
 } from 'react-native';
-import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -20,37 +19,31 @@ import {
   Clock,
   MessageSquare,
   Calendar,
-  User,
   Bell,
   LogOut,
-  ChevronRight,
   X,
   Megaphone,
   Mail,
   DollarSign,
   ShoppingCart,
   Car,
-  Bug,
   FileText,
   MapPin,
   Calendar1,
   Image as ImageIcon,
   Book,
   Settings,
-  Clock10,
   Settings2,
-  Brain,
   ClipboardCheck,
   Timer,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { useTokens } from '@/contexts/ThemeContext';
 import { apiRequest } from '@/services/api';
-import { toProxiedUrlUpload, initToken } from '@/util/toProxiedUrl';
+import { toProxiedUrl, initToken } from '@/util/toProxiedUrl';
 import { useQuery } from '@tanstack/react-query';
-import { s, wp, hp, fs } from '@/util/styles';
-
-const SIDEBAR_WIDTH = Math.min(320, wp(75));
+import { MIN_TOUCH } from '@/constants/design/tokens';
 
 interface MenuItem {
   icon: React.ComponentType<{ color: string; size: number }>;
@@ -58,29 +51,65 @@ interface MenuItem {
   route: string;
 }
 
-const MENU_ITEMS: MenuItem[] = [
-  { icon: Megaphone, label: 'Announcements', route: '/announcements' },
-  { icon: Clock, label: 'Attendance', route: '/(tabs)/clock' },
-  { label: 'Company Information', icon: FileText, route: '/(tabs)/company-information'},
-  { label: 'Daily Itinerary', route: '/(tabs)/itinerary', icon: MapPin },
-  { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
-  { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
-  { label: 'EOD Reports', route: '/(tabs)/eod-reports', icon: ClipboardCheck },
-  { icon: Calendar1, label: 'Event', route: '/(tabs)/event' },
-  { icon: ImageIcon, label: 'Images', route: '/(tabs)/images' },
-  { label: 'Leave Requests', route: '/(tabs)/leaverequest', icon: Calendar }, 
-  
-  { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' }, 
-  { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
-  { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' }, 
-  { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
-  { label: 'Personal Notes', route: '/(tabs)/knowledgehub', icon: Book },
-  { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
-  { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shopping-lists' },
-  { label: 'Theme Engine', route: '/(tabs)/theme-engine', icon: Settings },
-  { icon: Timer, label: 'Time Logs', route: '/(tabs)/time-logs', icon: Clock10 }, // Note: fixed variable reference if any
-  { icon: Car, label: 'Travel Calendar', route: '/(tabs)/travelcalender' },
-  { icon: Settings2, label: 'Setting', route: '/(tabs)/setting' }
+interface MenuSection {
+  heading: string;
+  items: MenuItem[];
+}
+
+/**
+ * Navigation, grouped by what the user is trying to do.
+ *
+ * These were previously 21 items in one flat alphabetical list, which put "Announcements"
+ * above "Dashboard" and buried "My Tasks" in the middle. Every route is preserved exactly
+ * as it was — only the ordering and grouping changed.
+ */
+const MENU_SECTIONS: MenuSection[] = [
+  {
+    heading: 'Workspace',
+    items: [
+      { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
+      { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
+      { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' },
+      { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' },
+    ],
+  },
+  {
+    heading: 'Time & Attendance',
+    items: [
+      { icon: Clock, label: 'Attendance', route: '/(tabs)/clock' },
+      { icon: Timer, label: 'Time Logs', route: '/(tabs)/time-logs' },
+      { icon: Calendar, label: 'Leave Requests', route: '/(tabs)/leaverequest' },
+      { icon: ClipboardCheck, label: 'EOD Reports', route: '/(tabs)/eod-reports' },
+      { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
+    ],
+  },
+  {
+    heading: 'Workplace',
+    items: [
+      { icon: Megaphone, label: 'Announcements', route: '/announcements' },
+      { icon: Calendar1, label: 'Event', route: '/(tabs)/event' },
+      { icon: MapPin, label: 'Daily Itinerary', route: '/(tabs)/itinerary' },
+      { icon: Car, label: 'Travel Calendar', route: '/(tabs)/travelcalender' },
+      { icon: ShoppingCart, label: 'Shopping Lists', route: '/(tabs)/shopping-lists' },
+      { icon: ImageIcon, label: 'Images', route: '/(tabs)/images' },
+    ],
+  },
+  {
+    heading: 'Resources',
+    items: [
+      { icon: FileText, label: 'Company Information', route: '/(tabs)/company-information' },
+      { icon: Book, label: 'Personal Notes', route: '/(tabs)/knowledgehub' },
+      { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
+    ],
+  },
+  {
+    heading: 'Settings',
+    items: [
+      { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
+      { icon: Settings, label: 'Theme Engine', route: '/(tabs)/theme-engine' },
+      { icon: Settings2, label: 'Setting', route: '/(tabs)/setting' },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -94,51 +123,62 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isLargeScreen = width >= 768;
+  const t = useTokens();
 
-  const [tokenReady, setTokenReady] = useState(false);
+  const [jwtToken, setJwtToken] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     (async () => {
-      await initToken();
-      setTokenReady(true);
+      const token = await initToken();
+      setJwtToken(token);
     })();
   }, []);
 
   const { data: userSettings } = useQuery({
-    queryKey: ['userSettingsSidebar'],
+    queryKey: ['userSettings'],
     queryFn: async () => {
       try {
-        const res = await apiRequest<{ item?: any }>('/settings');
-        return res.data;
+        const res = await apiRequest<any>('/settings');
+        return res.data?.item || res.data || null;
       } catch {
         return null;
       }
     },
   });
 
-  const avatarUrl = useMemo(() => {
-    let avatarRaw = userSettings?.item?.avatarDataUrl || userSettings?.item?.avatarUrl || null;
-    if (!avatarRaw) return null;
-   
-    if (avatarRaw.startsWith("http") || avatarRaw.startsWith("data:")) {
-      return avatarRaw;
-    }
-    
-    if (avatarRaw.startsWith("/uploads/avatars/")) {
-      avatarRaw = avatarRaw.replace("/uploads/avatars/", "/api/s3-proxy/avatars/");
-    }
-    
-    return `https://task.se7eninc.com${avatarRaw}`;
-  }, [userSettings]);
+  const rawAvatarPath = useMemo(() => {
+    return (
+      userSettings?.item?.avatarDataUrl ||
+      userSettings?.item?.avatarUrl ||
+      userSettings?.item?.avatar ||
+      userSettings?.item?.photo ||
+      userSettings?.item?.profilePicture ||
+      userSettings?.avatarDataUrl ||
+      userSettings?.avatarUrl ||
+      userSettings?.avatar ||
+      userSettings?.photo ||
+      userSettings?.profilePicture ||
+      user?.avatarUrl ||
+      (user as any)?.avatarDataUrl ||
+      (user as any)?.avatar ||
+      (user as any)?.photo ||
+      (user as any)?.profilePicture ||
+      (user as any)?.image ||
+      null
+    );
+  }, [userSettings, user]);
 
   const resolvedAvatarUri = useMemo(() => {
-    if (!avatarUrl) return null;
-    return tokenReady ? toProxiedUrlUpload(avatarUrl) : null;
-  }, [avatarUrl, tokenReady]);
+    return toProxiedUrl(rawAvatarPath, jwtToken);
+  }, [rawAvatarPath, jwtToken]);
 
-  const effectiveWidth = Math.min(320, Math.max(240, Math.floor(width * 0.82)));
-  const slideAnim = useRef(new Animated.Value(isLargeScreen ? 0 : -effectiveWidth)).current;
+  useEffect(() => {
+    setAvatarError(false);
+  }, [resolvedAvatarUri]);
+
+  const effectiveWidth = Math.min(320, Math.max(260, Math.floor(width * 0.82)));
+  const slideAnim = useRef(new Animated.Value(-effectiveWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
 
@@ -147,176 +187,204 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
   }, []);
 
   useEffect(() => {
-    if (isLargeScreen) {
-      slideAnim.setValue(0);
-      backdropAnim.setValue(0);
-      return;
-    }
-
     if (!mounted) return;
 
     if (isOpen) {
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(backdropAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: -effectiveWidth,
-          duration: 180,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 0,
-          duration: 180,
-          useNativeDriver: true,
-        }),
+        Animated.timing(slideAnim, { toValue: -effectiveWidth, duration: 180, useNativeDriver: true }),
+        Animated.timing(backdropAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
       ]).start();
     }
-  }, [isOpen, isLargeScreen, effectiveWidth, slideAnim, backdropAnim, mounted]);
-
-  useEffect(() => {
-    if (isLargeScreen) return;
-    if (!isOpen) {
-      slideAnim.setValue(-effectiveWidth);
-    }
-  }, [isLargeScreen, effectiveWidth, slideAnim, isOpen]);
+  }, [isOpen, effectiveWidth, slideAnim, backdropAnim, mounted]);
 
   const handleNavigate = (route: string) => {
-    if (!isLargeScreen) {
-      closeSidebar();
-    }
+    closeSidebar();
     setTimeout(() => {
       router.push(route as any);
     }, 100);
   };
 
   const handleLogout = () => {
-    if (!isLargeScreen) closeSidebar();
+    closeSidebar();
     logout();
   };
 
+  /**
+   * Matches on a full path segment rather than a bare prefix. The old check used
+   * `pathname.startsWith(route)`, which lit up "Time Logs" for any path merely beginning
+   * with `/time-log`.
+   */
   const isActiveRoute = (route: string) => {
-    if (route === '/(tabs)/home' && (pathname === '/(tabs)/home' || pathname === '/')) {
-      return true;
-    }
-    return pathname.startsWith(route.replace('/(tabs)', '')) || pathname === route;
+    const target = route.replace('/(tabs)', '') || '/';
+    if (target === '/home' && (pathname === '/home' || pathname === '/')) return true;
+    return pathname === target || pathname === route || pathname.startsWith(`${target}/`);
   };
+
+  const initial = user?.fullName?.charAt(0)?.toUpperCase() ?? 'E';
 
   const sidebarBody = (
     <View
-      style={s([
+      style={[
         styles.sidebar,
         {
           width: effectiveWidth,
-          paddingTop: insets.top + hp(2),
-          paddingBottom: insets.bottom + hp(2),
+          backgroundColor: t.color.surface,
+          borderRightColor: t.color.border,
+          paddingTop: insets.top + t.space.md,
+          paddingBottom: insets.bottom + t.space.md,
         },
-      ])}
+      ]}
     >
-      {!isLargeScreen && (
-        <TouchableOpacity
-          style={s(styles.closeButton)}
-          onPress={closeSidebar}
-          activeOpacity={0.7}
-        >
-          <View style={s(styles.closeButtonBg)}>
-            <X color="#f4f4f5" size={fs(4.5)} />
-          </View>
-        </TouchableOpacity>
-      )}
-
-      <View style={s(styles.logoSection)}>
-        <View style={s(styles.logoContainer)}>
-          <Text style={s(styles.logoText)}>TaskManager</Text>
+      <View style={[styles.brandRow, { paddingHorizontal: t.space.lg, paddingBottom: t.space.md }]}>
+        <View style={styles.flex}>
+          <Text style={[t.type.sectionTitle, { color: t.color.text }]} numberOfLines={1}>
+            TaskManager
+          </Text>
+          <Text style={[t.type.meta, { color: t.color.textTertiary, marginTop: 1 }]}>Employee Portal</Text>
         </View>
-        <Text style={s(styles.logoSubtitle)}>Employee Portal</Text>
+        <Pressable
+          onPress={closeSidebar}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Close navigation menu"
+          style={({ pressed }) => [
+            styles.closeBtn,
+            { borderRadius: t.radius.md, backgroundColor: t.color.surfaceSunken },
+            pressed && { opacity: 0.6 },
+          ]}
+        >
+          <X color={t.color.textSecondary} size={19} />
+        </Pressable>
       </View>
 
-      <View style={s(styles.userCard)}>
-        <View style={s(styles.avatarContainer)}>
-          {resolvedAvatarUri ? (
-            <Image source={{ uri: resolvedAvatarUri }} style={s(styles.avatarImage)} />
+      <Pressable
+        onPress={() => handleNavigate('/(tabs)/profile')}
+        accessibilityRole="button"
+        accessibilityLabel={`${user?.fullName ?? 'Employee'}, open profile`}
+        style={({ pressed }) => [
+          styles.userCard,
+          {
+            marginHorizontal: t.space.md,
+            marginBottom: t.space.lg,
+            padding: t.space.md,
+            backgroundColor: t.color.surfaceSunken,
+            borderColor: t.color.border,
+            borderRadius: t.radius.lg,
+          },
+          pressed && { backgroundColor: t.color.surfaceActive },
+        ]}
+      >
+        <View
+          style={[
+            styles.avatar,
+            { backgroundColor: t.color.primarySoft, borderColor: t.color.primaryBorder },
+          ]}
+        >
+          {resolvedAvatarUri && !avatarError ? (
+            <Image
+              source={{ uri: resolvedAvatarUri }}
+              style={styles.avatarImage}
+              resizeMode="cover"
+              onError={() => setAvatarError(true)}
+            />
           ) : (
-            <Text style={s(styles.avatarText)}>
-              {user?.fullName?.charAt(0)?.toUpperCase() ?? 'E'}
-            </Text>
+            <Text style={[styles.avatarText, { color: t.color.primary }]}>{initial}</Text>
           )}
         </View>
-        <View style={s(styles.userInfo)}>
-          <Text style={s(styles.userName)} numberOfLines={1}>
+        <View style={styles.flex}>
+          <Text style={[t.type.cardTitle, { color: t.color.text }]} numberOfLines={1}>
             {user?.fullName ?? 'Employee'}
           </Text>
-          <Text style={s(styles.userRole)} numberOfLines={1}>
+          <Text style={[t.type.caption, { color: t.color.textSecondary }]} numberOfLines={1}>
             {user?.jobTitle ?? 'Staff Member'}
           </Text>
         </View>
-        <View style={s(styles.statusIndicator)}>
-          <View style={s(styles.statusDot)} />
-        </View>
-      </View>
+        <View style={[styles.statusDot, { backgroundColor: t.color.success }]} />
+      </Pressable>
 
-      <ScrollView style={s(styles.menuContainer)} showsVerticalScrollIndicator={false}>
-        <Text style={s(styles.menuHeader)}>Main Menu</Text>
-        
-        {MENU_ITEMS.map((item, index) => {
-          const isActive = isActiveRoute(item.route);
-          const itemIconColor = isActive ? "#ffd27a" : "#a1a1aa";
-
-          return (
-            <TouchableOpacity
-              key={index}
-              style={s([
-                styles.menuItem,
-                isActive && styles.menuItemActive,
-              ])}
-              onPress={() => handleNavigate(item.route)}
-              activeOpacity={0.8}
+      <ScrollView
+        style={[styles.menu, { paddingHorizontal: t.space.md }]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: t.space.lg }}
+      >
+        {MENU_SECTIONS.map((section) => (
+          <View key={section.heading} style={{ marginBottom: t.space.lg }}>
+            <Text
+              style={[
+                t.type.meta,
+                { color: t.color.textTertiary, marginBottom: 6, paddingHorizontal: t.space.sm, letterSpacing: 0.6 },
+              ]}
             >
-              <View style={s(styles.itemInnerLeftGroup)}>
-                <item.icon color={itemIconColor} size={fs(4.8)} />
-                <Text style={s([
-                  styles.menuLabel,
-                  isActive && styles.menuLabelActive,
-                ])}>
-                  {item.label}
-                </Text>
-              </View>
-              {isActive && (
-                <ChevronRight color="#ffd27a" size={fs(4)} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
+              {section.heading.toUpperCase()}
+            </Text>
+
+            {section.items.map((item) => {
+              const isActive = isActiveRoute(item.route);
+              const fg = isActive ? t.color.primary : t.color.textSecondary;
+
+              return (
+                <Pressable
+                  key={item.route}
+                  onPress={() => handleNavigate(item.route)}
+                  accessibilityRole="link"
+                  accessibilityLabel={item.label}
+                  accessibilityState={{ selected: isActive }}
+                  style={({ pressed }) => [
+                    styles.menuItem,
+                    { borderRadius: t.radius.md, paddingHorizontal: t.space.sm },
+                    // The previous active style used the same colour as the sidebar
+                    // background, making the current page effectively unmarked.
+                    isActive && { backgroundColor: t.color.primarySoft },
+                    pressed && !isActive && { backgroundColor: t.color.surfaceActive },
+                  ]}
+                >
+                  {/* Colour alone can't carry the active state on the greyscale presets. */}
+                  <View
+                    style={[
+                      styles.activeBar,
+                      { backgroundColor: isActive ? t.color.primary : 'transparent' },
+                    ]}
+                  />
+                  <item.icon color={fg} size={19} />
+                  <Text
+                    style={[
+                      t.type.body,
+                      { color: isActive ? t.color.primary : t.color.text, fontWeight: isActive ? '700' : '500', flex: 1 },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </ScrollView>
 
-      <View style={s(styles.bottomSection)}>
-        <View style={s(styles.divider)} />
-        
-        <TouchableOpacity
-          style={s(styles.bottomItem)}
+      <View style={[styles.bottom, { paddingHorizontal: t.space.md, borderTopColor: t.color.border }]}>
+        <Pressable
           onPress={handleLogout}
-          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          style={({ pressed }) => [
+            styles.menuItem,
+            { borderRadius: t.radius.md, paddingHorizontal: t.space.sm, marginTop: t.space.md },
+            pressed && { backgroundColor: t.color.dangerSoft },
+          ]}
         >
-          <LogOut color="#ef4444" size={fs(4.8)} />
-          <Text style={s(styles.logoutLabel)}>Sign Out</Text>
-        </TouchableOpacity>
+          <View style={styles.activeBar} />
+          <LogOut color={t.color.danger} size={19} />
+          <Text style={[t.type.body, { color: t.color.danger, fontWeight: '600' }]}>Sign Out</Text>
+        </Pressable>
       </View>
     </View>
   );
-
-  if (isLargeScreen) {
-    return sidebarBody;
-  }
 
   return (
     <Modal
@@ -326,24 +394,21 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
       onRequestClose={closeSidebar}
       statusBarTranslucent
     >
-      <View style={s(styles.modalContainer)}>
+      <View style={styles.modalContainer}>
         <TouchableWithoutFeedback onPress={closeSidebar}>
-          <Animated.View 
+          <Animated.View
             style={[
               StyleSheet.absoluteFillObject,
-              styles.backdrop,
-              { opacity: backdropAnim }
-            ]} 
+              { backgroundColor: t.color.overlay, zIndex: 9998 },
+              { opacity: backdropAnim },
+            ]}
           />
         </TouchableWithoutFeedback>
 
         <Animated.View
           style={[
             styles.drawerPanel,
-            {
-              width: effectiveWidth,
-              transform: [{ translateX: slideAnim }],
-            },
+            { width: effectiveWidth, transform: [{ translateX: slideAnim }] },
           ]}
         >
           {sidebarBody}
@@ -354,194 +419,27 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  drawerPanel: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 10000,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    zIndex: 9998,
-  },
-  sidebar: {
-    flex: 1,
-    backgroundColor: '#133767',
-    borderRightWidth: 1,
-    borderRightColor: '#27272a',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: hp(2.2),
-    right: wp(4),
-    zIndex: 10001,
-  },
-  closeButtonBg: {
-    width: wp(8),
-    height: wp(8),
-    borderRadius: wp(1.8),
-    backgroundColor: '#18181b',
+  flex: { flex: 1 },
+  modalContainer: { flex: 1, flexDirection: 'row' },
+  drawerPanel: { position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 10000 },
+  sidebar: { flex: 1, borderRightWidth: 1 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  closeBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' },
+  userCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#27272a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoSection: {
-    paddingHorizontal: wp(5),
-    paddingBottom: hp(1.8),
-    borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
-    marginBottom: hp(2.5),
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(3),
-  },
-  logoText: {
-    fontSize: fs(4.2),
-    fontWeight: '800',
-    color: '#f4f4f5',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  logoSubtitle: {
-    fontSize: fs(3),
-    fontWeight: '500',
-    color: '#71717a',
-    marginTop: 2,
-  },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: wp(3.5),
-    marginBottom: hp(2.8),
-    padding: wp(3),
-    backgroundColor: '#133767',
-    borderWidth: 0.5,
-    borderColor: '#ffffffd7',
-    borderRadius: wp(2),
-    gap: wp(3),
-  },
-  avatarContainer: {
-    width: wp(10),
-    height: wp(10),
-    borderRadius: wp(5),
-    borderWidth: 1,
-    borderColor: '#ffffff',
-    backgroundColor: '#133767',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  avatarText: {
-    fontSize: fs(4),
-    fontWeight: '700',
-    color: '#f4f4f5',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: fs(3.5),
-    fontWeight: '700',
-    color: '#f4f4f5',
-    marginBottom: 2,
-  },
-  userRole: {
-    fontSize: fs(2.8),
-    fontWeight: '500',
-    color: '#71717a',
-  },
-  statusIndicator: {
-    width: wp(6),
-    height: wp(6),
-    borderRadius: wp(3),
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusDot: {
-    width: wp(2.2),
-    height: wp(2.2),
-    borderRadius: wp(1.1),
-    backgroundColor: '#10b981',
-  },
-  menuContainer: {
-    flex: 1,
-    paddingHorizontal: wp(3.5),
-  },
-  menuHeader: {
-    fontSize: fs(2.8),
-    fontWeight: '700',
-    color: '#71717a',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: hp(1.5),
-    paddingHorizontal: wp(1),
-  },
-  menuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: hp(1.3),
-    paddingHorizontal: wp(3),
-    borderRadius: wp(1.8),
-    marginBottom: hp(0.5),
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  itemInnerLeftGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(3),
-    flex: 1,
-  },
-  menuItemActive: {
-    backgroundColor: '#133767',
-    borderColor: '#27272a',
-  },
-  menuLabel: {
-    color: '#a1a1aa',
-    fontSize: fs(3.3),
-    fontWeight: '600',
-  },
-  menuLabelActive: {
-    color: '#ffd27a',
-    fontWeight: '700',
-  },
-  bottomSection: {
-    paddingHorizontal: wp(3.5),
-    paddingTop: hp(1),
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#27272a',
-    marginBottom: hp(1.5),
-  },
-  bottomItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: wp(3),
-    paddingVertical: hp(1.3),
-    borderRadius: wp(1.8),
-    gap: wp(3),
-    marginBottom: hp(1),
-  },
-  logoutLabel: {
-    fontSize: fs(3.3),
-    fontWeight: '600',
-    color: '#ef4444',
-  },
+  avatarImage: { width: '100%', height: '100%' },
+  avatarText: { fontSize: 16, fontWeight: '700' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  menu: { flex: 1 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: MIN_TOUCH, marginBottom: 2 },
+  activeBar: { width: 3, height: 18, borderRadius: 2 },
+  bottom: { borderTopWidth: 1 },
 });

@@ -35,6 +35,7 @@ import {
   History
 } from "lucide-react-native";
 import { s, wp, hp, fs } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Website {
   _id: string;
@@ -701,7 +702,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 export default function ComplianceCenter() {
   const { uiTheme } = useTheme();
   const isMetallic = (uiTheme?.theme as string) === "metallic-elite";
-  const isDark = (uiTheme?.theme as string) === "dark" || isMetallic;
+  const isDark = isDarkTheme(uiTheme?.theme);
   
   const colors = useMemo(() => buildColors(uiTheme, isDark, isMetallic), [uiTheme, isDark, isMetallic]);
   const styles = useMemo(() => createStyles(colors), [colors]);

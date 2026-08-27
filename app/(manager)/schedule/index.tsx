@@ -29,6 +29,7 @@ import {
   Check
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -76,7 +77,7 @@ function normalizeScheduleItem(sItem: ScheduleItemApi): ScheduleItem {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
     panelHeader:      uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),

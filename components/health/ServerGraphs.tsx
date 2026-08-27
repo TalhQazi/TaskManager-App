@@ -14,6 +14,7 @@ import { Server, Activity, Cpu, HardDrive, ChevronDown } from "lucide-react-nati
 import { format } from "date-fns";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface ServerItem {
   _id: string;
@@ -84,7 +85,7 @@ function MiniLineGraph({
 
 export function ServerGraphs() {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const { width } = useWindowDimensions();
 
   const colors = useMemo(() => {

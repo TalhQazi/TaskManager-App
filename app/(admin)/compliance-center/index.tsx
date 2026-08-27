@@ -33,6 +33,7 @@ import {
   ChevronDown,
   X
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Website {
   _id: string;
@@ -130,18 +131,18 @@ export default function ComplianceCenter() {
   const isSmallScreen = width < 375;
 
   const { uiTheme } = useTheme();
-  const isMetallic = uiTheme.theme === "metallic-elite";
+  const isMetallic = uiTheme?.theme === "metallic-elite";
   const auth = useAuth();
   const isAdmin = auth?.user?.role === "admin" || auth?.user?.role === "super-admin";
 
-  const isDark = (uiTheme.theme as string)?.includes("dark") || isMetallic || uiTheme.panelColors?.dashboardTextColor === "#f4f4f5" || uiTheme.panelColors?.dashboardTextColor === "#ffffff";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => {
     return {
-      background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
-      cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
+      background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
+      cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
       modalBg: isDark ? "#1e293b" : "#ffffff",
-      text: uiTheme.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
+      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
       mutedText: isDark ? "#94a3b8" : "#64748b",
       border: isDark ? "rgba(255, 255, 255, 0.15)" : "#cbd5e1",
       inputBg: isDark ? "#0f172a" : "#f1f5f9",

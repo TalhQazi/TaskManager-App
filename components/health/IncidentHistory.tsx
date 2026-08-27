@@ -10,6 +10,7 @@ import { AlertOctagon, CheckCircle2, Clock } from "lucide-react-native";
 import { formatDistanceToNow, format } from "date-fns";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Incident {
   _id: string;
@@ -28,7 +29,7 @@ interface IncidentResponse {
 
 export function IncidentHistory() {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => {
     return {

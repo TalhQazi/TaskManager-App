@@ -33,6 +33,7 @@ import {
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type BugStatus = "open" | "closed";
 
@@ -109,7 +110,7 @@ export default function ManagerBugs() {
 
   const { uiTheme } = useTheme();
   const currentPathname = usePathname();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(
     () => createStyles(colors, wp, hp, isTablet, isSmallScreen, height, width),

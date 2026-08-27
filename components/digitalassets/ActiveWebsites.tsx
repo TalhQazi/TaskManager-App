@@ -28,6 +28,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 export interface Website {
   _id: string;
@@ -54,11 +55,7 @@ export function ActiveWebsites() {
   const isTablet = width >= 768;
 
   const { uiTheme } = useTheme() as any;
-  const isDark =
-    uiTheme?.theme === "dark" ||
-    uiTheme?.theme === "metallic-elite" ||
-    uiTheme?.panelColors?.dashboardTextColor === "#ffffff" ||
-    uiTheme?.panelColors?.dashboardTextColor === "#f4f4f5";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => {
     return {
@@ -243,7 +240,7 @@ export function ActiveWebsites() {
       ) : websites.length === 0 ? (
         <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            No websites yet. Click "Add Website" to get started.
+            {'No websites yet. Click "Add Website" to get started.'}
           </Text>
         </View>
       ) : (

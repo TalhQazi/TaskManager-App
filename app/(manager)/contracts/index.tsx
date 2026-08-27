@@ -39,10 +39,13 @@ import {
   MoreHorizontal,
   Info,
   Target,
+  X,
 } from "lucide-react-native";
+import { apiRequest, API_BASE_URL_IMAGE } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -129,7 +132,7 @@ function formatTimestamp(value?: string): string {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: isDark ? "#090d13" : "#f8fafc",
     surface: isDark ? "#0d1117" : "#ffffff",
@@ -281,9 +284,8 @@ export default function SignaCore() {
   const fetchTemplates = useCallback(async () => {
     try {
       setLoadingTemplates(true);
-      const res = await fetch("https://task.se7eninc.com/api/templates");
-      const json = await res.json();
-      setTemplates(json.items || []);
+      const res = await apiRequest<{ items?: SignaTemplate[] }>("/templates");
+      setTemplates(res.data?.items || []);
     } catch {
       toast({ title: "Load Error", description: "Could not load templates.", variant: "destructive" });
     } finally {
@@ -294,9 +296,8 @@ export default function SignaCore() {
   const fetchSigningRequests = useCallback(async () => {
     try {
       setLoadingRequests(true);
-      const res = await fetch("https://task.se7eninc.com/api/signing-requests");
-      const json = await res.json();
-      setRequests(json.items || []);
+      const res = await apiRequest<{ items?: SigningRequest[] }>("/signing-requests");
+      setRequests(res.data?.items || []);
     } catch {
       toast({ title: "Load Error", description: "Could not load sent documents.", variant: "destructive" });
     } finally {
@@ -414,17 +415,14 @@ export default function SignaCore() {
 
     try {
       const method = editingTemplate._id ? "PUT" : "POST";
-      const url = editingTemplate._id
-        ? `https://task.se7eninc.com/api/templates/${editingTemplate._id}`
-        : "https://task.se7eninc.com/api/templates";
+      const endpoint = editingTemplate._id
+        ? `/templates/${editingTemplate._id}`
+        : "/templates";
 
-      const res = await fetch(url, {
+      await apiRequest(endpoint, {
         method,
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingTemplate),
       });
-
-      if (!res.ok) throw new Error();
 
       setEditorOpen(false);
       setEditingTemplate(null);
@@ -465,9 +463,8 @@ export default function SignaCore() {
 
     try {
       setDeploying(true);
-      const res = await fetch("https://task.se7eninc.com/api/signing-requests", {
+      await apiRequest("/signing-requests", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipients,
           documentTitle: deployTarget.documentTitle,

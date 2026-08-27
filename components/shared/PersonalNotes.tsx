@@ -793,9 +793,7 @@ export default function PersonalNotes({
   updateNote,
   deleteNote,
 }: PersonalNotesProps) {
-  const { uiTheme } = useTheme();
-  const isDark =
-    (uiTheme?.theme as string) === "dark" || (uiTheme?.theme as string) === "metallic-elite";
+  const { uiTheme, isDark } = useTheme();
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { isDarkTheme } from "@/constants/design/presets";
 
 type NotificationType =
   | 'task'
@@ -45,7 +46,7 @@ interface Notification {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme?.theme !== 'crystal-white';
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: isDark ? '#090d13' : '#f8fafc',
     surface: isDark ? '#0d1117' : '#ffffff',

@@ -45,6 +45,7 @@ import {
   MoreHorizontal,
   X,
 } from "lucide-react-native";
+import { apiRequest, API_BASE_URL_IMAGE } from "@/services/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -203,9 +204,8 @@ export default function SignaCore() {
   const fetchTemplates = useCallback(async () => {
     try {
       setLoadingTemplates(true);
-      const res = await fetch(`http://localhost:3001/api/templates`);
-      const json = await res.json();
-      setTemplates(json.items || []);
+      const res = await apiRequest<{ items?: SignaTemplate[] }>("/templates");
+      setTemplates(res.data?.items || []);
     } catch {
       setTemplates([
         {
@@ -230,9 +230,8 @@ export default function SignaCore() {
   const fetchSigningRequests = useCallback(async () => {
     try {
       setLoadingRequests(true);
-      const res = await fetch(`http://localhost:3001/api/signing-requests`);
-      const json = await res.json();
-      setRequests(json.items || []);
+      const res = await apiRequest<{ items?: SigningRequestRecord[] }>("/signing-requests");
+      setRequests(res.data?.items || []);
     } catch {
       setRequests([
         {
@@ -310,13 +309,12 @@ export default function SignaCore() {
 
     try {
       const method = editingTemplate._id ? "PUT" : "POST";
-      const url = editingTemplate._id
-        ? `http://localhost:3001/api/templates/${editingTemplate._id}`
-        : `http://localhost:3001/api/templates`;
+      const endpoint = editingTemplate._id
+        ? `/templates/${editingTemplate._id}`
+        : `/templates`;
 
-      await fetch(url, {
+      await apiRequest(endpoint, {
         method,
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingTemplate),
       });
 
@@ -352,9 +350,8 @@ export default function SignaCore() {
 
     try {
       setDeploying(true);
-      const res = await fetch(`http://localhost:3001/api/signing-requests`, {
+      const res = await apiRequest<{ signingLink?: string }>("/signing-requests", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipients: cleanEmails.map((e) => ({ name: "", email: e })),
           documentTitle: deployTarget.documentTitle,
@@ -364,9 +361,8 @@ export default function SignaCore() {
         }),
       });
 
-      const json = await res.json();
-      if (json.signingLink) {
-        Clipboard.setString(json.signingLink);
+      if (res?.data?.signingLink) {
+        Clipboard.setString(res.data.signingLink);
       }
 
       setDeployOpen(false);
@@ -388,7 +384,7 @@ export default function SignaCore() {
 
   const copyMenuLink = () => {
     if (actionMenuRequest) {
-      Clipboard.setString(`http://localhost:3001/sign/${actionMenuRequest.token}`);
+      Clipboard.setString(`${API_BASE_URL_IMAGE}/sign/${actionMenuRequest.token}`);
       setActionMenuOpen(false);
       Alert.alert("Copied", "Secure pathway ledger coordinate copied.");
     }
@@ -398,7 +394,7 @@ export default function SignaCore() {
     if (!actionMenuRequest) return;
     setActionMenuOpen(false);
     try {
-      await fetch(`http://localhost:3001/api/signing-requests/${actionMenuRequest._id}/resend`, { method: "POST" });
+      await apiRequest(`/signing-requests/${actionMenuRequest._id}/resend`, { method: "POST" });
       Alert.alert("Dispatched", "Ledger notification framework re-broadcast.");
       void fetchSigningRequests();
     } catch {
@@ -750,7 +746,7 @@ function createStyles(colors: any) {
     tabItemText: { fontSize: 13, fontWeight: "800" },
     scrollContent: { padding: 16 },
     gridContainer: { flexDirection: "column", gap: 14 },
-    blueprintCard: { borderRadius: 16, borderWidth: 1, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
+    blueprintCard: { backgroundColor: colors.cardBg, borderColor: colors.border, borderRadius: 16, borderWidth: 1, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
     cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
     categoryTag: { backgroundColor: "rgba(212,175,55,0.15)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
     categoryTagText: { fontSize: 9, color: colors.primary, fontWeight: "900" },

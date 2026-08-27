@@ -25,6 +25,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface FounderMessage {
   _id: string;
@@ -39,7 +40,7 @@ export default function FounderMessagesAdmin() {
   const { uiTheme } = useTheme();
 
   
- const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+ const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
     cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),

@@ -16,8 +16,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   onPageChange,
   style,
 }) => {
-  const { uiTheme } = useTheme();
-  const isDark = uiTheme.theme === "dark" || uiTheme.theme === "metallic-elite";
+  const { uiTheme, isDark } = useTheme();
 
   const colors = useMemo(() => ({
     text: uiTheme.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),

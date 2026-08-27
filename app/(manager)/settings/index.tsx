@@ -24,6 +24,7 @@ import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface SettingsItem {
   fullName: string;
@@ -48,48 +49,11 @@ interface SettingsItem {
  * Image URL resolution logic matching ManagerHeader
  */
 const getDisplayImageUrl = (rawPath?: string | null, activeToken?: string | null) => {
-  if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) return null;
-
-  if (
-    rawPath.startsWith("data:") ||
-    rawPath.startsWith("file://") ||
-    rawPath.startsWith("content://")
-  ) {
-    return rawPath;
-  }
-
-  let path = rawPath.trim();
-  if (path.includes("token=")) return path;
-
-  if (path.startsWith("/uploads/")) {
-    path = path.replace("/uploads/", "/api/s3-proxy/");
-  } else if (path.startsWith("uploads/")) {
-    path = path.replace("uploads/", "/api/s3-proxy/");
-  } else if (!path.startsWith("/api/s3-proxy/") && !path.startsWith("http")) {
-    path = `/api/s3-proxy/${path.replace(/^\//, "")}`;
-  }
-
-  if (!path.startsWith("http://") && !path.startsWith("https://")) {
-    path = `https://task.se7eninc.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  try {
-    const proxied = toProxiedUrl(path);
-    if (proxied && proxied.includes("token=")) {
-      return proxied;
-    }
-  } catch (e) {}
-
-  if (activeToken) {
-    const separator = path.includes("?") ? "&" : "?";
-    return `${path}${separator}token=${activeToken}`;
-  }
-
-  return path;
+  return toProxiedUrl(rawPath, activeToken) || null;
 };
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:     uiTheme?.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
     cardBg:         uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),

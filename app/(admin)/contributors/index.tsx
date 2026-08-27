@@ -28,6 +28,7 @@ import {
   Calendar,
   ChevronDown
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -82,7 +83,7 @@ export default function ContributorsIndex() {
   const isMetallic = uiTheme.theme === "metallic-elite";
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme.theme as string) === "dark" || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
       cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),

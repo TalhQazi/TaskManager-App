@@ -15,6 +15,7 @@ import { Download, Search, FileText, Clock, BarChart2, Users } from "lucide-reac
 import Svg, { Rect, Line, Text as SvgText, Circle, Path } from "react-native-svg";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type TaskStatus = "active" | "pending" | "completed";
 type TaskPriority = "high" | "medium" | "low";
@@ -274,7 +275,7 @@ export default function Reports() {
   const { width } = useWindowDimensions();
   const { uiTheme } = useTheme();
 
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const palette = useMemo(() => {
     return {

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Alert,
+  Image,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,8 @@ import {
 } from "lucide-react-native";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
+import { toProxiedUrl } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 // --- Interfaces & Data Mappers ---
 interface Employee {
@@ -46,9 +49,9 @@ interface Employee {
 
 type EmployeeApi = Omit<Employee, "id"> & { _id: string };
 
-function normalizeEmployee(e: EmployeeApi): Employee {
+function normalizeEmployee(e: any): Employee {
   return {
-    id: e._id,
+    id: e._id || e.id,
     name: e.name || "Unknown Name",
     email: e.email || "—",
     phone: e.phone || "—",
@@ -61,7 +64,7 @@ function normalizeEmployee(e: EmployeeApi): Employee {
     hireDate: e.hireDate || "",
     location: e.location || "—",
     joinDate: e.joinDate || e.hireDate || new Date().toISOString(),
-    avatar: e.avatar || "",
+    avatar: e.avatar || e.avatarUrl || e.avatarDataUrl || e.imageUrl || "",
   };
 }
 
@@ -131,7 +134,8 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
     card: { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.border, borderRadius: wp(3), padding: wp(4) },
     cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
     profileRow: { flexDirection: "row", alignItems: "center", flex: 1, gap: wp(3) },
-    avatarContainer: { width: wp(11), height: wp(11), borderRadius: wp(5.5), backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center", position: "relative" },
+    avatarContainer: { width: wp(11), height: wp(11), borderRadius: wp(5.5), backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" },
+    avatarImage: { width: wp(11), height: wp(11), borderRadius: wp(5.5) },
     avatarText: { fontSize: fs(3.5), fontWeight: "600", color: colors.primary },
     statusIndicatorDot: { position: "absolute", bottom: 0, right: 0, width: wp(3), height: wp(3), borderRadius: wp(1.5), borderWidth: 2, borderColor: colors.cardBg },
     headerMetaData: { flex: 1 },
@@ -183,7 +187,7 @@ function createStyles(colors: ReturnType<typeof buildColors>) {
 
 export default function Employees() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -208,7 +212,7 @@ export default function Employees() {
   const employeesQuery = useQuery({
     queryKey: ["employees"],
     queryFn: async () => {
-      const responseData = await apiFetch<any>("");
+      const responseData = await apiFetch<any>("/api/employees");
       const items = Array.isArray(responseData) 
         ? responseData 
         : (responseData?.items || responseData?.data || []);
@@ -233,7 +237,7 @@ export default function Employees() {
   // --- TanStack Mutation: Live API Delete Call ---
   const deleteEmployeeMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiFetch(`/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/employees/${id}`, { method: "DELETE" });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -281,13 +285,18 @@ export default function Employees() {
 
   const renderEmployeeCard = ({ item: employee }: { item: Employee }) => {
     const isMenuOpen = activeMenuId === employee.id;
+    const avatarUri = toProxiedUrl(employee.avatar);
 
     return (
       <View style={s(styles.card)}>
         <View style={s(styles.cardHeader)}>
           <View style={s(styles.profileRow)}>
             <View style={s(styles.avatarContainer)}>
-              <Text style={s(styles.avatarText)}>{getInitials(employee.name)}</Text>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={s(styles.avatarImage)} resizeMode="cover" />
+              ) : (
+                <Text style={s(styles.avatarText)}>{getInitials(employee.name)}</Text>
+              )}
               <View style={s([styles.statusIndicatorDot, { backgroundColor: statusColors[employee.status] }])} />
             </View>
             <View style={s(styles.headerMetaData)}>

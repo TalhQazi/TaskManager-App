@@ -19,9 +19,12 @@ import {
   Filter,
   X,
   ChevronDown,
+  Bell,
+  Calendar,
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface PendingPatent {
   _id?: string;
@@ -30,6 +33,10 @@ interface PendingPatent {
   stage: "Concept" | "Research" | "Drafting" | "Ready to File";
   startDate: string;
   estimatedFilingDate: string;
+  expirationDate?: string;
+  customExpirationDate?: string;
+  reminderDays?: number[];
+  reminderScheduleDays?: number[];
   inventors: string[];
   notes?: string;
   createdAt?: string;
@@ -136,7 +143,7 @@ function MobileFormPicker({
 
 export function PendingPatents() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
@@ -167,12 +174,14 @@ export function PendingPatents() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedPatent, setSelectedPatent] = useState<PendingPatent | null>(null);
   
-  const [formData, setFormData] = useState<PendingPatent>({
+  const [formData, setFormData] = useState<Partial<PendingPatent> & { customExpiryDate?: string; reminderSchedule?: string }>({
     patentName: "",
     category: "",
     stage: "Concept",
     startDate: new Date().toISOString().split("T")[0],
     estimatedFilingDate: "",
+    customExpiryDate: "",
+    reminderSchedule: "90, 60, 30, 15",
     inventors: [],
     notes: "",
   });
@@ -205,12 +214,31 @@ export function PendingPatents() {
     fetchPendingPatents();
   }, []);
 
+  const toggleReminderDay = (day: number) => {
+    const currentDays = (formData.reminderSchedule || "")
+      .split(",")
+      .map((d) => parseInt(d.trim(), 10))
+      .filter((d) => !isNaN(d) && d > 0);
+
+    let nextDays: number[];
+    if (currentDays.includes(day)) {
+      nextDays = currentDays.filter((d) => d !== day);
+    } else {
+      nextDays = [...currentDays, day].sort((a, b) => b - a);
+    }
+    setFormData({ ...formData, reminderSchedule: nextDays.join(", ") });
+  };
+
   const handleOpenDialog = (patent?: PendingPatent) => {
     if (patent) {
       setSelectedPatent(patent);
+      const existingDays = patent.reminderDays || patent.reminderScheduleDays;
+      const reminderStr = Array.isArray(existingDays) ? existingDays.join(", ") : "90, 60, 30, 15";
       setFormData({
         ...patent,
-        inventors: patent.inventors || []
+        customExpiryDate: patent.customExpirationDate || patent.expirationDate || "",
+        reminderSchedule: reminderStr,
+        inventors: patent.inventors || [],
       });
     } else {
       setSelectedPatent(null);
@@ -220,6 +248,8 @@ export function PendingPatents() {
         stage: "Concept",
         startDate: new Date().toISOString().split("T")[0],
         estimatedFilingDate: "",
+        customExpiryDate: "",
+        reminderSchedule: "90, 60, 30, 15",
         inventors: [],
         notes: "",
       });
@@ -234,15 +264,31 @@ export function PendingPatents() {
     }
 
     try {
+      const parsedReminderDays = (formData.reminderSchedule || "")
+        .split(",")
+        .map((d) => parseInt(d.trim(), 10))
+        .filter((d) => !isNaN(d) && d > 0);
+
+      const reminderDays = parsedReminderDays.length > 0 ? parsedReminderDays : [90, 60, 30, 15];
+      const finalExpiration = formData.customExpiryDate?.trim() || formData.estimatedFilingDate;
+
+      const payload = {
+        ...formData,
+        expirationDate: finalExpiration,
+        customExpirationDate: finalExpiration,
+        reminderDays,
+        reminderScheduleDays: reminderDays,
+      };
+
       if (selectedPatent && selectedPatent._id) {
         await apiFetch(`/api/patents/pending/${selectedPatent._id}`, {
           method: "PUT",
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
       } else {
         await apiFetch("/api/patents/pending", {
           method: "POST",
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
       }
       await fetchPendingPatents();
@@ -445,9 +491,22 @@ export function PendingPatents() {
                   <View style={styles.metaRowLabelValuePair}>
                     <Text style={styles.metaKeyText}>Est. Filing Threshold:</Text>
                     <Text style={[styles.metaValueText, { color: colors.linkText, fontWeight: "600" }]}>
-                      {patent.estimatedFilingDate || "—"}
+                      {patent.customExpirationDate || patent.expirationDate || patent.estimatedFilingDate || "—"}
                     </Text>
                   </View>
+
+                  {(patent.reminderDays || patent.reminderScheduleDays) && (
+                    <View style={styles.metaRowLabelValuePair}>
+                      <Text style={styles.metaKeyText}>Reminders:</Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, flex: 1, justifyContent: "flex-end" }}>
+                        {(patent.reminderDays || patent.reminderScheduleDays)?.map((d) => (
+                          <View key={d} style={{ backgroundColor: colors.filterBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.primary }}>{d}d</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
 
                   {patent.notes ? (
                     <View style={styles.notesDrawerBox}>
@@ -540,7 +599,7 @@ export function PendingPatents() {
 
               <MobileFormPicker
                 label="Development Stage Status"
-                value={formData.stage}
+                value={formData.stage || "Concept"}
                 items={[
                   { label: "Concept Definition", value: "Concept" },
                   { label: "Prior Art Research", value: "Research" },
@@ -571,6 +630,57 @@ export function PendingPatents() {
                   placeholderTextColor={colors.mutedText}
                   value={formData.estimatedFilingDate}
                   onChangeText={(val) => setFormData({ ...formData, estimatedFilingDate: val })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Custom Expiration Date</Text>
+                <TextInput
+                  style={styles.formInputTextLine}
+                  placeholder="YYYY-MM-DD (e.g. 2027-06-30)"
+                  placeholderTextColor={colors.mutedText}
+                  value={formData.customExpiryDate || ""}
+                  onChangeText={(val) => setFormData({ ...formData, customExpiryDate: val })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <Bell size={14} color={colors.primary} />
+                  <Text style={styles.inputLabel}>Reminder Schedule (Days Before Filing/Expiry)</Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  {[15, 30, 60, 90, 120, 180].map((day) => {
+                    const active = (formData.reminderSchedule || "")
+                      .split(",")
+                      .map((d) => parseInt(d.trim(), 10))
+                      .includes(day);
+                    return (
+                      <TouchableOpacity
+                        key={day}
+                        onPress={() => toggleReminderDay(day)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 6,
+                          backgroundColor: active ? colors.primary : colors.inputBg,
+                          borderWidth: 1,
+                          borderColor: active ? colors.primary : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: active ? "#FFF" : colors.text }}>
+                          {active ? `✓ ${day}d` : `+ ${day}d`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={styles.formInputTextLine}
+                  placeholder="e.g., 90, 60, 30, 15"
+                  placeholderTextColor={colors.mutedText}
+                  value={formData.reminderSchedule || ""}
+                  onChangeText={(val) => setFormData({ ...formData, reminderSchedule: val })}
                 />
               </View>
 

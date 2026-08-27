@@ -2,10 +2,11 @@ import React, { useMemo } from "react";
 import { StyleSheet, View, Text } from "react-native";
 import { Server, Cpu, HardDrive, Activity } from "lucide-react-native";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 export function ServerCards() {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => {
     return {

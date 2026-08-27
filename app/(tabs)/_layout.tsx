@@ -4,18 +4,21 @@ import { Slot } from 'expo-router';
 
 import Sidebar from '@/components/Sidebar'; 
 import Header from '@/components/Header';
-import Colors from '@/constants/colors';
-import { SidebarProvider } from '@/contexts/SidebarContext'; // Use your generated provider
+import { SidebarProvider } from '@/contexts/SidebarContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TabLayout() {
+  const { uiTheme, isDark } = useTheme();
+  const bg = uiTheme?.panelColors?.dashboardBackground || (isDark ? '#09090b' : '#09090b');
+
   return (
     <SidebarProvider>
-      <View style={styles.container}> 
+      <View style={[styles.container, { backgroundColor: bg }]}> 
         {/* Persistent Header (openSidebar works out of the box inside here) */}
         <Header />
 
         {/* Main Content Area */}
-        <View style={styles.content}>
+        <View style={[styles.content, { backgroundColor: bg }]}>
           <Slot />
         </View>
 
@@ -29,11 +32,11 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#09090b',
   },
   content: {
     flex: 1,
-    backgroundColor: Colors.surface || '#ffffff',
-    marginTop:-40
+    backgroundColor: '#09090b',
+    marginTop: -40,
   },
 });
