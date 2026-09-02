@@ -77,6 +77,7 @@ import {
   NotebookTabs,
   AlertCircle,
   Workflow,
+  PlayCircle,
 } from 'lucide-react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -438,6 +439,12 @@ const MENU_ITEMS = [
     label: 'Video Messages',
     icon: Video,
     path: '/(admin)/video-messages',
+  },
+  {
+    id: 411,
+    label: 'Company Reels™',
+    icon: PlayCircle,
+    path: '/(admin)/company-reels',
   },
   {
     id: 42,

@@ -36,6 +36,7 @@ import {
   Settings2,
   ClipboardCheck,
   Timer,
+  PlayCircle,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -68,6 +69,7 @@ const MENU_SECTIONS: MenuSection[] = [
     heading: 'Workspace',
     items: [
       { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
+      { icon: PlayCircle, label: 'Company Reels™', route: '/(tabs)/company-reels' },
       { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
       { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' },
       { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' },
