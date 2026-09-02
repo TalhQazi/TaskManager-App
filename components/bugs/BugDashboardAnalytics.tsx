@@ -17,8 +17,7 @@ type AnalyticsData = {
 };
 
 export default function BugDashboardAnalytics() {
-  const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const { uiTheme, isDark } = useTheme();
 
   const colors = useMemo(() => {
     return {

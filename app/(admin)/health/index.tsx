@@ -19,6 +19,7 @@ import { SystemResourcePies } from "@/components/health/SystemResourcePies";
 import { WebsiteStatusTable } from "@/components/health/WebsiteStatusTable";
 import { IncidentHistory } from "@/components/health/IncidentHistory";
 import { StorageHealthCard } from "@/components/health/storage";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface HealthOverview {
   servers?: {
@@ -33,7 +34,7 @@ interface HealthOverview {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#09090b" : "#f8fafc"),
     cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#ffffff"),

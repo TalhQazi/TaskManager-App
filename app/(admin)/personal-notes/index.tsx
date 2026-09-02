@@ -16,6 +16,7 @@ import {
 import { Plus, Trash2, Edit3, FileText, X, Check } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Note {
   id: string;
@@ -235,7 +236,7 @@ function PersonalNotes({ getNotes, createNote, updateNote, deleteNote, colors, s
 
 export default function AdminPersonalNotes() {
   const { uiTheme } = useTheme();
- // const isDark = uiTheme?.theme === "dark" || uiTheme?.theme === "metallic-elite";
+ // const isDark = isDarkTheme(uiTheme?.theme);
  const isDark = useMemo(
     () => ["dark-minimal", "neon-tech", "metallic-elite", "executive-black", "high-contrast", "energy-mode"].includes(uiTheme.theme),
     [uiTheme.theme]

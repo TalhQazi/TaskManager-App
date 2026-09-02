@@ -28,6 +28,7 @@ import { wp, hp, fs } from "@/util/styles";
 import BugDashboardAnalytics from "@/components/bugs/BugDashboardAnalytics";
 import ReportBugModal from "@/components/bugs/ReportBugModal";
 import BugCollaborationModal from "@/components/bugs/BugCollaborationModal";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type BugStatus = "open" | "closed" | string;
 
@@ -77,7 +78,7 @@ function buildColors(uiTheme: any, isDark: boolean) {
 export default function ManagerBugs() {
   const { uiTheme } = useTheme();
   const activePath = usePathname();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
 
   const [loading, setLoading] = useState(true);

@@ -37,6 +37,7 @@ import { useSocket } from "@/contexts/SocketContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s, wp, hp, fs } from "@/util/styles";
 import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface BreakSession {
   id: string;
@@ -742,7 +743,7 @@ export default function BreakTrackingScreen() {
 
   const [jwtToken, setJwtToken] = useState<string | null>(null);
 
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

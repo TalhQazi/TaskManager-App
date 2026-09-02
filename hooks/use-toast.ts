@@ -1,14 +1,20 @@
 import * as React from "react";
 
-const TOAST_LIMIT = 1;
-const TOAST_DISMISS_DELAY = 4000; 
-const TOAST_REMOVE_DELAY = 300;   
+// Stacking a few toasts is better than dropping them: with a limit of 1, a burst of
+// mutations silently discarded all but the last result. Three is enough to convey a batch
+// without covering the screen.
+const TOAST_LIMIT = 3;
+const TOAST_DISMISS_DELAY = 4000;
+const TOAST_REMOVE_DELAY = 300;
+
+/** `warning` and `info` are additive — existing call sites using the original three are unaffected. */
+export type ToastVariant = "default" | "destructive" | "success" | "warning" | "info";
 
 export interface ToasterToast {
   id: string;
   title?: string;
   description?: string;
-  variant?: "default" | "destructive" | "success"; 
+  variant?: ToastVariant;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }

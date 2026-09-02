@@ -18,10 +18,11 @@ import {
   ArrowDownRight,
   Scale
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 export default function FinancialReporting() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   
   const colors = useMemo(() => {
     return {

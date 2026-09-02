@@ -25,7 +25,7 @@ export default function AdminLayout() {
           <RewardProvider>
             <Stack screenOptions={{ 
               headerShown: false,
-              contentStyle: { backgroundColor: uiTheme.panelColors.dashboardBackground }
+              contentStyle: { backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#09090b' }
             }} />
           </RewardProvider>
         </AtlasBooksProvider>
@@ -43,7 +43,7 @@ const getThemedStyles = (uiTheme: any) => {
   return StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: uiTheme.panelColors.dashboardBackground,
+      backgroundColor: uiTheme?.panelColors?.dashboardBackground || '#09090b',
     },
     body: {
       flex: 1,

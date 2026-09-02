@@ -12,14 +12,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  FlatList
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FlashList } from "@shopify/flash-list";
 import { Search, Plus, Trash2, Edit3, Mail, Phone, Briefcase, X } from "lucide-react-native";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { apiRequest } from "../../../services/api";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const STATUS_OPTIONS = ["All", "Active", "Pending", "Inactive"];
 
@@ -60,7 +61,7 @@ export default function Contacts() {
   const isMetallic = uiTheme?.theme === "metallic-elite";
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme?.theme as string) === "dark" || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#080b10" : "#f8fafc"),
       cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f131a" : "#ffffff"),
@@ -71,7 +72,7 @@ export default function Contacts() {
       inputBorder: isDark ? "rgba(255,255,255,0.1)" : "#cbd5e1",
       primary: uiTheme?.customColors?.primary || "#ffd27a"
     };
-  }, [uiTheme, isMetallic]);
+  }, [uiTheme]);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -305,9 +306,10 @@ export default function Contacts() {
         </View>
       ) : (
         <View style={{ flex: 1, width: "100%" }}>
-          <FlashList
+          <FlatList
             data={filteredContacts}
-            
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
             renderItem={({ item }) => {
               const badgeCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.Inactive;

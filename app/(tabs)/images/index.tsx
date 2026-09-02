@@ -78,6 +78,29 @@ interface Paginated<T> {
   totalPages: number;
 }
 
+function isImageFile(mimeType?: string, fileName?: string, url?: string): boolean {
+  if (mimeType && mimeType.startsWith("image/")) return true;
+  if (mimeType && (mimeType.startsWith("video/") || mimeType === "application/pdf")) return false;
+  const target = (fileName || url || "").toLowerCase();
+  return /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(\?.*)?$/i.test(target);
+}
+
+function getAssetImageUrl(asset: Asset): string {
+  return (
+    asset.attachment?.url ||
+    asset.urlPreview ||
+    asset.urlThumbnail ||
+    (asset as any)?.previewUrl ||
+    (asset as any)?.thumbnailUrl ||
+    (asset as any)?.imageUrl ||
+    (asset as any)?.url ||
+    (asset as any)?.path ||
+    (asset as any)?.filePath ||
+    (asset as any)?.s3Url ||
+    ""
+  );
+}
+
 function ImageWithLoader({
   uri,
   style,
@@ -90,6 +113,7 @@ function ImageWithLoader({
   indicatorColor?: string;
 }) {
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   return (
     <View style={styles.imageLoaderWrapper}>
@@ -98,14 +122,26 @@ function ImageWithLoader({
           <ActivityIndicator size="small" color={indicatorColor} />
         </View>
       )}
-      <Image
-        source={{ uri }}
-        style={style}
-        resizeMode={resizeMode}
-        onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
-        onError={() => setLoading(false)}
-      />
+      {!hasError ? (
+        <Image
+          source={{ uri }}
+          style={style}
+          resizeMode={resizeMode}
+          onLoadStart={() => {
+            setLoading(true);
+            setHasError(false);
+          }}
+          onLoadEnd={() => setLoading(false)}
+          onError={() => {
+            setLoading(false);
+            setHasError(true);
+          }}
+        />
+      ) : (
+        <View style={styles.fallbackIconCenter}>
+          <ImageIcon color="#a1a1aa" size={fs(7)} />
+        </View>
+      )}
     </View>
   );
 }
@@ -168,26 +204,15 @@ export default function EmployeeAssetLibraryScreen({
   const resolveUrlWithToken = useMemo(() => {
     return (rawUrl?: string) => {
       if (!rawUrl) return "";
-      let url = rawUrl;
-      if (url.startsWith("/uploads/")) {
-        url = url.replace("/uploads/", "/api/s3-proxy/");
-      }
-      if (!url.startsWith("http") && !url.startsWith("data:")) {
-        url = `https://task.se7eninc.com${url.startsWith("/") ? "" : "/"}${url}`;
-      }
-      let finalUrl = toProxiedUrl(url) || url;
-      if (token && !finalUrl.includes("token=")) {
-        finalUrl += `${finalUrl.includes("?") ? "&" : "?"}token=${token}`;
-      }
-      return finalUrl;
+      return toProxiedUrl(rawUrl, token) || rawUrl;
     };
   }, [token]);
 
   const foldersQuery = useQuery({
     queryKey: ["asset-library", "folders", "employee", moduleName],
     queryFn: async () => {
-      const res = await apiFetch<{ items: FolderNode[] }>(`/api/asset-library/folders?module=${moduleName}`);
-      return res.items || [];
+      const res = await apiFetch<any>(`/api/asset-library/folders?module=${moduleName}`);
+      return res?.items || res?.data?.items || res?.data || (Array.isArray(res) ? res : []);
     },
   });
 
@@ -204,22 +229,28 @@ export default function EmployeeAssetLibraryScreen({
       params.set("limit", String(limit));
       const qs = params.toString() ? `?${params.toString()}` : "";
 
-      const res = await apiFetch<Paginated<Asset>>(`/api/asset-library/assets${qs}`);
+      const res = await apiFetch<any>(`/api/asset-library/assets${qs}`);
+      const rawItems: Asset[] = res?.items || res?.data?.items || res?.data || res?.assets || (Array.isArray(res) ? res : []);
+      const total = res?.total || res?.totalItems || res?.data?.total || rawItems.length;
+      const totalPages = res?.totalPages || res?.data?.totalPages || Math.max(1, Math.ceil(total / limit));
 
-      if (res?.items) {
-        res.items = res.items.map((item) => {
-          // Prioritize attachment.url (matching Web)
-          const rawThumb = item.attachment?.url || item.urlThumbnail || "";
-          const rawPreview = item.attachment?.url || item.urlPreview || "";
+      const processedItems = rawItems.map((item) => {
+        const rawUrl = getAssetImageUrl(item);
+        return {
+          ...item,
+          id: String(item.id || (item as any)._id || Math.random()),
+          resolvedThumb: resolveUrlWithToken(rawUrl),
+          resolvedPreview: resolveUrlWithToken(rawUrl),
+        };
+      });
 
-          return {
-            ...item,
-            resolvedThumb: resolveUrlWithToken(rawThumb),
-            resolvedPreview: resolveUrlWithToken(rawPreview),
-          };
-        });
-      }
-      return res;
+      return {
+        items: processedItems,
+        total,
+        totalPages,
+        page,
+        limit,
+      };
     },
     enabled: !foldersQuery.isLoading,
   });
@@ -472,7 +503,7 @@ const downloadAsset = async (asset: Asset) => {
               <View style={s(styles.gridContainer)}>
                 {assets.map((a) => {
                   const mime = a.attachment?.mimeType || a.mimeType || "";
-                  const isImage = mime.startsWith("image/");
+                  const isImage = isImageFile(mime, a.originalFilename || a.attachment?.fileName, a.attachment?.url || a.resolvedThumb || a.urlPreview);
                   return (
                     <TouchableOpacity
                       key={a.id}
@@ -606,7 +637,7 @@ const downloadAsset = async (asset: Asset) => {
                 <View style={s([styles.lightboxDisplayCard, { backgroundColor: isLightTheme ? "#f1f5f9" : "#141416", borderColor: border }])}>
                   {(() => {
                     const mime = preview.attachment?.mimeType || preview.mimeType || "";
-                    const isImage = mime.startsWith("image/");
+                    const isImage = isImageFile(mime, preview.originalFilename || preview.attachment?.fileName, preview.attachment?.url || preview.resolvedPreview || preview.urlPreview);
 
                     if (isImage && preview.resolvedPreview) {
                       return (

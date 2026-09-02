@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, UserPlus, ToggleLeft, ToggleRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiRequest } from '@/services/api';
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface TeamLeadMapping {
   id: string;
@@ -41,7 +42,7 @@ export default function TeamLeadMappings() {
   const isMetallic = uiTheme?.theme === "metallic-elite";
 
   const colors = useMemo(() => {
-    const isDark = (uiTheme?.theme as string) === "dark" || isMetallic;
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#080a0f" : "#f8fafc"),
       cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),

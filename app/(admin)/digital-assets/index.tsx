@@ -17,6 +17,7 @@ import { FutureWebsites } from "@/components/digitalassets/FutureWebsites";
 import { SocialMediaAccounts } from "@/components/digitalassets/SocialMediaAccounts";
 import { EmailAccounts } from "@/components/digitalassets/EmailAccounts";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type TabKey = "active-websites" | "future-websites" | "social-media" | "email-accounts";
 
@@ -36,8 +37,7 @@ export default function DigitalAssetsMobile() {
   const { uiTheme } = useTheme() as any;
 
   const isDark =
-    uiTheme?.theme === "dark" ||
-    uiTheme?.theme === "metallic-elite" ||
+    isDarkTheme(uiTheme?.theme) ||
     uiTheme?.panelColors?.dashboardTextColor === "#ffffff" ||
     uiTheme?.panelColors?.dashboardTextColor === "#f4f4f5";
 

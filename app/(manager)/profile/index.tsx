@@ -32,6 +32,7 @@ import { toProxiedUrl, initToken } from "@/util/toProxiedUrl";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
 import { API_BASE_URL, API_BASE_URL_IMAGE } from "@/services/api";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { width } = Dimensions.get("window");
 const BASE_DOMAIN = API_BASE_URL_IMAGE; 
@@ -89,7 +90,7 @@ interface OnboardingData {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
     panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),
@@ -538,31 +539,8 @@ export default function Profile() {
 
   const resolvedAvatarUri = useMemo(() => {
     if (!avatarRaw) return null;
-    if (avatarRaw.startsWith("data:")) {
-      return avatarRaw.replace(/[\r\n]/g, "").trim();
-    }
-
-    let processedPath = avatarRaw;
-
-    // Map /uploads/ to /api/s3-proxy/
-    if (processedPath.includes("/uploads/")) {
-      processedPath = processedPath.replace("/uploads/", "/api/s3-proxy/");
-    }
-
-    if (!processedPath.startsWith("http://") && !processedPath.startsWith("https://")) {
-      processedPath = `${BASE_DOMAIN}${processedPath.startsWith("/") ? "" : "/"}${processedPath}`;
-    }
-
-    let proxied = tokenReady ? toProxiedUrl(processedPath) : processedPath;
-
-    // Attach ?token= parameter if missing
-    if (authToken && !proxied.includes("token=")) {
-      const separator = proxied.includes("?") ? "&" : "?";
-      proxied = `${proxied}${separator}token=${encodeURIComponent(authToken)}`;
-    }
-
-    return proxied;
-  }, [avatarRaw, tokenReady, authToken]);
+    return toProxiedUrl(avatarRaw, authToken) || null;
+  }, [avatarRaw, authToken]);
 
   const initials = useMemo(() => {
     return (baseProfile?.name || baseProfile?.email || "M")

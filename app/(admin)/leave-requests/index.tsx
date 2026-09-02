@@ -20,6 +20,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 type LeaveStatus = "pending" | "approved" | "rejected";
 
@@ -70,7 +71,7 @@ const getStatusTheme = (status: LeaveStatus, isDark: boolean) => {
 
 export default function AdminLeaveRequests() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),

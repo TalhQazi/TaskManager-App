@@ -40,6 +40,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { createResource, deleteResource, listResource, updateResource, apiFetch } from "@/lib/admin/apiClient";
 import * as ImagePicker from "expo-image-picker";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
@@ -121,7 +122,7 @@ export default function Companies() {
   const isSmallScreen = width < 375;
 
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string)?.includes("dark") || (uiTheme.theme as string)?.includes("metallic") || uiTheme.panelColors?.dashboardTextColor === "#f4f4f5" || uiTheme.panelColors?.dashboardTextColor === "#ffffff";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [isBackgroundRefetching, setIsBackgroundRefetching] = useState<boolean>(false);

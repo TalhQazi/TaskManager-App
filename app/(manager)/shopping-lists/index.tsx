@@ -37,6 +37,7 @@ import { apiFetch } from "@/lib/admin/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface ShoppingList {
   id: string;
@@ -84,7 +85,7 @@ interface PickerConfig {
 }
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#0d1117" : "#ffffff"),
     cardBg:          uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#161b22" : "#f8fafc"),

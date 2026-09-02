@@ -184,10 +184,14 @@ useEffect(() => {
     try {
       setLoading(true);
 
-      const taskResponse = await listResource<any>("tasks");
+      const taskResponse = await listResource<any>("tasks", { limit: 100 });
       let extractedTasks: Task[] = [];
       if (taskResponse && Array.isArray(taskResponse.items)) {
         extractedTasks = taskResponse.items;
+      } else if (taskResponse && Array.isArray(taskResponse.data?.items)) {
+        extractedTasks = taskResponse.data.items;
+      } else if (taskResponse && Array.isArray(taskResponse.data)) {
+        extractedTasks = taskResponse.data;
       } else if (Array.isArray(taskResponse)) {
         extractedTasks = taskResponse;
       }
@@ -195,10 +199,14 @@ useEffect(() => {
 
       let allEmployees: Employee[] = [];
       try {
-        const employeeResponse = await listResource<any>("employees");
+        const employeeResponse = await listResource<any>("employees", { limit: 100 });
         let extractedEmployees: Employee[] = [];
         if (employeeResponse && Array.isArray(employeeResponse.items)) {
           extractedEmployees = employeeResponse.items;
+        } else if (employeeResponse && Array.isArray(employeeResponse.data?.items)) {
+          extractedEmployees = employeeResponse.data.items;
+        } else if (employeeResponse && Array.isArray(employeeResponse.data)) {
+          extractedEmployees = employeeResponse.data;
         } else if (Array.isArray(employeeResponse)) {
           extractedEmployees = employeeResponse;
         }
@@ -208,10 +216,14 @@ useEffect(() => {
       }
 
       try {
-        const userResponse = await listResource<any>("users");
+        const userResponse = await listResource<any>("users", { limit: 100 });
         let extractedUsers: User[] = [];
         if (userResponse && Array.isArray(userResponse.items)) {
           extractedUsers = userResponse.items;
+        } else if (userResponse && Array.isArray(userResponse.data?.items)) {
+          extractedUsers = userResponse.data.items;
+        } else if (userResponse && Array.isArray(userResponse.data)) {
+          extractedUsers = userResponse.data;
         } else if (Array.isArray(userResponse)) {
           extractedUsers = userResponse;
         }

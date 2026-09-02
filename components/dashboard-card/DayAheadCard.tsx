@@ -2,39 +2,43 @@ import React, { useMemo } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle, ChevronRight, Clock, AlertCircle } from "lucide-react-native";
 import { apiRequest } from "@/services/api";
-import { commonCardStyle } from "@/constants/Styles";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface OverdueTask {
-  _id: string;
+  _id?: string;
+  id?: string;
   title: string;
-  dueDate: string;
-  priority: "high" | "medium" | "low";
+  dueDate?: string;
+  due_date?: string;
+  deadline?: string;
+  priority?: "high" | "medium" | "low" | "urgent";
 }
 
 export function DayAheadCard() {
   const router = useRouter();
   const themeContext = useTheme() as any;
+  const uiTheme = themeContext?.uiTheme;
+  const isDark = isDarkTheme(uiTheme?.theme);
 
-  const activeColors = useMemo(() => {
-    const uiTheme = themeContext?.uiTheme;
-    const isDark = uiTheme?.theme === "dark" || uiTheme?.theme === "metallic-elite";
-
+  const colors = useMemo(() => {
     return {
-      surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
-      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
-      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"),
-      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#ffffff" : "#0f172a"),
-      textMuted: isDark ? "#94a3b8" : "#64748b",
-      textLight: isDark ? "#64748b" : "#94a3b8",
-      primary: uiTheme?.customColors?.primary || "#0072FF",
-      danger: "#ef4444",
-      dangerBg: isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
+      cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#111827" : "#FFFFFF"),
+      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0"),
+      borderLight: isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9",
+      textPrimary: isDark ? "#F8FAFC" : "#0F172A",
+      textSecondary: isDark ? "#94A3B8" : "#64748B",
+      textMuted: isDark ? "#64748B" : "#94A3B8",
+      primary: uiTheme?.customColors?.primary || "#2563EB",
+      primarySoft: isDark ? "rgba(37, 99, 235, 0.15)" : "#EFF6FF",
+      danger: "#EF4444",
+      dangerSoft: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2",
+      warning: "#F59E0B",
+      warningSoft: isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7",
     };
-  }, [themeContext]);
+  }, [uiTheme, isDark]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-today"],
@@ -44,135 +48,232 @@ export function DayAheadCard() {
     },
   });
 
-  if (isLoading) {
-    return <ActivityIndicator style={s(styles.loader)} color={activeColors.primary} />;
-  }
-
   const overdueTasks: OverdueTask[] = data?.overdueTasks || [];
 
-  return (
-    <View style={[s(styles.card), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-      <TouchableOpacity 
-        onPress={() => router.push("/(admin)/task-management")}
-        style={s(styles.header)}
-      >
-        <Text style={[s(styles.sectionTitle), { color: activeColors.primary }]}>
-          Overdue Tasks ({overdueTasks.length})
-        </Text>
-      </TouchableOpacity>
+  const formatDueDate = (rawDate?: string) => {
+    if (!rawDate) return "Overdue";
+    const date = new Date(rawDate);
+    if (isNaN(date.getTime())) return "Overdue";
+    return `Due ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  };
 
-      <ScrollView 
-        style={s(styles.scrollArea)} 
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
-      >
-        {overdueTasks.map((item, index) => {
-          const isLastItem = index === overdueTasks.length - 1;
-          
-          return (
-            <TouchableOpacity 
-              key={item._id} 
-              onPress={() => router.push("/(admin)/task-management")}
-              style={[
-                s(styles.taskRow), 
-                !isLastItem && { borderBottomColor: activeColors.borderLight }
-              ]}
-            >
-              <View style={[s(styles.iconBox), { backgroundColor: activeColors.dangerBg }]}>
-                <AlertTriangle size={14} color={activeColors.danger} />
-              </View>
-              
-              <View style={s(styles.taskContent)}>
-                <Text style={[s(styles.taskTitle), { color: activeColors.text }]} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={[s(styles.taskDate), { color: activeColors.textLight }]}>
-                  Due: {new Date(item.dueDate).toLocaleDateString()}
-                </Text>
-              </View>
-              
-              <View 
+  return (
+    <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+      <View style={styles.header}>
+        <View style={styles.headerTitleGroup}>
+          <View style={[styles.headerIconBox, { backgroundColor: colors.dangerSoft }]}>
+            <AlertTriangle size={14} color={colors.danger} />
+          </View>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            Overdue Tasks
+          </Text>
+          {overdueTasks.length > 0 && (
+            <View style={[styles.countBadge, { backgroundColor: colors.dangerSoft }]}>
+              <Text style={[styles.countText, { color: colors.danger }]}>{overdueTasks.length}</Text>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity
+          onPress={() => router.push("/(admin)/task-management" as any)}
+          style={styles.viewAllBtn}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.viewAllText, { color: colors.primary }]}>View all</Text>
+          <ChevronRight size={13} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator color={colors.primary} size="small" />
+        </View>
+      ) : overdueTasks.length > 0 ? (
+        <ScrollView
+          style={styles.scrollArea}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
+        >
+          {overdueTasks.map((item, index) => {
+            const isLastItem = index === overdueTasks.length - 1;
+            const isHigh = item.priority === "high" || item.priority === "urgent";
+
+            return (
+              <TouchableOpacity
+                key={item._id || item.id || String(index)}
+                activeOpacity={0.7}
+                onPress={() => router.push("/(admin)/task-management" as any)}
                 style={[
-                  s(styles.priorityBadge), 
-                  { backgroundColor: item.priority === "high" ? activeColors.dangerBg : activeColors.borderLight }
+                  styles.taskRow,
+                  !isLastItem && { borderBottomColor: colors.borderLight, borderBottomWidth: 1 },
                 ]}
               >
-                <Text 
+                <View style={[styles.iconBox, { backgroundColor: colors.dangerSoft }]}>
+                  <AlertCircle size={14} color={colors.danger} />
+                </View>
+
+                <View style={styles.taskContent}>
+                  <Text style={[styles.taskTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <View style={styles.dateRow}>
+                    <Clock size={11} color={colors.danger} />
+                    <Text style={[styles.taskDate, { color: colors.danger }]}>
+                      {formatDueDate(item.dueDate || item.due_date || item.deadline)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View
                   style={[
-                    s(styles.priorityText), 
-                    { color: item.priority === "high" ? activeColors.danger : activeColors.textMuted }
+                    styles.priorityBadge,
+                    {
+                      backgroundColor: isHigh ? colors.dangerSoft : colors.warningSoft,
+                    },
                   ]}
                 >
-                  {item.priority.toUpperCase()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+                  <Text
+                    style={[
+                      styles.priorityText,
+                      { color: isHigh ? colors.danger : colors.warning },
+                    ]}
+                  >
+                    {(item.priority || "MEDIUM").toUpperCase()}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <View style={styles.emptyState}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            No overdue tasks! Everything is on schedule.
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { 
-    ...commonCardStyle, 
-    borderRadius: 16, 
-    padding: 16, 
-    marginTop: 16, 
-    borderWidth: 1 
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  header: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    marginBottom: 12 
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148, 163, 184, 0.1)",
+  },
+  headerTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
-    textTransform: "uppercase",
+    letterSpacing: -0.2,
   },
-  scrollArea: { 
-    maxHeight: 250 
-  }, 
-  taskRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    paddingVertical: 12, 
-    borderBottomWidth: 1 
+  countBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  iconBox: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
-    alignItems: "center", 
-    justifyContent: "center", 
-    marginRight: 12 
-  },
-  taskContent: { 
-    flex: 1 
-  },
-  taskTitle: { 
-    fontSize: 13, 
-    fontWeight: "600" 
-  },
-  taskDate: { 
+  countText: {
     fontSize: 11,
-    marginTop: 2,
+    fontWeight: "700",
   },
-  priorityBadge: { 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-    borderRadius: 12, 
-    alignItems: "center", 
-    justifyContent: "center" 
+  viewAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
   },
-  priorityText: { 
-    fontSize: 10, 
-    fontWeight: "700" 
+  viewAllText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
-  loader: { 
-    marginTop: 20 
-  }
+  scrollArea: {
+    maxHeight: 250,
+  },
+  taskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 11,
+    gap: 12,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  taskContent: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  taskTitle: {
+    fontSize: 13.5,
+    fontWeight: "600",
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 3,
+  },
+  taskDate: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  loaderWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyState: {
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
 });

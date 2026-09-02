@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { apiRequest } from "@/services/api";
 
 export type EntityLevel = "holding" | "company" | "location" | "department" | "unit";
 export type UserRole = "Executive" | "Auditor" | "Accountant" | "PropertyManager";
@@ -152,6 +153,19 @@ export const AtlasBooksProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [liveEventStream, setLiveEventStream] = useState<PulseAlert[]>(initialAlerts);
   const [stats, setStats] = useState<FinancialStats>(baseStatsMap["holding-01"]);
   const [entityHierarchy, setEntityHierarchy] = useState<EntityNode[]>([mockEntityHierarchy]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiRequest<{ item?: FinancialStats; items?: any[] }>("/financial-stats");
+        if (res.data?.item) {
+          setStats(res.data.item);
+        }
+      } catch {
+        /* Keep initial state fallback */
+      }
+    })();
+  }, []);
 
   const selectEntity = useCallback((id: string) => {
     const node = findNodeById(mockEntityHierarchy, id);

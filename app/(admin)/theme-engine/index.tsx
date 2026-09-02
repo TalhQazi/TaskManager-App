@@ -15,8 +15,10 @@ import {
 import { Palette, RefreshCw, Check, ChevronDown } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { DEFAULT_PRESET_ID, resolvePreset } from "@/constants/design/presets";
 
 export const THEME_DEFAULTS: Record<string, string> = {
+  "professional-light": "#111827",
   "dark-minimal": "#f8fafc",
   "neon-tech": "#e0f7fa",
   "metallic-elite": "#d4af37",
@@ -39,6 +41,13 @@ export const THEME_PRESETS: Record<string, {
   sidebarText: string;
   glowIntensity: number;
 }> = {
+  // Default preset: blue on near-white, matching constants/design/presets.ts.
+  "professional-light": {
+    primary: "#2563eb", secondary: "#3b82f6", accent: "#7c3aed",
+    headerBg: "#ffffff", sidebarBg: "#ffffff", dashboardBg: "#f6f8fa",
+    cardBg: "#ffffff", sidebarIcon: "#2563eb", dashboardIcon: "#2563eb", sidebarText: "#111827",
+    glowIntensity: 20,
+  },
   "dark-minimal": {
     primary: "#133767", secondary: "#3b82f6", accent: "#8b5cf6",
     headerBg: "#133767", sidebarBg: "#020617", dashboardBg: "#0f172a",
@@ -85,6 +94,7 @@ export const THEME_PRESETS: Record<string, {
 };
 
 const THEMES = [
+  { id: "professional-light", name: "Professional Light" },
   { id: "dark-minimal", name: "Dark Minimal" },
   { id: "neon-tech", name: "Neon Tech" },
   { id: "metallic-elite", name: "Metallic Elite" },
@@ -122,8 +132,8 @@ export default function ThemeEngine() {
   const isTablet = width >= 768;
   const isSmallScreen = width < 375;
 
-  const [activeTheme, setActiveTheme] = useState(uiTheme.theme || "dark-minimal");
-  const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle || "glass");
+  const [activeTheme, setActiveTheme] = useState(resolvePreset(uiTheme.theme).id);
+  const [activeCardStyle, setActiveCardStyle] = useState(uiTheme.cardStyle || "flat");
   const [customTextColor, setCustomTextColor] = useState(
     uiTheme.customColors?.textColor || THEME_DEFAULTS[uiTheme.theme] || "#ffffff"
   );
@@ -151,7 +161,7 @@ export default function ThemeEngine() {
   }, [uiTheme.theme, uiTheme.cardStyle, uiTheme.customColors?.textColor]);
 
   const handlePreviewTheme = (themeId: string) => {
-    const preset = THEME_PRESETS[themeId] || THEME_PRESETS["dark-minimal"];
+    const preset = THEME_PRESETS[themeId] || THEME_PRESETS[DEFAULT_PRESET_ID];
     const defaultColor = THEME_DEFAULTS[themeId] || "#ffffff";
     
     setActiveTheme(themeId as any);
@@ -197,7 +207,7 @@ export default function ThemeEngine() {
     setLoading(true);
     setSaveSuccess(false);
     try {
-      const preset = THEME_PRESETS[activeTheme] || THEME_PRESETS["dark-minimal"];
+      const preset = THEME_PRESETS[activeTheme] || THEME_PRESETS[DEFAULT_PRESET_ID];
       await apiFetch("/api/ui-preferences", {
         method: "PUT",
         body: JSON.stringify({
@@ -231,10 +241,10 @@ export default function ThemeEngine() {
     setSaveSuccess(false);
     try {
       const res = await apiFetch<{ item: any }>("/api/ui-preferences/reset", { method: "POST" });
-      const theme = res.item?.theme || "dark-minimal";
-      const cardStyle = res.item?.cardStyle || "glass";
+      const theme = resolvePreset(res.item?.theme).id;
+      const cardStyle = res.item?.cardStyle || "flat";
       const textColorVal = res.item?.customColors?.textColor || "#ffffff";
-      const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
+      const preset = THEME_PRESETS[theme] || THEME_PRESETS[DEFAULT_PRESET_ID];
 
       setActiveTheme(theme as any);
       setActiveCardStyle(cardStyle as any);

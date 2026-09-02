@@ -29,6 +29,7 @@ import {
   ClipboardCheck
 } from "lucide-react-native";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface EmailAccount {
   _id: string;
@@ -78,7 +79,7 @@ export function EmailAccounts() {
   const activeColors = useMemo(() => {
     const uiTheme = themeContext?.uiTheme;
     const currentTheme = uiTheme?.theme as unknown as string;
-    const isDark = currentTheme === "dark" || currentTheme === "metallic-elite";
+    const isDark = isDarkTheme(currentTheme);
 
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#090a0f" : "#f8fafc"),

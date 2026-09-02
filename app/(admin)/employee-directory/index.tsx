@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -39,9 +40,12 @@ import { Pagination } from "@/components/Pagination";
 import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { toProxiedUrl } from "@/util/toProxiedUrl";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Employee {
   id: string;
+  _id?: string;
   name: string;
   initials: string;
   email: string;
@@ -55,6 +59,9 @@ interface Employee {
   hireDate: string;
   shift?: string;
   avatarUrl?: string;
+  avatar?: string;
+  avatarDataUrl?: string;
+  imageUrl?: string;
   current_status?: "AVAILABLE" | "LUNCH" | "BREAK";
   lunch_start_time?: string | null;
   lunch_expected_end?: string | null;
@@ -110,23 +117,23 @@ export default function Employees() {
   const viewParam = localParams.view;
 
  
-   const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+   const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
-    background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
-    cardBg: uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
-    text: uiTheme.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
+    background: uiTheme?.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
+    cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#1e293b" : "#ffffff"),
+    text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#f8fafc" : "#0f172a"),
     mutedText: isDark ? "#94a3b8" : "#64748b",
     border: isDark ? "#334155" : "#cbd5e1",
     inputBg: isDark ? "#1e293b" : "#ffffff",
     inputText: isDark ? "#f8fafc" : "#0f172a",
-    primary: uiTheme.customColors?.primary || "#3b82f6",
+    primary: uiTheme?.customColors?.primary || "#3b82f6",
     success: "#10b981",
     warning: "#f59e0b",
     destructive: "#ef4444",
   }), [uiTheme, isDark]);
 
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
@@ -461,21 +468,26 @@ export default function Employees() {
     setActionsMenuOpen(false);
     if (action === "view") setViewProfileOpen(true);
     if (action === "edit") {
+      const rawUserRole = (employee as any).userRole || (employee as any).role || "employee";
+      const validUserRole = ["super-admin", "admin", "manager", "team-lead", "employee", "coder"].includes(rawUserRole)
+        ? rawUserRole
+        : "employee";
+
       setEditFormData({
-        name: employee.name,
-        email: employee.email,
-        phone: employee.phone,
+        name: employee.name || "",
+        email: employee.email || "",
+        phone: employee.phone || "",
         category: employee.category || "",
-        role: employee.role,
+        role: employee.role || "",
         company: employee.company || "",
         department: (employee as any).department || "",
         shift: employee.shift || "",
-        status: employee.status,
+        status: employee.status || "active",
         payType: employee.payType || "hourly",
-        payRate: employee.payRate,
-        hireDate: employee.hireDate,
-        userRole: (employee as any).userRole || "employee",
-        userStatus: (employee as any).userStatus || "active",
+        payRate: employee.payRate || "",
+        hireDate: employee.hireDate || "",
+        userRole: validUserRole as AddEmployeeValues["userRole"],
+        userStatus: ((employee as any).userStatus || "active") as AddEmployeeValues["userStatus"],
       });
       setEditEmployeeOpen(true);
     }
@@ -488,18 +500,40 @@ export default function Employees() {
     if (action === "delete") setDeleteConfirmOpen(true);
   };
 
+function EmployeeAvatarCard({ item, styles, colors, avatarUri }: { item: Employee; styles: any; colors: any; avatarUri?: string }) {
+  const [avatarErr, setAvatarErr] = useState(false);
+  return (
+    <View style={styles.avatarWrapper}>
+      {avatarUri && !avatarErr ? (
+        <Image
+          source={{ uri: avatarUri }}
+          style={styles.avatarImage}
+          resizeMode="cover"
+          onError={() => setAvatarErr(true)}
+        />
+      ) : (
+        <Text style={styles.avatarText}>{item.initials}</Text>
+      )}
+      {item.current_status && item.current_status !== "AVAILABLE" && (
+        <View
+          style={[
+            styles.statusDotIndicator,
+            { backgroundColor: item.current_status === "LUNCH" ? colors.warning : "#8b5cf6" },
+          ]}
+        />
+      )}
+    </View>
+  );
+}
+
   const renderEmployeeCard = ({ item }: { item: Employee }) => {
     const isMutedLayout = item.current_status === "LUNCH" || item.current_status === "BREAK";
+    const avatarUri = toProxiedUrl(item.avatarUrl || item.avatar || item.avatarDataUrl || item.imageUrl);
     return (
       <View style={[styles.employeeCard, isMutedLayout && { opacity: 0.65 }]}>
         <View style={styles.cardMainHeader}>
           <TouchableOpacity style={styles.avatarCluster} onPress={() => handleRowAction("view", item)}>
-            <View style={styles.avatarWrapper}>
-              <Text style={styles.avatarText}>{item.initials}</Text>
-              {item.current_status && item.current_status !== "AVAILABLE" && (
-                <View style={[styles.statusDotIndicator, { backgroundColor: item.current_status === "LUNCH" ? colors.warning : "#8b5cf6" }]} />
-              )}
-            </View>
+            <EmployeeAvatarCard item={item} styles={styles} colors={colors} avatarUri={avatarUri} />
             <View style={styles.headerInfoBlock}>
               <Text style={styles.employeeNameText} numberOfLines={1}>{item.name}</Text>
               <Text style={styles.employeeRoleLabel} numberOfLines={1}>{item.role}</Text>
@@ -955,7 +989,15 @@ export default function Employees() {
               <ScrollView style={{ padding: 20 }}>
                 <View style={styles.profileMetaHeaderRow}>
                   <View style={[styles.avatarWrapper, { width: 46, height: 46, borderRadius: 23 }]}>
-                    <Text style={[styles.avatarText, { fontSize: 16 }]}>{selectedEmployee.initials}</Text>
+                    {toProxiedUrl(selectedEmployee.avatarUrl || selectedEmployee.avatar || selectedEmployee.avatarDataUrl || selectedEmployee.imageUrl) ? (
+                      <Image 
+                        source={{ uri: toProxiedUrl(selectedEmployee.avatarUrl || selectedEmployee.avatar || selectedEmployee.avatarDataUrl || selectedEmployee.imageUrl)! }} 
+                        style={{ width: 46, height: 46, borderRadius: 23 }} 
+                        resizeMode="cover" 
+                      />
+                    ) : (
+                      <Text style={[styles.avatarText, { fontSize: 16 }]}>{selectedEmployee.initials}</Text>
+                    )}
                   </View>
                   <View style={{ marginLeft: 12, flex: 1 }}>
                     <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>{selectedEmployee.name}</Text>
@@ -1016,8 +1058,35 @@ export default function Employees() {
               <Text style={styles.formFieldTitleLabel}>Phone</Text>
               <TextInput style={styles.baseTextInputField} keyboardType="phone-pad" value={editFormData.phone} onChangeText={(t) => setEditFormData({ ...editFormData, phone: t })} placeholder="Phone" placeholderTextColor={colors.mutedText} />
 
-              <Text style={styles.formFieldTitleLabel}>Role *</Text>
-              <TextInput style={styles.baseTextInputField} value={editFormData.role} onChangeText={(t) => setEditFormData({ ...editFormData, role: t })} placeholder="Role" placeholderTextColor={colors.mutedText} />
+              <Text style={styles.formFieldTitleLabel}>System Role (Access Level) *</Text>
+              <TouchableOpacity 
+                style={styles.customSelectorBoxButton}
+                onPress={() => openCustomPicker("Select System Role", [
+                  { label: "Employee", value: "employee" },
+                  { label: "Manager", value: "manager" },
+                  { label: "Team Lead", value: "team-lead" },
+                  { label: "Admin", value: "admin" },
+                  { label: "Super Admin", value: "super-admin" },
+                  { label: "Coder", value: "coder" },
+                ], (val) => setEditFormData({ ...editFormData, userRole: val as any }))}
+              >
+                <Text style={{ color: editFormData.userRole ? colors.inputText : colors.mutedText, fontSize: 14 }}>
+                  {editFormData.userRole ? editFormData.userRole.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) : "Select role"}
+                </Text>
+                <ChevronDown size={16} color={colors.text} />
+              </TouchableOpacity>
+
+              <Text style={styles.formFieldTitleLabel}>Job Title / Designation *</Text>
+              <TextInput style={styles.baseTextInputField} value={editFormData.role} onChangeText={(t) => setEditFormData({ ...editFormData, role: t })} placeholder="e.g. Lead Developer, Senior Mechanic" placeholderTextColor={colors.mutedText} />
+
+              <Text style={styles.formFieldTitleLabel}>Category</Text>
+              <TouchableOpacity 
+                style={styles.customSelectorBoxButton}
+                onPress={() => openCustomPicker("Select Category", categoryOptions.map(c => ({ label: c, value: c })), (val) => setEditFormData({ ...editFormData, category: val }))}
+              >
+                <Text style={{ color: editFormData.category ? colors.inputText : colors.mutedText, fontSize: 14 }}>{editFormData.category || "Select category"}</Text>
+                <ChevronDown size={16} color={colors.text} />
+              </TouchableOpacity>
 
               <Text style={styles.formFieldTitleLabel}>Company</Text>
               <TouchableOpacity 
@@ -1031,9 +1100,39 @@ export default function Employees() {
               <Text style={styles.formFieldTitleLabel}>Department</Text>
               <TouchableOpacity 
                 style={styles.customSelectorBoxButton}
-                onPress={() => openCustomPicker("Select Department", [{ label: "Coding", value: "Coding" }, { label: "Electrician", value: "Electrician" }, { label: "Mechanic", value: "Mechanic" }], (val) => setEditFormData({ ...editFormData, department: val }))}
+                onPress={() => openCustomPicker("Select Department", [{ label: "Coding", value: "Coding" }, { label: "Electrician", value: "Electrician" }, { label: "Mechanic", value: "Mechanic" }, { label: "Operations", value: "Operations" }], (val) => setEditFormData({ ...editFormData, department: val }))}
               >
                 <Text style={{ color: editFormData.department ? colors.inputText : colors.mutedText, fontSize: 14 }}>{editFormData.department || "Select department"}</Text>
+                <ChevronDown size={16} color={colors.text} />
+              </TouchableOpacity>
+
+              <Text style={styles.formFieldTitleLabel}>Employee Status</Text>
+              <TouchableOpacity 
+                style={styles.customSelectorBoxButton}
+                onPress={() => openCustomPicker("Select Status", [
+                  { label: "Active", value: "active" },
+                  { label: "Inactive", value: "inactive" },
+                  { label: "On Leave", value: "on-leave" },
+                ], (val) => setEditFormData({ ...editFormData, status: val as any }))}
+              >
+                <Text style={{ color: editFormData.status ? colors.inputText : colors.mutedText, fontSize: 14 }}>
+                  {editFormData.status ? editFormData.status.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) : "Select status"}
+                </Text>
+                <ChevronDown size={16} color={colors.text} />
+              </TouchableOpacity>
+
+              <Text style={styles.formFieldTitleLabel}>User Account Status</Text>
+              <TouchableOpacity 
+                style={styles.customSelectorBoxButton}
+                onPress={() => openCustomPicker("Select User Account Status", [
+                  { label: "Active", value: "active" },
+                  { label: "Inactive", value: "inactive" },
+                  { label: "Pending", value: "pending" },
+                ], (val) => setEditFormData({ ...editFormData, userStatus: val as any }))}
+              >
+                <Text style={{ color: editFormData.userStatus ? colors.inputText : colors.mutedText, fontSize: 14 }}>
+                  {editFormData.userStatus ? editFormData.userStatus.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) : "Select account status"}
+                </Text>
                 <ChevronDown size={16} color={colors.text} />
               </TouchableOpacity>
 
@@ -1205,7 +1304,7 @@ const tabsStyles = StyleSheet.create({
   },
 });
 
-function createStyles(colors: any) {
+function createStyles(colors: any, isDark: boolean = true) {
   return StyleSheet.create({
     rootViewport: {
       flex: 1,
@@ -1349,10 +1448,16 @@ function createStyles(colors: any) {
       width: 36,
       height: 36,
       borderRadius: 18,
-     // backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      backgroundColor: isDark ? "#1e293b" : "#e2e8f0",
       alignItems: "center",
       justifyContent: "center",
       position: "relative",
+      overflow: "hidden",
+    },
+    avatarImage: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
     },
     avatarText: {
       fontSize: 13,

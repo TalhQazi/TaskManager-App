@@ -11,6 +11,7 @@ import { ThemeInitializer } from '@/components/ThemeInitializer';
 import { Toaster } from '@/components/Toaster';
 import { RewardProvider } from '@/contexts/RewardContext';
 import { TaskBlasterProvider } from '@/contexts/TaskBlasterContext';
+import TaskBlasterOverlay from '@/components/shared/TaskBlasterOverlay';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -108,6 +109,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isAppReady) {
       SplashScreen.hideAsync().catch(console.error);
     }
+    const safetyTimer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 1200);
+    return () => clearTimeout(safetyTimer);
   }, [isAppReady]);
 
   return <>{children}</>;
@@ -149,6 +154,7 @@ export default function RootLayout() {
                       <AuthGate>
                         <RootLayoutNav />
                         <Toaster />
+                        <TaskBlasterOverlay />
                       </AuthGate>
                     </SidebarProvider>
                   </ThemeInitializer>

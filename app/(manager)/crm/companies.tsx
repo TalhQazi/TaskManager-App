@@ -16,6 +16,7 @@ import {
 import { apiFetch } from '@/lib/admin/apiClient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, wp, hp, fs } from '@/util/styles';
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 
@@ -550,7 +551,7 @@ function CountPill({ value, variant = 'gray', styles }: { value: any; variant?: 
 
 export default function ManagerCRMCompanies() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme?.theme as string) === 'dark' || (uiTheme?.theme as string) === 'metallic-elite';
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

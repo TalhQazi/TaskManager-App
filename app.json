@@ -3,19 +3,18 @@
     "name": "Task Manager",
     "slug": "employee-mobile-app-50y6sgn",
     "version": "21.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "app.rork.employee-mobile-app-50y6sgn"
     },
     "android": {
@@ -24,9 +23,18 @@
         {
           "action": "VIEW",
           "data": [
-            { "scheme": "content", "mimeType": "application/pdf" },
-            { "scheme": "content", "mimeType": "image/*" },
-            { "scheme": "content", "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }
+            {
+              "scheme": "content",
+              "mimeType": "application/pdf"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "image/*"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
           ]
         }
       ],
@@ -58,10 +66,10 @@
           "photosPermission": "Allow Taskblaster to access photos to save images.",
           "savePhotosPermission": "Allow Taskblaster to save media to your device gallery.",
           "isAccessMediaLocationEnabled": true,
-         
           "audioPermission": true
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

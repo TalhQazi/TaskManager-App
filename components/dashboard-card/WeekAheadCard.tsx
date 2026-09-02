@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, LayoutAnimation, Platform, UIManager } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { Flame, Clock } from "lucide-react-native";
+import { Flame, Clock, CalendarDays } from "lucide-react-native";
 import { apiRequest } from "@/services/api";
-import { commonCardStyle } from "@/constants/Styles";
 import { useTheme } from "@/contexts/ThemeContext";
-import { s } from "@/util/styles";
+import { isDarkTheme } from "@/constants/design/presets";
 
 if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -14,7 +13,7 @@ if (Platform.OS === "android") {
 interface Task {
   _id: string;
   title: string;
-  priority: "high" | "medium" | "low";
+  priority: "high" | "medium" | "low" | "urgent";
   dueTime?: string;
 }
 
@@ -33,24 +32,26 @@ interface WeekData {
 
 export function WeekAheadCard() {
   const themeContext = useTheme() as any;
+  const uiTheme = themeContext?.uiTheme;
+  const isDark = isDarkTheme(uiTheme?.theme);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
-  const activeColors = useMemo(() => {
-    const uiTheme = themeContext?.uiTheme;
-    const isDark = uiTheme?.theme === "dark" || uiTheme?.theme === "metallic-elite";
-
+  const colors = useMemo(() => {
     return {
-      surface: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#0f1117" : "#ffffff"),
-      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
-      borderLight: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"),
-      surfaceVariant: isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9",
-      text: uiTheme?.panelColors?.dashboardTextColor || (isDark ? "#ffffff" : "#0f172a"),
-      textMuted: isDark ? "#94a3b8" : "#64748b",
-      textLight: isDark ? "#64748b" : "#94a3b8",
-      primary: uiTheme?.customColors?.primary || "#0072FF",
-      danger: "#ef4444",
+      cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? "#111827" : "#FFFFFF"),
+      border: uiTheme?.panelColors?.borderColor || (isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0"),
+      borderLight: isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9",
+      surfaceVariant: isDark ? "rgba(255,255,255,0.04)" : "#F8FAFC",
+      textPrimary: isDark ? "#F8FAFC" : "#0F172A",
+      textSecondary: isDark ? "#94A3B8" : "#64748B",
+      textMuted: isDark ? "#64748B" : "#94A3B8",
+      primary: uiTheme?.customColors?.primary || "#2563EB",
+      primarySoft: isDark ? "rgba(37, 99, 235, 0.15)" : "#EFF6FF",
+      danger: "#EF4444",
+      dangerSoft: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2",
+      warning: "#F59E0B",
     };
-  }, [themeContext]);
+  }, [uiTheme, isDark]);
 
   const { data } = useQuery<WeekData | null>({
     queryKey: ["dashboard-week"],
@@ -64,6 +65,7 @@ export function WeekAheadCard() {
     if (data?.days && !expandedDay) {
       const today = data.days.find((d) => d.isToday);
       if (today) setExpandedDay(today.date);
+      else if (data.days[0]) setExpandedDay(data.days[0].date);
     }
   }, [data, expandedDay]);
 
@@ -75,36 +77,59 @@ export function WeekAheadCard() {
   const days = data?.days || [];
   const activeDay = days.find((d) => d.date === expandedDay);
 
+  const getSafeDayNumber = (dateStr: string) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? "" : d.getDate();
+  };
+
   return (
-    <View style={[s(styles.card), { backgroundColor: activeColors.surface, borderColor: activeColors.border }]}>
-      <View style={s(styles.header)}>
-        <Text style={[s(styles.sectionTitle), { color: activeColors.primary }]}>
-          Week Ahead
-        </Text>
+    <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+      <View style={styles.header}>
+        <View style={styles.headerTitleGroup}>
+          <View style={[styles.headerIconBox, { backgroundColor: colors.primarySoft }]}>
+            <CalendarDays size={14} color={colors.primary} />
+          </View>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            Week Ahead
+          </Text>
+        </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s(styles.daysRow)}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.daysRow}>
         {days.map((day) => {
           const isSelected = expandedDay === day.date;
+          const dayNumber = getSafeDayNumber(day.date);
+
           return (
             <TouchableOpacity
               key={day.date}
               onPress={() => toggleDay(day.date)}
+              activeOpacity={0.7}
               style={[
-                s(styles.dayTab),
-                { backgroundColor: activeColors.surfaceVariant, borderColor: activeColors.border },
-                isSelected && [s(styles.activeTab), { backgroundColor: activeColors.primary, borderColor: activeColors.primary }],
+                styles.dayTab,
+                { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+                isSelected && [styles.activeTab, { backgroundColor: colors.primary, borderColor: colors.primary }],
               ]}
             >
-              <Text style={[s(styles.dayLabel), { color: isSelected ? "#ffffff" : activeColors.textMuted }]}>
+              <Text
+                style={[
+                  styles.dayLabel,
+                  { color: isSelected ? "#FFFFFF" : colors.textSecondary },
+                ]}
+              >
                 {day.label}
               </Text>
-              {/* Fixed: Unselected day number now properly tints to activeColors.textMuted instead of white */}
-              <Text style={[s(styles.dayDate), { color: isSelected ? "#ffffff" : activeColors.textMuted }]}>
-                {new Date(day.date).getDate()}
+              <Text
+                style={[
+                  styles.dayDate,
+                  { color: isSelected ? "#FFFFFF" : colors.textPrimary },
+                ]}
+              >
+                {dayNumber}
               </Text>
               {day.highPriorityCount > 0 && !isSelected && (
-                <Flame size={12} color={activeColors.danger} style={s(styles.flameIcon)} />
+                <Flame size={12} color={colors.danger} style={styles.flameIcon} />
               )}
             </TouchableOpacity>
           );
@@ -112,45 +137,49 @@ export function WeekAheadCard() {
       </ScrollView>
 
       {activeDay && (
-        <View style={[s(styles.taskList), { backgroundColor: activeColors.surfaceVariant }]}>
-          <View style={s(styles.dayHeader)}>
-            <Text style={[s(styles.dayName), { color: activeColors.text }]}>{activeDay.dayName}</Text>
-            <Text style={[s(styles.taskCount), { color: activeColors.textMuted }]}>
-              {activeDay.tasks?.length || 0} Tasks
-            </Text>
+        <View style={[styles.taskList, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
+          <View style={styles.dayHeader}>
+            <Text style={[styles.dayName, { color: colors.textPrimary }]}>{activeDay.dayName}</Text>
+            <View style={[styles.taskCountBadge, { backgroundColor: colors.cardBg }]}>
+              <Text style={[styles.taskCount, { color: colors.textSecondary }]}>
+                {activeDay.tasks?.length || 0} Tasks
+              </Text>
+            </View>
           </View>
 
           {(activeDay.tasks || []).length > 0 ? (
             activeDay.tasks.map((task, index) => {
               const isLastItem = index === activeDay.tasks.length - 1;
+              const isHigh = task.priority === "high" || task.priority === "urgent";
+
               return (
-                <View 
-                  key={task._id} 
+                <View
+                  key={task._id || String(index)}
                   style={[
-                    s(styles.taskItem), 
-                    !isLastItem && { borderBottomColor: activeColors.borderLight }
+                    styles.taskItem,
+                    !isLastItem && { borderBottomColor: colors.borderLight, borderBottomWidth: 1 },
                   ]}
                 >
-                  <View 
+                  <View
                     style={[
-                      s(styles.dot), 
-                      { backgroundColor: task.priority === "high" ? activeColors.danger : activeColors.primary }
-                    ]} 
+                      styles.dot,
+                      { backgroundColor: isHigh ? colors.danger : colors.primary },
+                    ]}
                   />
-                  <Text style={[s(styles.taskTitle), { color: activeColors.text }]} numberOfLines={1}>
+                  <Text style={[styles.taskTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                     {task.title}
                   </Text>
                   {task.dueTime && (
-                    <View style={s(styles.timeTag)}>
-                      <Clock size={11} color={activeColors.textLight} />
-                      <Text style={[s(styles.timeText), { color: activeColors.textLight }]}>{task.dueTime}</Text>
+                    <View style={[styles.timeTag, { backgroundColor: colors.cardBg }]}>
+                      <Clock size={10} color={colors.textSecondary} />
+                      <Text style={[styles.timeText, { color: colors.textSecondary }]}>{task.dueTime}</Text>
                     </View>
                   )}
                 </View>
               );
             })
           ) : (
-            <Text style={[s(styles.noTasks), { color: activeColors.textLight }]}>No tasks scheduled</Text>
+            <Text style={[styles.noTasks, { color: colors.textSecondary }]}>No tasks scheduled</Text>
           )}
         </View>
       )}
@@ -159,98 +188,132 @@ export function WeekAheadCard() {
 }
 
 const styles = StyleSheet.create({
-  card: { 
-    ...commonCardStyle, 
-    borderRadius: 16, 
-    padding: 16, 
-    marginTop: 16, 
-    borderWidth: 1 
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  header: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    marginBottom: 12 
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148, 163, 184, 0.1)",
+  },
+  headerTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  daysRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  dayTab: {
+    width: 52,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    alignItems: "center",
+    marginRight: 8,
+    borderWidth: 1,
+  },
+  activeTab: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dayLabel: {
+    fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
   },
-  daysRow: { 
-    flexDirection: "row", 
-    marginBottom: 4 
-  },
-  dayTab: { 
-    width: 50, 
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12, 
-    alignItems: "center", 
-    marginRight: 8, 
-    borderWidth: 1 
-  },
-  activeTab: {},
-  dayLabel: { 
-    fontSize: 10,
-    fontWeight: "600",
-    textTransform: "uppercase"
-  },
-  dayDate: { 
-    fontSize: 16, 
-    fontWeight: "700", 
-    marginTop: 4 
+  dayDate: {
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 4,
   },
   flameIcon: {
     marginTop: 4,
   },
-  taskList: { 
-    marginTop: 12, 
-    padding: 12, 
-    borderRadius: 12 
+  taskList: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 0.5,
   },
-  dayHeader: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
+  dayHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8 
+    marginBottom: 8,
   },
-  dayName: { 
-    fontWeight: "700", 
-    fontSize: 13 
+  dayName: {
+    fontWeight: "700",
+    fontSize: 13,
   },
-  taskCount: { 
+  taskCountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  taskCount: {
     fontSize: 11,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  taskItem: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    paddingVertical: 10, 
-    borderBottomWidth: 1 
+  taskItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 9,
+    gap: 8,
   },
-  dot: { 
-    width: 6, 
-    height: 6, 
-    borderRadius: 3, 
-    marginRight: 10 
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  taskTitle: { 
-    flex: 1, 
+  taskTitle: {
+    flex: 1,
     fontSize: 13,
     fontWeight: "500",
   },
-  timeTag: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 4 
+  timeTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  timeText: { 
-    fontSize: 11 
+  timeText: {
+    fontSize: 10.5,
+    fontWeight: "500",
   },
-  noTasks: { 
-    textAlign: "center", 
-    fontSize: 12, 
-    paddingVertical: 12 
-  }
+  noTasks: {
+    textAlign: "center",
+    fontSize: 12,
+    paddingVertical: 12,
+    fontWeight: "500",
+  },
 });

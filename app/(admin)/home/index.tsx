@@ -43,6 +43,7 @@ import { DayAheadCard } from '@/components/dashboard-card/DayAheadCard';
 import { WeekAheadCard } from '@/components/dashboard-card/WeekAheadCard';
 import { TaskCharts } from '@/components/admin/dashboard/TaskCharts';
 import { WipDashboardWidget } from '@/components/wip/WipDashboardWidget';
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface DashboardSummary {
   activeTasks: number;
@@ -133,7 +134,7 @@ export default function AdminHomeScreen() {
   const numColumns = width >= 1024 ? 6 : isTablet ? 4 : 3;
 
   const colors = useMemo(() => {
-    const isDark = uiTheme?.theme === 'dark' || isMetallic || uiTheme?.theme !== 'crystal-white';
+    const isDark = isDarkTheme(uiTheme?.theme);
     return {
       background: uiTheme?.panelColors?.dashboardBackground || (isDark ? '#080a0f' : '#f8fafc'),
       cardBg: uiTheme?.panelColors?.dashboardCardBackground || (isDark ? '#0f121d' : '#ffffff'),
@@ -336,10 +337,10 @@ export default function AdminHomeScreen() {
 
         {/* Dual List Sections */}
         <View style={s(styles.dualColumnLayout)}>
-          <View style={s([styles.dualColumn, dynamicCardStyle(colors)])}>
+          <View style={s(styles.dualColumn)}>
             <RecentTasksList />
           </View>
-          <View style={s([styles.dualColumn, dynamicCardStyle(colors)])}>
+          <View style={s(styles.dualColumn)}>
             <ActiveEmployees />
           </View>
         </View>

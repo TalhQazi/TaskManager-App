@@ -1,21 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiFetch } from '@/lib/admin/apiClient';
 import { THEME_DEFAULTS, THEME_PRESETS } from '@/constants/theme';
+import { DEFAULT_PRESET_ID, resolvePreset } from '@/constants/design/presets';
 
 export function ThemeInitializer({ children }: { children: React.ReactNode }) {
-  const { updateTheme, uiTheme } = useTheme();
-  const [isThemeReady, setIsThemeReady] = useState(false);
+  const { updateTheme } = useTheme();
 
   useEffect(() => {
+    let isMounted = true;
     const init = async () => {
       try {
         const res = await apiFetch<{ item: any }>("/api/ui-preferences");
-        if (res?.item) {
-          const theme = res.item.theme || "dark-minimal";
-          const cardStyle = res.item.cardStyle || "glass";
+        if (res?.item && isMounted) {
+          // Fall back to the app's configured default rather than a hardcoded preset id:
+          // a stored record with no `theme` field used to force dark-minimal, which
+          // silently overrode the default for anyone whose preferences predate it.
+          const theme = resolvePreset(res.item.theme).id;
+          const cardStyle = res.item.cardStyle || "flat";
           const textColorVal = res.item.customColors?.textColor || THEME_DEFAULTS[theme] || "#ffffff";
-          const preset = THEME_PRESETS[theme] || THEME_PRESETS["dark-minimal"];
+          const preset = THEME_PRESETS[theme] || THEME_PRESETS[DEFAULT_PRESET_ID];
 
           updateTheme({
             theme,
@@ -35,13 +39,11 @@ export function ThemeInitializer({ children }: { children: React.ReactNode }) {
         }
       } catch (e) {
         console.error("Theme init error:", e);
-      } finally {
-        setIsThemeReady(true);
       }
     };
     init();
-  }, []);
+    return () => { isMounted = false; };
+  }, [updateTheme]);
 
-  if (!isThemeReady) return null;
   return <>{children}</>;
 }

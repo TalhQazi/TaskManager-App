@@ -42,6 +42,7 @@ import {
 } from "@/lib/admin/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 const { width } = Dimensions.get("window");
 
@@ -585,7 +586,7 @@ export default function UsersScreen() {
   const { user: currentUser } = useAuth();
   const { uiTheme } = useTheme();
 
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
   const colors = useMemo(() => buildColors(uiTheme, isDark), [uiTheme, isDark]);
   const styles = useMemo(() => createStyles(colors), [colors]);
 

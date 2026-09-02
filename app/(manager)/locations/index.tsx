@@ -34,6 +34,7 @@ import {
   X,
   Save
 } from "lucide-react-native";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface Location {
   id: string;
@@ -165,7 +166,7 @@ const countryFlags: Record<string, string> = {
 const COUNTRIES_LIST = Object.keys(countryFlags);
 
 function buildColors(uiTheme: any) {
-  const isDark = uiTheme.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
   return {
     background:      uiTheme.panelColors?.dashboardBackground     || (isDark ? "#09090b" : "#ffffff"),
     panelHeader:     uiTheme.panelColors?.dashboardCardBackground || (isDark ? "#141517" : "#f8fafc"),

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 
 export const themeDefaults: Record<string, string> = {
+  "professional-light": "#111827",
   "dark-minimal": "#f8fafc",
   "neon-tech": "#e0f7fa",
   "metallic-elite": "#d4af37",
@@ -30,6 +31,13 @@ export interface ThemeConfig {
 }
 
 export const themePresets: Record<string, Omit<ThemeConfig, "textColor" | "textMuted" | "cardStyle">> = {
+  "professional-light": {
+    primary: "#2563eb", secondary: "#3b82f6", accent: "#7c3aed",
+    headerBg: "#ffffff", sidebarBg: "#ffffff", dashboardBg: "#f6f8fa",
+    cardBg: "#ffffff",
+    sidebarIcon: "#2563eb", dashboardIcon: "#2563eb", sidebarText: "#111827",
+    glowIntensity: 20, animationSpeedMs: 200,
+  },
   "dark-minimal": {
     primary: "#133767", secondary: "#3b82f6", accent: "#8b5cf6",
     headerBg: "#133767", sidebarBg: "#020617", dashboardBg: "#0f172a",

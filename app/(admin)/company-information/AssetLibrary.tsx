@@ -21,6 +21,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
 import { apiRequest } from "@/services/api";
+import { toProxiedUrl } from "@/util/toProxiedUrl";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   Folder,
@@ -441,7 +442,7 @@ export default function AssetLibrary({
               >
                 <View style={styles.thumbnailWrapper}>
                   {isImage && (item.urlThumbnail || item.attachment?.url) ? (
-                    <Image source={{ uri: item.urlThumbnail || item.attachment?.url }} style={styles.thumbnailImage} />
+                    <Image source={{ uri: toProxiedUrl(item.urlThumbnail || item.attachment?.url) || (item.urlThumbnail || item.attachment?.url) }} style={styles.thumbnailImage} />
                   ) : (
                     <View style={styles.fallbackIconWrapper}>
                       {item.mimeType === "application/pdf" ? <FileText size={36} color={colors.primary} /> : <File size={36} color="#94a3b8" />}
@@ -517,7 +518,7 @@ export default function AssetLibrary({
               <ScrollView contentContainerStyle={styles.paddingBottom24}>
                 <View style={styles.previewMediaBox}>
                   {(previewAsset.mimeType || previewAsset.attachment?.mimeType || "").startsWith("image/") ? (
-                    <Image source={{ uri: previewAsset.attachment?.url || previewAsset.urlPreview }} style={styles.fullPreviewImg} resizeMode="contain" />
+                    <Image source={{ uri: toProxiedUrl(previewAsset.attachment?.url || previewAsset.urlPreview) || (previewAsset.attachment?.url || previewAsset.urlPreview) }} style={styles.fullPreviewImg} resizeMode="contain" />
                   ) : (
                     <View style={styles.nonImagePreviewPlaceholder}>
                       <FileText size={64} color={colors.primary} />

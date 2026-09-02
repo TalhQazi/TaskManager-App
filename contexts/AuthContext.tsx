@@ -4,6 +4,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useMutation } from '@tanstack/react-query';
 import { User } from '@/types';
 import { apiRequest } from '@/services/api';
+import { setCachedToken } from '@/util/toProxiedUrl';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
@@ -52,14 +53,15 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   String(me.role || '').toLowerCase() === 'manager'
     ? 'manager'
     : 'employee',*/
-    role:
-  apiRole === 'super-admin' 
-    ? 'super-admin' 
-    : apiRole === 'admin' 
-    ? 'admin' 
-    : apiRole === 'manager' 
-    ? 'manager' 
-    : 'employee',
+        role:
+          apiRole === 'super-admin' 
+            ? 'super-admin' 
+            : apiRole === 'admin' 
+            ? 'admin' 
+            : apiRole === 'manager' 
+            ? 'manager' 
+            : 'employee',
+        avatarUrl: (me as any).avatarDataUrl || (me as any).avatarUrl || (me as any).avatar || (me as any).photo || (me as any).profilePicture || (me as any).profileImage || (me as any).profile_picture || (me as any).image || '',
       };
 
       setUser(mappedUser);
@@ -79,6 +81,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         if (storedToken && storedUser) {
           console.log('[Auth] Found stored session');
           setToken(storedToken);
+          setCachedToken(storedToken);
           setUser(JSON.parse(storedUser));
           try {
             await refreshMe();
@@ -133,6 +136,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }
 
   await AsyncStorage.setItem(AUTH_TOKEN_KEY, loginItem.token);
+  setCachedToken(loginItem.token);
 
   const mappedUser = await refreshMe(email);
 
@@ -155,6 +159,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     onSuccess: async (data) => {
       setUser(data.user);
       setToken(data.token);
+      setCachedToken(data.token);
       await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
       console.log('[Auth] Session stored successfully');
     },
@@ -164,6 +169,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     console.log('[Auth] Logging out...');
     setUser(null);
     setToken(null);
+    setCachedToken(null);
     await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
     await AsyncStorage.removeItem(AUTH_USER_KEY);
   }, []);

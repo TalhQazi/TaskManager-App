@@ -35,6 +35,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 // ==========================================
 // TYPES & DATA INTERFACES
@@ -627,7 +628,7 @@ function DriveBayGrid({
         <Text style={[gridStyles.chassisTitle, { color: colors.textMuted }]}>
           Front Backplane · 16 Bays
         </Text>
-        <Text style={[gridStyles.chassisSubtitle, { color: colors.textMuted }]}>2.5" SAS / SATA</Text>
+        <Text style={[gridStyles.chassisSubtitle, { color: colors.textMuted }]}>{'2.5" SAS / SATA'}</Text>
       </View>
 
       <View style={gridStyles.gridRow}>
@@ -1238,7 +1239,7 @@ const unavailStyles = StyleSheet.create({
 
 export function StorageHealthCard({ serverId = "host" }: { serverId?: string }) {
   const { uiTheme } = useTheme();
-  const isDark = uiTheme?.theme !== "crystal-white";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => {
     return {

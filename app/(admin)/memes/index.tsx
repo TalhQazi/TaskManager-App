@@ -21,6 +21,7 @@ import {
 } from "lucide-react-native";
 import { apiFetch, toProxiedUrl } from "@/lib/admin/apiClient";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isDarkTheme } from "@/constants/design/presets";
 
 interface MemeItem {
   id: string;
@@ -53,7 +54,7 @@ const CARD_WIDTH = (SCREEN_WIDTH - 80) / 2;
 
 export default function Memes() {
   const { uiTheme } = useTheme();
-  const isDark = (uiTheme.theme as string) === "dark" || (uiTheme.theme as string) === "metallic-elite";
+  const isDark = isDarkTheme(uiTheme?.theme);
 
   const colors = useMemo(() => ({
     background: uiTheme.panelColors?.dashboardBackground || (isDark ? "#0f172a" : "#f8fafc"),
