@@ -65,3 +65,12 @@ export function formatFileSize(bytes?: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Checks if a file is an image based on mimeType and/or file extension
+ */
+export function isImageAttachment(fileName?: string, mimeType?: string): boolean {
+  if (mimeType && mimeType.toLowerCase().startsWith("image/")) return true;
+  if (!fileName) return false;
+  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+}

@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 
 import {
   LayoutDashboard,
+  LayoutGrid,
   ClipboardList,
   Users,
   Calendar,
@@ -78,6 +79,7 @@ import {
   AlertCircle,
   Workflow,
   PlayCircle,
+  Sparkles,
 } from 'lucide-react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -293,6 +295,12 @@ const MENU_ITEMS = [
     path: '/(admin)/leave-requests',
   },
   {
+    id: 317,
+    label: 'Holiday Management',
+    icon: Sparkles,
+    path: '/(admin)/holidays',
+  },
+  {
     id: 121,
     label: 'Legal Tracker',
     icon: Layers,
@@ -403,6 +411,12 @@ const MENU_ITEMS = [
     label: 'Task Management',
     icon: History,
     path: '/(admin)/task-management',
+  },
+  {
+    id: 350,
+    label: 'Task Workspace',
+    icon: LayoutGrid,
+    path: '/(admin)/task-workspace',
   },
   {
     id: 36,
@@ -625,7 +639,7 @@ export default function AdminFixedSidebar({ isOpen, onClose }: any) {
         styles.container, 
         { 
           paddingTop: Platform.OS === 'ios' ? insets.top + 10 : insets.top + 16,
-          paddingBottom: insets.bottom + 16 
+          paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 24) + 16 : insets.bottom + 16,
         }
       ]}
     >

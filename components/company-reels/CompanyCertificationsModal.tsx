@@ -66,8 +66,10 @@ export const CompanyCertificationsModal: React.FC<CompanyCertificationsModalProp
   const fetchCerts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<CertificationsResponse>("/company-reels/certifications");
-      setData(res.data);
+      const res = await apiRequest<any>("/company-reels/certifications");
+      const raw = res?.data;
+      const parsed = raw?.data !== undefined && raw?.ladder === undefined ? raw.data : raw;
+      setData(parsed);
     } catch (err) {
       console.error("[Certifications] Fetch error:", err);
     } finally {
@@ -187,7 +189,7 @@ export const CompanyCertificationsModal: React.FC<CompanyCertificationsModalProp
                 </View>
               ) : (
                 <View style={{ gap: 10 }}>
-                  {data.certifications.map((cert, index) => {
+                  {(data.certifications || []).map((cert, index) => {
                     const isExpiring = cert.status === "expiring_soon";
                     const isExpired = cert.status === "expired";
 

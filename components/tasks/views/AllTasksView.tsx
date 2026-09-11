@@ -17,6 +17,8 @@ interface AllTasksViewProps {
   projectOptions: { id: string; name: string }[];
   onOpenTask: (task: Task) => void;
   onToggleComplete: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onQuickAdd?: (value: QuickAddValue) => void;
   canCreate?: boolean;
   hideCompleted?: boolean;
@@ -27,6 +29,8 @@ export default function AllTasksView({
   projectOptions,
   onOpenTask,
   onToggleComplete,
+  onEditTask,
+  onDeleteTask,
   onQuickAdd,
   canCreate,
   hideCompleted = false,
@@ -127,7 +131,13 @@ export default function AllTasksView({
           data={paged}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TaskRow task={item} onPress={() => onOpenTask(item)} onToggleComplete={() => onToggleComplete(item)} />
+            <TaskRow
+              task={item}
+              onPress={() => onOpenTask(item)}
+              onToggleComplete={() => onToggleComplete(item)}
+              onEdit={onEditTask ? () => onEditTask(item) : undefined}
+              onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
+            />
           )}
           contentContainerStyle={styles.listContent}
           ListFooterComponent={

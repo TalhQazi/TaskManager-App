@@ -10,11 +10,13 @@ import {
   Modal,
   Image,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LayoutDashboard,
+  LayoutGrid,
   ClipboardList,
   Clock,
   MessageSquare,
@@ -37,6 +39,7 @@ import {
   ClipboardCheck,
   Timer,
   PlayCircle,
+  Sparkles,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -45,6 +48,7 @@ import { apiRequest } from '@/services/api';
 import { toProxiedUrl, initToken } from '@/util/toProxiedUrl';
 import { useQuery } from '@tanstack/react-query';
 import { MIN_TOUCH } from '@/constants/design/tokens';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface MenuItem {
   icon: React.ComponentType<{ color: string; size: number }>;
@@ -71,6 +75,7 @@ const MENU_SECTIONS: MenuSection[] = [
       { icon: LayoutDashboard, label: 'Dashboard', route: '/(tabs)/home' },
       { icon: PlayCircle, label: 'Company Reels™', route: '/(tabs)/company-reels' },
       { icon: ClipboardList, label: 'My Tasks', route: '/(tabs)/tasks' },
+      { icon: LayoutGrid, label: 'Task Workspace', route: '/(tabs)/task-workspace' },
       { icon: MessageSquare, label: 'Messages', route: '/(tabs)/messages' },
       { icon: Bell, label: 'Notifications', route: '/(tabs)/notifications' },
     ],
@@ -81,6 +86,7 @@ const MENU_SECTIONS: MenuSection[] = [
       { icon: Clock, label: 'Attendance', route: '/(tabs)/clock' },
       { icon: Timer, label: 'Time Logs', route: '/(tabs)/time-logs' },
       { icon: Calendar, label: 'Leave Requests', route: '/(tabs)/leaverequest' },
+      { icon: Sparkles, label: 'Holiday Calendar', route: '/(tabs)/holidays' },
       { icon: ClipboardCheck, label: 'EOD Reports', route: '/(tabs)/eod-reports' },
       { icon: ClipboardList, label: 'Scrum Records', route: '/scrum-records' },
     ],
@@ -97,56 +103,95 @@ const MENU_SECTIONS: MenuSection[] = [
     ],
   },
   {
-    heading: 'Resources',
+    heading: 'Company & Knowledge',
     items: [
-      { icon: FileText, label: 'Company Information', route: '/(tabs)/company-information' },
-      { icon: Book, label: 'Personal Notes', route: '/(tabs)/knowledgehub' },
+      { icon: Book, label: 'Company Info', route: '/(tabs)/company-information' },
+      { icon: FileText, label: 'Documents', route: '/(tabs)/documents' },
+      { icon: Book, label: 'Knowledge Hub', route: '/(tabs)/knowledgehub' },
       { icon: DollarSign, label: 'Payroll', route: '/(tabs)/payroll' },
     ],
   },
   {
     heading: 'Settings',
     items: [
-      { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
       { icon: Settings, label: 'Theme Engine', route: '/(tabs)/theme-engine' },
-      { icon: Settings2, label: 'Setting', route: '/(tabs)/setting' },
+      { icon: Mail, label: 'Email Settings', route: '/(tabs)/email-settings' },
+      { icon: Settings2, label: 'Settings', route: '/(tabs)/setting' },
     ],
   },
 ];
 
-interface SidebarProps {
-  isVisible?: boolean;
-}
-
-export default function Sidebar({ isVisible = true }: SidebarProps) {
-  const { user, logout } = useAuth();
-  const { isOpen, closeSidebar } = useSidebar();
+export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { user, logout } = useAuth();
+  const { isOpen, closeSidebar } = useSidebar();
   const t = useTokens();
+
+  // Guard against iPad / tablet screens where a percentage width is enormous.
+  const effectiveWidth = useMemo(() => Math.min(Math.round(width * 0.82), 340), [width]);
+
+  const slideAnim = useRef(new Animated.Value(-effectiveWidth)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
 
   const [jwtToken, setJwtToken] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const token = await initToken();
-      setJwtToken(token);
-    })();
+    setMounted(true);
   }, []);
 
-  const { data: userSettings } = useQuery({
+  // Hydrate JWT token for image proxying
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        await initToken();
+        let token =
+          (user as any)?.token ||
+          (user as any)?.accessToken ||
+          (user as any)?.jwt ||
+          (user as any)?.user?.token;
+
+        if (!token) {
+          const keys = await AsyncStorage.getAllKeys();
+          const possibleTokenKeys = keys.filter((k) => /token|jwt|auth|session/i.test(k));
+          for (const key of possibleTokenKeys) {
+            const val = await AsyncStorage.getItem(key);
+            if (val && typeof val === 'string' && val.length > 10) {
+              token = val;
+              break;
+            }
+          }
+        }
+
+        if (isMounted && token) {
+          setJwtToken(token);
+        }
+      } catch (err) {
+        console.error('Failed to load token in employee sidebar:', err);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Fetch live user settings for latest avatar
+  const { data: userSettings } = useQuery<any>({
     queryKey: ['userSettings'],
     queryFn: async () => {
       try {
         const res = await apiRequest<any>('/settings');
         return res.data?.item || res.data || null;
-      } catch {
+      } catch (e) {
         return null;
       }
     },
+    enabled: isOpen,
   });
 
   const rawAvatarPath = useMemo(() => {
@@ -178,15 +223,6 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
   useEffect(() => {
     setAvatarError(false);
   }, [resolvedAvatarUri]);
-
-  const effectiveWidth = Math.min(320, Math.max(260, Math.floor(width * 0.82)));
-  const slideAnim = useRef(new Animated.Value(-effectiveWidth)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!mounted) return;
@@ -238,7 +274,7 @@ export default function Sidebar({ isVisible = true }: SidebarProps) {
           backgroundColor: t.color.surface,
           borderRightColor: t.color.border,
           paddingTop: insets.top + t.space.md,
-          paddingBottom: insets.bottom + t.space.md,
+          paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 24) + t.space.md : insets.bottom + t.space.md,
         },
       ]}
     >

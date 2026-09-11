@@ -52,10 +52,21 @@ export const CompanyLeaderboardModal: React.FC<CompanyLeaderboardModalProps> = (
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<LeaderboardEntry[]>(`/company-reels/leaderboard?filter=${filter}`);
-      setLeaders(res.data || []);
+      const res = await apiRequest<any>(`/company-reels/leaderboard?filter=${filter}`);
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.items)
+        ? raw.items
+        : Array.isArray(raw?.leaderboard)
+        ? raw.leaderboard
+        : [];
+      setLeaders(list);
     } catch (err) {
       console.error("[Leaderboard Modal] Fetch error:", err);
+      setLeaders([]);
     } finally {
       setLoading(false);
     }
@@ -67,10 +78,11 @@ export const CompanyLeaderboardModal: React.FC<CompanyLeaderboardModalProps> = (
 
   if (!visible) return null;
 
-  const top1 = leaders.find((l) => l.rank === 1);
-  const top2 = leaders.find((l) => l.rank === 2);
-  const top3 = leaders.find((l) => l.rank === 3);
-  const others = leaders.filter((l) => l.rank > 3);
+  const leadersList = Array.isArray(leaders) ? leaders : [];
+  const top1 = leadersList.find((l) => l.rank === 1);
+  const top2 = leadersList.find((l) => l.rank === 2);
+  const top3 = leadersList.find((l) => l.rank === 3);
+  const others = leadersList.filter((l) => l.rank > 3);
 
   return (
     <Modal visible={visible} transparent animationType="slide">

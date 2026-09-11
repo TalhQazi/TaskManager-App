@@ -20,7 +20,7 @@ export default function ManagerTasksScreen() {
   const handleTaskCompleted = (task: Task) => {
     triggerReward(200, 350);
     incrementCompletedCount();
-    triggerBlaster({ id: task.id, title: task.title, priority: task.priority, status: "completed" });
+    triggerBlaster({ id: task.id, title: task.title, priority: task.priority as any, status: "completed" });
   };
 
   return <TasksScreenShell api={taskApi} capabilities={capabilities} headerTitle="Tasks" onTaskCompleted={handleTaskCompleted} />;

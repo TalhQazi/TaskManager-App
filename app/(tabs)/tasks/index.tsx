@@ -21,7 +21,7 @@ export default function EmployeeTasksScreen() {
   const handleTaskCompleted = (task: Task) => {
     triggerReward(200, 350);
     incrementCompletedCount();
-    triggerBlaster({ id: task.id, title: task.title, priority: task.priority, status: "completed" });
+    triggerBlaster({ id: task.id, title: task.title, priority: task.priority as any, status: "completed" });
   };
 
   return (

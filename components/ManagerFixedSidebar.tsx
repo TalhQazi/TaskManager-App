@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import {
   LayoutDashboard,
+  LayoutGrid,
   ClipboardCheck,
   ClipboardList,
   Users,
@@ -49,6 +50,7 @@ import {
   ChevronLeft,
   LogOut,
   Book,
+  Sparkles,
 } from 'lucide-react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -90,6 +92,7 @@ const baseItems: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', path: '/(manager)/home', icon: LayoutDashboard },
   { key: 'compliance', label: 'Compliance Center', path: '/(manager)/compliance-center', icon: ClipboardCheck },
   { key: 'tasks', label: 'Tasks', path: '/(manager)/tasks', icon: ClipboardList },
+  { key: 'taskWorkspace', label: 'Task Workspace', path: '/(manager)/task-workspace', icon: LayoutGrid },
   { key: 'team', label: 'Employees', path: '/(manager)/team', icon: Users },
   { key: 'announcement', label: 'Announcements', path: '/(manager)/announcement', icon: Megaphone },
   { key: 'schedule', label: 'Scheduling', path: '/(manager)/schedule', icon: Calendar },
@@ -114,6 +117,7 @@ const baseItems: NavItem[] = [
   { key: 'profile', label: 'Profile', path: '/(manager)/profile', icon: User },
   { key: 'eodReports', label: 'EOD Reports', path: '/(manager)/eod-reports', icon: ClipboardCheck },
   { key: 'leaveRequests', label: 'Leave Requests', path: '/(manager)/leave-requests', icon: Calendar },
+  { key: 'holidays', label: 'Holiday Calendar', path: '/(manager)/holidays', icon: Sparkles },
   { key: 'travelCalendar', label: 'Travel Calendar', path: '/(manager)/travel-calendar', icon: Calendar },
   { key: 'vehicles', label: 'Vehicles', path: '/(manager)/vehicles', icon: Car },
   { key: 'appliance', label: 'Inventory/Appliances', path: '/(manager)/appliances', icon: Wrench },
@@ -627,7 +631,7 @@ export default function ManagerFixedSidebar({ isOpen, onClose }: any) {
             styles.container,
             {
               paddingTop: Platform.OS === 'ios' ? insets.top + 10 : insets.top + 16,
-              paddingBottom: insets.bottom + 16,
+              paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 24) + 16 : insets.bottom + 16,
             },
           ])}
         >

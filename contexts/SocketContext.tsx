@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
-import AsyncStorage from "@react-native-async-storage/async-storage"; 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "./AuthContext";
 
 interface SocketContextType {
   socket: Socket | null;
@@ -33,6 +34,7 @@ export function useSocket() {
 }
 
 export function SocketProvider({ children }: { children: ReactNode }) {
+  const { user, token, isAuthenticated } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -40,54 +42,90 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const connectSocket = async () => {
-      // Mobile: Retrieve auth from AsyncStorage
-      const authRaw = await AsyncStorage.getItem("taskflow_auth");
-      const empRaw = await AsyncStorage.getItem("employee_auth");
-      
-      if (!authRaw && !empRaw) return;
+      // Must be authenticated or have a stored token/user
+      let activeToken = token;
+      let activeUser = user;
+
+      if (!activeToken) {
+        activeToken = await AsyncStorage.getItem("auth_token");
+      }
+      if (!activeUser) {
+        const storedUser = await AsyncStorage.getItem("auth_user");
+        if (storedUser) {
+          try {
+            activeUser = JSON.parse(storedUser);
+          } catch {}
+        }
+      }
+
+      if (!activeToken && !activeUser) {
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+          socketRef.current = null;
+          setIsConnected(false);
+        }
+        return;
+      }
+
+      // If existing socket is connected with same credentials, don't recreate
+      if (socketRef.current?.connected) {
+        return;
+      }
 
       const socket = io("https://task.se7eninc.com", {
         path: "/api/socket.io/",
-        transports: ["websocket"], // WebSocket is preferred on mobile
-        reconnectionAttempts: 5,
+        transports: ["websocket"],
+        auth: { token: activeToken || "" },
+        query: { token: activeToken || "" },
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
       });
 
       socketRef.current = socket;
 
-      socket.on("connect", async () => {
+      socket.on("connect", () => {
         if (!isMounted) return;
         setIsConnected(true);
+        console.log("[SocketContext] Connected to socket.io:", socket.id);
 
-        // Register User Logic
-        let userData = { username: "", name: "", role: "" };
-        try {
-          if (authRaw) {
-            const auth = JSON.parse(authRaw);
-            userData = { username: auth.username || auth.name, name: auth.name, role: auth.role };
-          } else if (empRaw) {
-            const emp = JSON.parse(empRaw);
-            userData = { username: emp.name || emp.username, name: emp.name, role: "employee" };
-          }
-          socket.emit("register-user", userData);
-        } catch (e) {
-          console.error("Auth Parse Error", e);
-        }
+        const username = activeUser?.username || activeUser?.email || "";
+        const name = activeUser?.fullName || activeUser?.username || "";
+        const role = activeUser?.role || "employee";
+        const email = activeUser?.email || "";
+
+        socket.emit("register-user", { username, name, role, email });
       });
 
-      socket.on("disconnect", () => {
-        if (isMounted) setIsConnected(false);
+      socket.on("disconnect", (reason) => {
+        if (!isMounted) return;
+        setIsConnected(false);
+        console.log("[SocketContext] Socket disconnected:", reason);
+      });
+
+      socket.on("connect_error", (err) => {
+        console.warn("[SocketContext] Socket connection error:", err.message);
       });
     };
 
-    connectSocket();
+    if (isAuthenticated) {
+      connectSocket();
+    } else {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+        setIsConnected(false);
+      }
+    }
 
     return () => {
       isMounted = false;
-      socketRef.current?.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, []);
+  }, [isAuthenticated, token, user]);
 
-  // Callback functions remain the same
   const joinTask = useCallback((taskId: string) => socketRef.current?.emit("join-task", taskId), []);
   const leaveTask = useCallback((taskId: string) => socketRef.current?.emit("leave-task", taskId), []);
   const joinProject = useCallback((projectId: string) => socketRef.current?.emit("join-project", projectId), []);

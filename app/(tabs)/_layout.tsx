@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Slot } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Sidebar from '@/components/Sidebar'; 
 import Header from '@/components/Header';
@@ -9,6 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TabLayout() {
   const { uiTheme, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const bg = uiTheme?.panelColors?.dashboardBackground || (isDark ? '#09090b' : '#09090b');
 
   return (
@@ -18,7 +20,16 @@ export default function TabLayout() {
         <Header />
 
         {/* Main Content Area */}
-        <View style={[styles.content, { backgroundColor: bg }]}>
+        <View
+          style={[
+            styles.content,
+            {
+              backgroundColor: bg,
+              marginTop: Platform.OS === 'android' ? 0 : -40,
+              paddingBottom: Platform.OS === 'android' ? insets.bottom : 0,
+            },
+          ]}
+        >
           <Slot />
         </View>
 
@@ -37,6 +48,5 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     backgroundColor: '#09090b',
-    marginTop: -40,
   },
 });

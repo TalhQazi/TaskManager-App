@@ -183,26 +183,81 @@ export function useWorkspaceUsers() {
   return useQuery({
     queryKey: ["workspace-users"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest<any>("/users/all");
-        const raw = res?.data !== undefined ? res.data : res;
-        const list = Array.isArray(raw) ? raw : (raw?.items || raw?.employees || raw?.data || []);
-        if (Array.isArray(list) && list.length > 0) return list;
-      } catch {}
+      let employeesList: any[] = [];
       try {
         const res = await apiRequest<any>("/employees");
         const raw = res?.data !== undefined ? res.data : res;
         const list = Array.isArray(raw) ? raw : (raw?.items || raw?.employees || raw?.data || []);
-        if (Array.isArray(list) && list.length > 0) return list;
-      } catch {}
+        if (Array.isArray(list) && list.length > 0) {
+          employeesList = list;
+        }
+      } catch (e) {
+        console.warn("[taskApi] /employees error", e);
+      }
+
+      let usersList: any[] = [];
       try {
-        const res = await apiRequest<any>("/users");
+        const res = await apiRequest<any>("/users/all");
         const raw = res?.data !== undefined ? res.data : res;
         const list = Array.isArray(raw) ? raw : (raw?.items || raw?.employees || raw?.data || []);
-        return Array.isArray(list) ? list : [];
-      } catch {
-        return [];
+        if (Array.isArray(list) && list.length > 0) {
+          usersList = list;
+        }
+      } catch (e) {
+        console.warn("[taskApi] /users/all error", e);
       }
+
+      if (employeesList.length === 0 && usersList.length === 0) {
+        try {
+          const res = await apiRequest<any>("/users");
+          const raw = res?.data !== undefined ? res.data : res;
+          const list = Array.isArray(raw) ? raw : (raw?.items || raw?.employees || raw?.data || []);
+          if (Array.isArray(list) && list.length > 0) {
+            usersList = list;
+          }
+        } catch {}
+      }
+
+      const map = new Map<string, any>();
+      const getAvatar = (u: any) =>
+        u?.avatarUrl ||
+        u?.avatarDataUrl ||
+        u?.photo ||
+        u?.profilePicture ||
+        u?.profileImage ||
+        u?.imageUrl ||
+        (typeof u?.avatar === "string" && (u.avatar.includes("/") || u.avatar.startsWith("http") || u.avatar.startsWith("data:")) ? u.avatar : undefined);
+
+      for (const emp of employeesList) {
+        const id = String(emp.id || emp._id || "").trim();
+        const name = String(emp.name || "").trim().toLowerCase();
+        const email = String(emp.email || "").trim().toLowerCase();
+        if (id) map.set(id, emp);
+        if (name) map.set(name, emp);
+        if (email) map.set(email, emp);
+      }
+
+      const combined: any[] = [...employeesList];
+      for (const u of usersList) {
+        const id = String(u.id || u._id || "").trim();
+        const name = String(u.name || "").trim().toLowerCase();
+        const email = String(u.email || "").trim().toLowerCase();
+
+        const match = (id && map.get(id)) || (name && map.get(name)) || (email && map.get(email));
+        if (match) {
+          if (!getAvatar(match) && getAvatar(u)) {
+            match.avatarUrl = getAvatar(u);
+            match.avatarDataUrl = getAvatar(u);
+          }
+        } else {
+          combined.push(u);
+          if (id) map.set(id, u);
+          if (name) map.set(name, u);
+          if (email) map.set(email, u);
+        }
+      }
+
+      return combined.length > 0 ? combined : employeesList;
     },
   });
 }
@@ -288,6 +343,96 @@ export function usePostComment() {
     mutationFn: async ({ taskId, message }: { taskId: string; message: string }) =>
       apiRequest<{ item: TaskComment }>(`/tasks/${taskId}/comments`, { method: "POST", body: JSON.stringify({ message }) }),
     onSuccess: (_res, variables) => qc.invalidateQueries({ queryKey: ["task-comments", variables.taskId] }),
+  });
+}
+
+export function useUpdateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, payload }: { taskId: string; payload: Partial<Task> }) =>
+      apiRequest(`/tasks/${encodeURIComponent(taskId)}`, { method: "PUT", body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteTaskAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, attachmentIndex }: { taskId: string; attachmentIndex: number }) => {
+      try {
+        return await apiRequest(`/tasks/${encodeURIComponent(taskId)}/attachments/${attachmentIndex}`, {
+          method: "DELETE",
+        });
+      } catch {
+        return await apiRequest(`/tasks/${encodeURIComponent(taskId)}/attachments/${attachmentIndex}/archive`, {
+          method: "POST",
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useUpdateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, payload }: { projectId: string; payload: Partial<Project> }) =>
+      apiRequest(`/projects/${encodeURIComponent(projectId)}`, { method: "PUT", body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (projectId: string) =>
+      apiRequest(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useAddProjectAttachments() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, attachments }: { projectId: string; attachments: any[] }) =>
+      apiRequest(`/projects/${encodeURIComponent(projectId)}`, { method: "PUT", body: JSON.stringify({ attachments }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useDeleteProjectAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, attachmentIndex }: { projectId: string; attachmentIndex: number }) => {
+      try {
+        return await apiRequest(`/projects/${encodeURIComponent(projectId)}/attachments/${attachmentIndex}`, {
+          method: "DELETE",
+        });
+      } catch {
+        return await apiRequest(`/projects/${encodeURIComponent(projectId)}/attachments/${attachmentIndex}/archive`, {
+          method: "POST",
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 

@@ -1173,4 +1173,125 @@ export async function getVideoHistory(employeeId: string) {
   );
 }
 
+// ─── Holiday Types & Interfaces ───────────────────────────────────────────
+
+export interface HolidayThemeConfig {
+  backgroundType: "color" | "image";
+  colorConfig?: {
+    from: string;
+    via: string;
+    to: string;
+  };
+  imageConfig?: {
+    url?: string;
+    size?: string;
+    position?: string;
+    repeat?: string;
+  };
+  overlay?: {
+    enabled: boolean;
+    color: string;
+  };
+  effects?: "sparkles" | "lanterns" | "confetti" | "snow" | "leaves" | "stars" | string;
+}
+
+export interface HolidayCalculatedDates {
+  start: string;
+  end: string;
+  startDateStr: string;
+  endDateStr: string;
+  targetYear: number;
+}
+
+export interface HolidayItem {
+  id: string;
+  _id?: string;
+  name: string;
+  displayName: string;
+  country_code: string;
+  region: string;
+  religion_category: "national" | "religious" | "cultural";
+  is_lunar_calendar: boolean;
+  localization_language_key: string;
+  significance_level: number;
+  static_start_date?: string;
+  static_end_date?: string;
+  themeConfig: HolidayThemeConfig;
+  is_active: boolean;
+  calculatedDates: HolidayCalculatedDates;
+  daysUntil: number;
+  status: "today" | "upcoming" | "past";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface HolidayFilterParams {
+  country?: string;
+  region?: string;
+  category?: string;
+  active?: boolean | string;
+  search?: string;
+  year?: number;
+}
+
+export interface HolidayPayload {
+  name: string;
+  displayName: string;
+  country_code?: string;
+  region?: string;
+  religion_category?: "national" | "religious" | "cultural";
+  is_lunar_calendar?: boolean;
+  localization_language_key?: string;
+  significance_level?: number;
+  static_start_date?: string;
+  static_end_date?: string;
+  themeConfig?: HolidayThemeConfig;
+  is_active?: boolean;
+}
+
+// ─── Holiday API Methods ──────────────────────────────────────────────────
+
+export async function getHolidays(params?: HolidayFilterParams): Promise<{ items: HolidayItem[]; total: number; year: number }> {
+  const query = new URLSearchParams();
+  if (params?.country) query.append("country", params.country);
+  if (params?.region) query.append("region", params.region);
+  if (params?.category) query.append("category", params.category);
+  if (params?.active !== undefined && params.active !== "") query.append("active", String(params.active));
+  if (params?.search) query.append("search", params.search);
+  if (params?.year) query.append("year", String(params.year));
+
+  const qs = query.toString();
+  return apiFetch<{ items: HolidayItem[]; total: number; year: number }>(`/api/holidays${qs ? `?${qs}` : ""}`);
+}
+
+export async function getUpcomingHolidays(): Promise<{ items: HolidayItem[]; userCountry: string; nextHoliday: HolidayItem | null }> {
+  return apiFetch<{ items: HolidayItem[]; userCountry: string; nextHoliday: HolidayItem | null }>("/api/holidays/upcoming");
+}
+
+export async function getHolidayById(id: string): Promise<{ item: HolidayItem }> {
+  return apiFetch<{ item: HolidayItem }>(`/api/holidays/${encodeURIComponent(id)}`);
+}
+
+export async function createHoliday(payload: HolidayPayload): Promise<{ item: HolidayItem; message: string }> {
+  return apiFetch<{ item: HolidayItem; message: string }>("/api/holidays", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateHoliday(id: string, payload: Partial<HolidayPayload>): Promise<{ item: HolidayItem; message: string }> {
+  return apiFetch<{ item: HolidayItem; message: string }>(`/api/holidays/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteHoliday(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/holidays/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export default apiRequest;

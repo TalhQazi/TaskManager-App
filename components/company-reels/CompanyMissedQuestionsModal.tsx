@@ -48,10 +48,21 @@ export const CompanyMissedQuestionsModal: React.FC<CompanyMissedQuestionsModalPr
   const fetchMissed = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<MissedQuestion[]>("/company-reels/users/me/missed-questions");
-      setQuestions(res.data || []);
+      const res = await apiRequest<any>("/company-reels/users/me/missed-questions");
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.items)
+        ? raw.items
+        : Array.isArray(raw?.questions)
+        ? raw.questions
+        : [];
+      setQuestions(list);
     } catch (err) {
       console.error("[Missed Questions] Fetch error:", err);
+      setQuestions([]);
     } finally {
       setLoading(false);
     }

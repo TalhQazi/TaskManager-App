@@ -77,8 +77,10 @@ export const CompanyAuditReportModal: React.FC<CompanyAuditReportModalProps> = (
       if (searchQuery.trim()) params.push(`search=${encodeURIComponent(searchQuery.trim())}`);
       if (params.length > 0) url += `?${params.join("&")}`;
 
-      const res = await apiRequest<AuditResponse>(url);
-      setData(res.data);
+      const res = await apiRequest<any>(url);
+      const raw = res?.data;
+      const parsed = raw?.data !== undefined && raw?.records === undefined ? raw.data : raw;
+      setData(parsed);
     } catch (err) {
       console.error("[Audit Ledger] Fetch error:", err);
     } finally {
@@ -241,7 +243,7 @@ export const CompanyAuditReportModal: React.FC<CompanyAuditReportModalProps> = (
                 </View>
               ) : (
                 <View style={{ gap: 10 }}>
-                  {data.records.map((rec, index) => {
+                  {(data?.records || []).map((rec, index) => {
                     const isCompliant = rec.status === "COMPLIANT";
                     const isOverdue = rec.status === "OVERDUE";
 

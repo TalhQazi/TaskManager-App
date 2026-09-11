@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AdminHeader from '@/components/AdminHeader';
 import AdminFixedSidebar from '@/components/AdminFixedSidebar';
@@ -11,8 +12,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { uiTheme } = useTheme();
+  const insets = useSafeAreaInsets();
 
-  const styles = useMemo(() => getThemedStyles(uiTheme), [uiTheme]);
+  const styles = useMemo(() => getThemedStyles(uiTheme, insets), [uiTheme, insets]);
 
   return (
     <View style={styles.root}>
@@ -39,7 +41,7 @@ export default function AdminLayout() {
   );
 }
 
-const getThemedStyles = (uiTheme: any) => {
+const getThemedStyles = (uiTheme: any, insets: any) => {
   return StyleSheet.create({
     root: {
       flex: 1,
@@ -47,6 +49,7 @@ const getThemedStyles = (uiTheme: any) => {
     },
     body: {
       flex: 1,
+      paddingBottom: Platform.OS === 'android' ? insets.bottom : 0,
     },
   });
 };

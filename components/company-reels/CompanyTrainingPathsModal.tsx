@@ -68,14 +68,22 @@ export const CompanyTrainingPathsModal: React.FC<CompanyTrainingPathsModalProps>
   const fetchPaths = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<TrainingPath[]>("/company-reels/training-paths");
-      const list = res.data || [];
+      const res = await apiRequest<any>("/company-reels/training-paths");
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.paths)
+        ? raw.paths
+        : [];
       setPaths(list);
       if (list.length > 0 && !selectedPathId) {
         setSelectedPathId(list[0]._id);
       }
     } catch (err) {
       console.error("[Training Paths] Fetch error:", err);
+      setPaths([]);
     } finally {
       setLoading(false);
     }

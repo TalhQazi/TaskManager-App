@@ -11,6 +11,8 @@ interface InboxViewProps {
   tasks: Task[];
   onOpenTask: (task: Task) => void;
   onToggleComplete: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onQuickAdd: (value: QuickAddValue) => void;
   canCreate?: boolean;
 }
@@ -21,7 +23,15 @@ function hasProject(task: Task): boolean {
   return !!(task.projectId._id || task.projectId.id);
 }
 
-export default function InboxView({ tasks, onOpenTask, onToggleComplete, onQuickAdd, canCreate = false }: InboxViewProps) {
+export default function InboxView({
+  tasks,
+  onOpenTask,
+  onToggleComplete,
+  onEditTask,
+  onDeleteTask,
+  onQuickAdd,
+  canCreate = false,
+}: InboxViewProps) {
   const theme = useTaskTheme();
   const inboxTasks = useMemo(
     () => tasks.filter((t) => !hasProject(t) && !t.dueDate && t.status !== "completed"),
@@ -29,7 +39,7 @@ export default function InboxView({ tasks, onOpenTask, onToggleComplete, onQuick
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg.canvas }]}>
       {canCreate && onQuickAdd && (
         <View style={styles.quickAddWrap}>
           <QuickAddBar placeholder="Capture a task…" onSubmit={onQuickAdd} />
@@ -46,7 +56,13 @@ export default function InboxView({ tasks, onOpenTask, onToggleComplete, onQuick
           data={inboxTasks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TaskRow task={item} onPress={() => onOpenTask(item)} onToggleComplete={() => onToggleComplete(item)} />
+            <TaskRow
+              task={item}
+              onPress={() => onOpenTask(item)}
+              onToggleComplete={() => onToggleComplete(item)}
+              onEdit={onEditTask ? () => onEditTask(item) : undefined}
+              onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
+            />
           )}
           contentContainerStyle={styles.listContent}
         />

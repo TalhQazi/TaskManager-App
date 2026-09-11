@@ -13,12 +13,23 @@ interface TodayViewProps {
   tasks: Task[];
   onOpenTask: (task: Task) => void;
   onToggleComplete: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onQuickAdd?: (value: QuickAddValue) => void;
   onSwitchToAll?: () => void;
   canCreate?: boolean;
 }
 
-export default function TodayView({ tasks, onOpenTask, onToggleComplete, onQuickAdd, onSwitchToAll, canCreate }: TodayViewProps) {
+export default function TodayView({
+  tasks,
+  onOpenTask,
+  onToggleComplete,
+  onEditTask,
+  onDeleteTask,
+  onQuickAdd,
+  onSwitchToAll,
+  canCreate,
+}: TodayViewProps) {
   const theme = useTaskTheme();
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -115,7 +126,13 @@ export default function TodayView({ tasks, onOpenTask, onToggleComplete, onQuick
           sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TaskRow task={item} onPress={() => onOpenTask(item)} onToggleComplete={() => onToggleComplete(item)} />
+            <TaskRow
+              task={item}
+              onPress={() => onOpenTask(item)}
+              onToggleComplete={() => onToggleComplete(item)}
+              onEdit={onEditTask ? () => onEditTask(item) : undefined}
+              onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
+            />
           )}
           renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.data.length} tone={section.tone} />}
           contentContainerStyle={styles.listContent}

@@ -105,43 +105,59 @@ export const CompanyReelsFeed: React.FC = () => {
   const loadFeed = useCallback(async () => {
     try {
       if (feedTab === "mandatory") {
-        const res = await apiRequest<{
-          total: number;
-          completed: number;
-          pending: number;
-          items: ReelData[];
-        }>("/company-reels/mandatory");
-
-        setReels(res.data?.items || []);
+        const res = await apiRequest<any>("/company-reels/mandatory");
+        const raw = res?.data;
+        const inner = raw?.data !== undefined && raw?.items === undefined ? raw.data : raw;
+        const items = Array.isArray(inner)
+          ? inner
+          : Array.isArray(inner?.items)
+          ? inner.items
+          : Array.isArray(inner?.data)
+          ? inner.data
+          : [];
+        setReels(items);
       } else {
         const [feedRes, continueRes, broadcastRes] = await Promise.allSettled([
-          apiRequest<FeedResponse>("/company-reels/feed?limit=25"),
+          apiRequest<any>("/company-reels/feed?limit=25"),
           apiRequest<any>("/company-reels/training-paths/continue"),
           apiRequest<any[]>("/company-reels/broadcasts/active"),
         ]);
 
-        if (feedRes.status === "fulfilled" && feedRes.value.data) {
-          const resData = feedRes.value.data;
-          setReels(resData.items || []);
-          if (resData.meta) {
+        if (feedRes.status === "fulfilled" && feedRes.value?.data) {
+          const raw = feedRes.value.data;
+          const resData = (raw as any)?.data !== undefined && (raw as any)?.items === undefined ? (raw as any).data : raw;
+          const items = Array.isArray(resData)
+            ? resData
+            : Array.isArray(resData?.items)
+            ? resData.items
+            : Array.isArray(resData?.data)
+            ? resData.data
+            : [];
+          setReels(items);
+          const meta = resData?.meta || (raw as any)?.meta;
+          if (meta) {
             setMeta({
-              currentStreak: resData.meta.currentStreak || 0,
-              totalPoints: resData.meta.totalPoints || 0,
-              uncompletedMandatoryCount: resData.meta.uncompletedMandatoryCount || 0,
+              currentStreak: meta.currentStreak || 0,
+              totalPoints: meta.totalPoints || 0,
+              uncompletedMandatoryCount: meta.uncompletedMandatoryCount || 0,
             });
           }
         }
 
-        if (continueRes.status === "fulfilled" && continueRes.value.data) {
-          setContinueData(continueRes.value.data);
+        if (continueRes.status === "fulfilled" && continueRes.value?.data) {
+          const raw = continueRes.value.data;
+          setContinueData((raw as any)?.data !== undefined ? (raw as any).data : raw);
         }
 
         if (
           broadcastRes.status === "fulfilled" &&
-          broadcastRes.value.data &&
-          broadcastRes.value.data.length > 0
+          broadcastRes.value?.data
         ) {
-          setActiveBroadcast(broadcastRes.value.data[0]);
+          const raw = broadcastRes.value.data;
+          const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.data) ? (raw as any).data : [];
+          if (list.length > 0) {
+            setActiveBroadcast(list[0]);
+          }
         }
       }
     } catch (err) {

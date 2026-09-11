@@ -76,8 +76,10 @@ export const CompanyReelsProfileModal: React.FC<CompanyReelsProfileModalProps> =
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<ProfileData>("/company-reels/profile");
-      setProfile(res.data);
+      const res = await apiRequest<any>("/company-reels/profile");
+      const raw = res?.data;
+      const parsed = raw?.data !== undefined && raw?.badges === undefined ? raw.data : raw;
+      setProfile(parsed);
     } catch (err) {
       console.error("[Profile Modal] Fetch error:", err);
     } finally {
@@ -225,7 +227,7 @@ export const CompanyReelsProfileModal: React.FC<CompanyReelsProfileModalProps> =
               </View>
 
               <View style={styles.badgesGrid}>
-                {profile.badges.map((b) => {
+                {(profile.badges || []).map((b) => {
                   const color = getTierColor(b.tier);
 
                   return (

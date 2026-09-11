@@ -73,10 +73,21 @@ export const CompanyReelsAdmin: React.FC = () => {
       const url = filterCategory
         ? `/company-reels/admin/reels?category=${filterCategory}`
         : "/company-reels/admin/reels";
-      const res = await apiRequest<any[]>(url);
-      setReels(res.data || []);
+      const res = await apiRequest<any>(url);
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.reels)
+        ? raw.reels
+        : Array.isArray(raw?.items)
+        ? raw.items
+        : [];
+      setReels(list);
     } catch (err) {
       console.error("[Admin Reels] Fetch error:", err);
+      setReels([]);
     } finally {
       setLoadingReels(false);
     }
@@ -86,7 +97,7 @@ export const CompanyReelsAdmin: React.FC = () => {
     setLoadingAnalytics(true);
     try {
       const res = await apiRequest<any>("/company-reels/admin/analytics");
-      setAnalytics(res.data);
+      setAnalytics(res?.data?.data !== undefined ? res.data.data : res?.data);
     } catch (err) {
       console.error("[Admin Analytics] Fetch error:", err);
     } finally {
@@ -97,10 +108,19 @@ export const CompanyReelsAdmin: React.FC = () => {
   const fetchPaths = useCallback(async () => {
     setLoadingPaths(true);
     try {
-      const res = await apiRequest<any[]>("/company-reels/training-paths");
-      setPaths(res.data || []);
+      const res = await apiRequest<any>("/company-reels/training-paths");
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.paths)
+        ? raw.paths
+        : [];
+      setPaths(list);
     } catch (err) {
       console.error("[Admin Paths] Fetch error:", err);
+      setPaths([]);
     } finally {
       setLoadingPaths(false);
     }
@@ -271,13 +291,13 @@ export const CompanyReelsAdmin: React.FC = () => {
 
           {loadingReels ? (
             <ActivityIndicator size="large" color="#38BDF8" style={{ marginTop: 40 }} />
-          ) : reels.length === 0 ? (
+          ) : !Array.isArray(reels) || reels.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>No reels found. Create your first reel!</Text>
             </View>
           ) : (
             <View style={styles.reelsGrid}>
-              {reels.map((item) => (
+              {(Array.isArray(reels) ? reels : []).map((item) => (
                 <View key={item._id} style={styles.reelAdminCard}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.badgeRow}>
@@ -615,13 +635,13 @@ export const CompanyReelsAdmin: React.FC = () => {
 
           {loadingPaths ? (
             <ActivityIndicator size="large" color="#38BDF8" style={{ marginTop: 40 }} />
-          ) : paths.length === 0 ? (
+          ) : !Array.isArray(paths) || paths.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>No training paths found.</Text>
             </View>
           ) : (
             <View style={{ gap: 14 }}>
-              {paths.map((p) => (
+              {(Array.isArray(paths) ? paths : []).map((p) => (
                 <View key={p._id} style={styles.pathAdminCard}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.badgeRow}>

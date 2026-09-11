@@ -12,6 +12,8 @@ import { Toaster } from '@/components/Toaster';
 import { RewardProvider } from '@/contexts/RewardContext';
 import { TaskBlasterProvider } from '@/contexts/TaskBlasterContext';
 import TaskBlasterOverlay from '@/components/shared/TaskBlasterOverlay';
+import { SocketProvider } from '@/contexts/SocketContext';
+import { GlobalNotificationManager } from '@/components/GlobalNotificationManager';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -146,21 +148,24 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <AuthProvider>
-            <RewardProvider>
-              <TaskBlasterProvider>
-                <ThemeProvider>
-                  <ThemeInitializer>
-                    <SidebarProvider>
-                      <AuthGate>
-                        <RootLayoutNav />
-                        <Toaster />
-                        <TaskBlasterOverlay />
-                      </AuthGate>
-                    </SidebarProvider>
-                  </ThemeInitializer>
-                </ThemeProvider>
-              </TaskBlasterProvider>
-            </RewardProvider>
+            <SocketProvider>
+              <RewardProvider>
+                <TaskBlasterProvider>
+                  <ThemeProvider>
+                    <ThemeInitializer>
+                      <SidebarProvider>
+                        <AuthGate>
+                          <RootLayoutNav />
+                          <Toaster />
+                          <GlobalNotificationManager />
+                          <TaskBlasterOverlay />
+                        </AuthGate>
+                      </SidebarProvider>
+                    </ThemeInitializer>
+                  </ThemeProvider>
+                </TaskBlasterProvider>
+              </RewardProvider>
+            </SocketProvider>
           </AuthProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

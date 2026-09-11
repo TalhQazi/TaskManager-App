@@ -13,13 +13,23 @@ interface UpcomingViewProps {
   tasks: Task[];
   onOpenTask: (task: Task) => void;
   onToggleComplete: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onQuickAdd?: (value: any) => void;
   canCreate?: boolean;
 }
 
 const ORDER: TaskBucket[] = ["tomorrow", "this-week", "next-week", "later"];
 
-export default function UpcomingView({ tasks, onOpenTask, onToggleComplete, onQuickAdd, canCreate }: UpcomingViewProps) {
+export default function UpcomingView({
+  tasks,
+  onOpenTask,
+  onToggleComplete,
+  onEditTask,
+  onDeleteTask,
+  onQuickAdd,
+  canCreate,
+}: UpcomingViewProps) {
   const theme = useTaskTheme();
   const sections = useMemo(() => {
     const buckets: Record<string, Task[]> = { tomorrow: [], "this-week": [], "next-week": [], later: [] };
@@ -35,6 +45,7 @@ export default function UpcomingView({ tasks, onOpenTask, onToggleComplete, onQu
 
   return (
     <SectionList
+      style={{ flex: 1, backgroundColor: theme.bg.canvas }}
       sections={sections}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
@@ -55,7 +66,13 @@ export default function UpcomingView({ tasks, onOpenTask, onToggleComplete, onQu
         />
       }
       renderItem={({ item }) => (
-        <TaskRow task={item} onPress={() => onOpenTask(item)} onToggleComplete={() => onToggleComplete(item)} />
+        <TaskRow
+          task={item}
+          onPress={() => onOpenTask(item)}
+          onToggleComplete={() => onToggleComplete(item)}
+          onEdit={onEditTask ? () => onEditTask(item) : undefined}
+          onDelete={onDeleteTask ? () => onDeleteTask(item) : undefined}
+        />
       )}
       renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.data.length} />}
       contentContainerStyle={styles.listContent}

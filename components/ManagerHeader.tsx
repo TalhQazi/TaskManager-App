@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import {
   Bell,
   Menu,
+  LayoutGrid,
   LogOut,
   Mail,
   Bug,
@@ -436,7 +437,7 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
     };
   }, [uiTheme, isDark]);
 
-  const colors = headerSettings?.colorConfig
+  const colors: [string, string, ...string[]] = headerSettings?.colorConfig
     ? [headerSettings.colorConfig.from, headerSettings.colorConfig.via, headerSettings.colorConfig.to]
     : [Colors.primary || "#1f6feb", Colors.primary || "#1f6feb", Colors.primaryDark || "#020408"];
 
@@ -675,6 +676,14 @@ export default function ManagerHeader({ onMenuPress }: { onMenuPress: () => void
           <View style={styles.actionIconClusterRow}>
             <TouchableOpacity style={styles.iconActionItem} onPress={onMenuPress} activeOpacity={0.7}>
               <Menu color="#FFFFFF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.iconActionItem}
+              onPress={() => router.push("/(manager)/task-workspace" as any)}
+              activeOpacity={0.7}
+            >
+              <LayoutGrid color="#FFFFFF" size={18} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.iconActionItem} onPress={() => router.push("/(manager)/messages" as any)}>

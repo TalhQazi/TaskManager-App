@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Platform, ActivityIndicator } from "react-native";
-import { Plus } from "lucide-react-native";
+import { Plus, LayoutGrid } from "lucide-react-native";
+import { router } from "expo-router";
 import { useTaskTheme } from "./theme";
 import { Task, Project, TaskStatus } from "./types";
 import { TaskCapabilities } from "./capabilities";
@@ -19,6 +20,8 @@ import TaskDetailDrawer from "./TaskDetailDrawer";
 import CreateTaskModal, { TaskFormPayload } from "./CreateTaskModal";
 import CreateProjectModal, { ProjectFormPayload } from "./CreateProjectModal";
 import { QuickAddValue } from "./QuickAddBar";
+import { toProxiedUrl } from "@/util/toProxiedUrl";
+import { useAuth } from "@/contexts/AuthContext";
 
 type ViewKey = "today" | "inbox" | "upcoming" | "all" | "projects" | "board" | "calendar";
 
@@ -27,14 +30,20 @@ export interface TaskApiModule {
   useProjectsQuery: (search?: string) => { data?: Project[]; isLoading: boolean };
   useWorkspaceUsers: () => { data?: any[] };
   useTaskComments: (taskId: string | null) => { data?: any[]; isLoading: boolean };
-  useCreateTask: () => { mutate: (payload: any) => void; mutateAsync?: (payload: any) => Promise<any>; isPending: boolean };
-  useCreateProject: () => { mutate: (payload: any) => void; isPending: boolean };
-  useUpdateTaskStatus: () => { mutate: (v: { taskId: string; status: TaskStatus }) => void };
-  useUpdateTaskPriority: () => { mutate: (v: { taskId: string; priority: any }) => void };
-  useUpdateTaskAttachments?: () => { mutate: (v: { taskId: string; attachments: any[] }) => void; mutateAsync?: (v: { taskId: string; attachments: any[] }) => Promise<any> };
-  useToggleSubtask: () => { mutate: (v: { taskId: string; subtaskId: string; completed: boolean }) => void };
-  useDeleteTask: () => { mutate: (taskId: string) => void };
-  usePostComment: () => { mutate: (v: { taskId: string; message: string }) => void };
+  useCreateTask: () => { mutate: (payload: any, options?: any) => void; mutateAsync?: (payload: any) => Promise<any>; isPending: boolean };
+  useUpdateTask?: () => { mutate: (v: { taskId: string; payload: any }, options?: any) => void; isPending: boolean };
+  useCreateProject: () => { mutate: (payload: any, options?: any) => void; isPending: boolean };
+  useUpdateProject?: () => { mutate: (v: { projectId: string; payload: any }, options?: any) => void; isPending: boolean };
+  useDeleteProject?: () => { mutate: (projectId: string, options?: any) => void; isPending: boolean };
+  useAddProjectAttachments?: () => { mutate: (v: { projectId: string; attachments: any[] }, options?: any) => void; isPending: boolean };
+  useDeleteProjectAttachment?: () => { mutate: (v: { projectId: string; attachmentIndex: number }, options?: any) => void; isPending: boolean };
+  useUpdateTaskStatus: () => { mutate: (v: { taskId: string; status: TaskStatus }, options?: any) => void };
+  useUpdateTaskPriority: () => { mutate: (v: { taskId: string; priority: any }, options?: any) => void };
+  useUpdateTaskAttachments?: () => { mutate: (v: { taskId: string; attachments: any[] }, options?: any) => void; mutateAsync?: (v: { taskId: string; attachments: any[] }) => Promise<any> };
+  useDeleteTaskAttachment?: () => { mutate: (v: { taskId: string; attachmentIndex: number }, options?: any) => void; isPending: boolean };
+  useToggleSubtask: () => { mutate: (v: { taskId: string; subtaskId: string; completed: boolean }, options?: any) => void };
+  useDeleteTask: () => { mutate: (taskId: string, options?: any) => void };
+  usePostComment: () => { mutate: (v: { taskId: string; message: string }, options?: any) => void };
 }
 
 interface TasksScreenShellProps {
@@ -50,6 +59,7 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
   const [view, setView] = useState<ViewKey>("all");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [consumedInitialTaskId, setConsumedInitialTaskId] = useState<string | null>(null);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
@@ -60,10 +70,16 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
   const commentsQuery = api.useTaskComments(selectedTask?.id || null);
 
   const createTask = api.useCreateTask();
+  const updateTask = api.useUpdateTask?.();
   const createProject = api.useCreateProject();
+  const updateProject = api.useUpdateProject?.();
+  const deleteProject = api.useDeleteProject?.();
+  const addProjectAttachments = api.useAddProjectAttachments?.();
+  const deleteProjectAttachment = api.useDeleteProjectAttachment?.();
   const updateStatus = api.useUpdateTaskStatus();
   const updatePriority = api.useUpdateTaskPriority();
   const updateAttachments = api.useUpdateTaskAttachments?.();
+  const deleteTaskAttachment = api.useDeleteTaskAttachment?.();
   const toggleSubtask = api.useToggleSubtask();
   const deleteTask = api.useDeleteTask();
   const postComment = api.usePostComment();
@@ -127,15 +143,29 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
     return () => (document as any)?.removeEventListener?.("keydown", handler);
   }, []);
 
+  const { token: authToken } = useAuth();
+
   const employeeOptions = useMemo(
     () =>
       (usersQuery.data || [])
-        .map((u: any) => ({
-          id: String(u.id || u._id || Math.random()),
-          name: String(u.name || u.username || u.email || "").trim(),
-        }))
+        .map((u: any) => {
+          const rawAvatar =
+            u.avatarUrl ||
+            u.avatarDataUrl ||
+            u.photo ||
+            u.profilePicture ||
+            u.profileImage ||
+            u.imageUrl ||
+            (typeof u.avatar === "string" && (u.avatar.includes("/") || u.avatar.startsWith("http") || u.avatar.startsWith("data:")) ? u.avatar : undefined);
+          return {
+            id: String(u.id || u._id || Math.random()),
+            name: String(u.name || u.username || u.email || "").trim(),
+            email: String(u.email || "").trim(),
+            avatarUrl: rawAvatar ? toProxiedUrl(rawAvatar, authToken) : undefined,
+          };
+        })
         .filter((e) => e.name.length > 0),
-    [usersQuery.data]
+    [usersQuery.data, authToken]
   );
   const projectOptions = useMemo(() => projects.map((p) => ({ id: String(p.id || p._id), name: p.name })), [projects]);
 
@@ -195,6 +225,52 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
     });
   };
 
+  const handleUpdateTaskFull = (payload: TaskFormPayload) => {
+    if (!editingTask || !updateTask) return;
+    updateTask.mutate(
+      { taskId: editingTask.id, payload },
+      {
+        onSuccess: () => {
+          setEditingTask(null);
+          toast({ title: "Task updated", variant: "success" });
+          if (selectedTask?.id === editingTask.id) {
+            setSelectedTask((prev) => (prev ? { ...prev, ...payload } : null));
+          }
+        },
+        onError: (err: any) => {
+          const msg = err?.message || err?.error?.message || "Failed to update task";
+          Alert.alert("Task Error", msg);
+        },
+      }
+    );
+  };
+
+  const handleDeleteTaskAttachment = (attachmentIndex: number) => {
+    if (!selectedTask) return;
+    if (deleteTaskAttachment) {
+      deleteTaskAttachment.mutate(
+        { taskId: selectedTask.id, attachmentIndex },
+        {
+          onSuccess: () => {
+            const updated = [...(selectedTask.attachments || [])];
+            updated.splice(attachmentIndex, 1);
+            setSelectedTask({ ...selectedTask, attachments: updated });
+            toast({ title: "Attachment removed", variant: "success" });
+          },
+          onError: (err: any) => {
+            Alert.alert("Error", err?.message || "Failed to delete attachment");
+          },
+        }
+      );
+    } else {
+      const updated = [...(selectedTask.attachments || [])];
+      updated.splice(attachmentIndex, 1);
+      updateAttachments?.mutate({ taskId: selectedTask.id, attachments: updated });
+      setSelectedTask({ ...selectedTask, attachments: updated });
+      toast({ title: "Attachment removed" });
+    }
+  };
+
   const handleCreateProject = (payload: ProjectFormPayload) => {
     createProject.mutate({
       name: payload.name,
@@ -207,21 +283,108 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
     toast({ title: "Project created" });
   };
 
-  const handleDeleteTask = () => {
-    if (!selectedTask) return;
+  const handleUpdateProject = (payload: Partial<Project>) => {
+    if (!selectedProject || !updateProject) return;
+    updateProject.mutate(
+      { projectId: selectedProject.id, payload },
+      {
+        onSuccess: () => {
+          setSelectedProject((prev) => (prev ? { ...prev, ...payload } : null));
+          toast({ title: "Project updated", variant: "success" });
+        },
+        onError: (err: any) => {
+          Alert.alert("Project Error", err?.message || "Failed to update project");
+        },
+      }
+    );
+  };
+
+  const handleDeleteProject = () => {
+    if (!selectedProject || !deleteProject) return;
+    Alert.alert("Delete this project?", "All associated tasks may be affected. This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          deleteProject.mutate(selectedProject.id, {
+            onSuccess: () => {
+              setSelectedProject(null);
+              toast({ title: "Project deleted", variant: "success" });
+            },
+            onError: (err: any) => {
+              Alert.alert("Error", err?.message || "Failed to delete project");
+            },
+          });
+        },
+      },
+    ]);
+  };
+
+  const handleAddProjectAttachments = (newFiles: any[]) => {
+    if (!selectedProject) return;
+    if (addProjectAttachments) {
+      addProjectAttachments.mutate(
+        { projectId: selectedProject.id, attachments: newFiles },
+        {
+          onSuccess: () => {
+            const current = selectedProject.attachments || [];
+            setSelectedProject({ ...selectedProject, attachments: [...current, ...newFiles] });
+            toast({ title: "Files attached to project", variant: "success" });
+          },
+          onError: (err: any) => {
+            Alert.alert("Error", err?.message || "Failed to upload project attachments");
+          },
+        }
+      );
+    }
+  };
+
+  const handleDeleteProjectAttachment = (attachmentIndex: number) => {
+    if (!selectedProject || !deleteProjectAttachment) return;
+    deleteProjectAttachment.mutate(
+      { projectId: selectedProject.id, attachmentIndex },
+      {
+        onSuccess: () => {
+          const current = [...(selectedProject.attachments || [])];
+          current.splice(attachmentIndex, 1);
+          setSelectedProject({ ...selectedProject, attachments: current });
+          toast({ title: "Project attachment deleted", variant: "success" });
+        },
+        onError: (err: any) => {
+          Alert.alert("Error", err?.message || "Failed to delete attachment");
+        },
+      }
+    );
+  };
+
+  const handleDeleteTaskTarget = (task: Task) => {
     Alert.alert("Delete this task?", "This can't be undone.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          deleteTask.mutate(selectedTask.id);
-          setSelectedTask(null);
-          toast({ title: "Task deleted" });
+          deleteTask.mutate(task.id);
+          if (selectedTask?.id === task.id) {
+            setSelectedTask(null);
+          }
+          toast({ title: "Task deleted", variant: "success" });
         },
       },
     ]);
   };
+
+  const handleDeleteTask = () => {
+    if (!selectedTask) return;
+    handleDeleteTaskTarget(selectedTask);
+  };
+
+  const selectedTaskParentProject = useMemo(() => {
+    if (!selectedTask) return null;
+    const pid = typeof selectedTask.projectId === "string" ? selectedTask.projectId : selectedTask.projectId?._id || selectedTask.projectId?.id;
+    return pid ? projects.find((p) => String(p.id || p._id) === String(pid)) || null : null;
+  }, [selectedTask, projects]);
 
   const renderView = () => {
     if (selectedProject) {
@@ -233,6 +396,12 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
           onOpenTask={setSelectedTask}
           onToggleComplete={handleToggleComplete}
           onQuickAdd={handleQuickAdd}
+          onEditTask={(t) => setEditingTask(t)}
+          onDeleteTask={capabilities.canDeleteTask ? handleDeleteTaskTarget : undefined}
+          onUpdateProject={capabilities.canCreateProject ? handleUpdateProject : undefined}
+          onDeleteProject={capabilities.canCreateProject ? handleDeleteProject : undefined}
+          onAddProjectAttachments={handleAddProjectAttachments}
+          onDeleteProjectAttachment={handleDeleteProjectAttachment}
           canManageCost={capabilities.canManageCost}
           canCreate={capabilities.canCreateTask}
         />
@@ -245,15 +414,36 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
             tasks={tasks}
             onOpenTask={setSelectedTask}
             onToggleComplete={handleToggleComplete}
+            onEditTask={(t) => setEditingTask(t)}
+            onDeleteTask={capabilities.canDeleteTask ? handleDeleteTaskTarget : undefined}
             onQuickAdd={handleQuickAdd}
             onSwitchToAll={() => setView("all")}
             canCreate={capabilities.canCreateTask}
           />
         );
       case "inbox":
-        return <InboxView tasks={tasks} onOpenTask={setSelectedTask} onToggleComplete={handleToggleComplete} onQuickAdd={handleQuickAdd} />;
+        return (
+          <InboxView
+            tasks={tasks}
+            onOpenTask={setSelectedTask}
+            onToggleComplete={handleToggleComplete}
+            onEditTask={(t) => setEditingTask(t)}
+            onDeleteTask={capabilities.canDeleteTask ? handleDeleteTaskTarget : undefined}
+            onQuickAdd={handleQuickAdd}
+          />
+        );
       case "upcoming":
-        return <UpcomingView tasks={tasks} onOpenTask={setSelectedTask} onToggleComplete={handleToggleComplete} onQuickAdd={handleQuickAdd} canCreate={capabilities.canCreateTask} />;
+        return (
+          <UpcomingView
+            tasks={tasks}
+            onOpenTask={setSelectedTask}
+            onToggleComplete={handleToggleComplete}
+            onEditTask={(t) => setEditingTask(t)}
+            onDeleteTask={capabilities.canDeleteTask ? handleDeleteTaskTarget : undefined}
+            onQuickAdd={handleQuickAdd}
+            canCreate={capabilities.canCreateTask}
+          />
+        );
       case "all":
         return (
           <AllTasksView
@@ -261,6 +451,8 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
             projectOptions={projectOptions}
             onOpenTask={setSelectedTask}
             onToggleComplete={handleToggleComplete}
+            onEditTask={(t) => setEditingTask(t)}
+            onDeleteTask={capabilities.canDeleteTask ? handleDeleteTaskTarget : undefined}
             onQuickAdd={handleQuickAdd}
             canCreate={capabilities.canCreateTask}
           />
@@ -298,16 +490,42 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
         <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
           {selectedProject ? selectedProject.name : headerTitle}
         </Text>
-        {!selectedProject && capabilities.canCreateTask && (
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: theme.accent.primary }]}
-            onPress={() => setIsCreateTaskOpen(true)}
+            style={[
+              styles.workspaceBtn,
+              {
+                backgroundColor: theme.bg.surfaceRaised,
+                borderColor: theme.border.default,
+              },
+            ]}
+            onPress={() => {
+              const route =
+                capabilities.role === "admin" || capabilities.role === "super-admin"
+                  ? "/(admin)/task-workspace"
+                  : capabilities.role === "manager"
+                  ? "/(manager)/task-workspace"
+                  : "/(tabs)/task-workspace";
+              router.push(route as any);
+            }}
             activeOpacity={0.85}
           >
-            <Plus size={15} color="#FFFFFF" strokeWidth={2.5} />
-            <Text style={styles.addBtnText}>Add Task</Text>
+            <LayoutGrid size={14} color={theme.accent.primary} />
+            <Text style={[styles.workspaceBtnText, { color: theme.text.primary }]}>
+              Workspace
+            </Text>
           </TouchableOpacity>
-        )}
+          {!selectedProject && capabilities.canCreateTask && (
+            <TouchableOpacity
+              style={[styles.addBtn, { backgroundColor: theme.accent.primary }]}
+              onPress={() => setIsCreateTaskOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Plus size={15} color="#FFFFFF" strokeWidth={2.5} />
+              <Text style={styles.addBtnText}>Add Task</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* View Tabs Bar - fixed height to prevent vertical stretching */}
@@ -389,11 +607,13 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
         visible={!!selectedTask}
         task={selectedTask}
         projectName={selectedTask ? resolveProjectName(selectedTask) : undefined}
+        project={selectedTaskParentProject}
         capabilities={capabilities}
         comments={commentsQuery.data || []}
         commentsLoading={commentsQuery.isLoading}
         onClose={() => setSelectedTask(null)}
         onToggleComplete={handleToggleComplete}
+        onEditTask={(t) => setEditingTask(t)}
         onToggleSubtask={(subtaskId, completed) => selectedTask && toggleSubtask.mutate({ taskId: selectedTask.id, subtaskId, completed })}
         onChangeStatus={(status) => {
           if (!selectedTask) return;
@@ -416,6 +636,7 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
           setSelectedTask({ ...selectedTask, attachments: merged });
           toast({ title: "Attachment added", variant: "success" });
         }}
+        onDeleteAttachment={handleDeleteTaskAttachment}
         onDelete={capabilities.canDeleteTask ? handleDeleteTask : undefined}
       />
 
@@ -429,6 +650,22 @@ export default function TasksScreenShell({ api, capabilities, headerTitle = "Tas
         defaultProjectId={selectedProject?.id}
         canAssign={capabilities.canAssign}
       />
+
+      {/* Edit Task Modal */}
+      {editingTask && (
+        <CreateTaskModal
+          visible={!!editingTask}
+          onClose={() => setEditingTask(null)}
+          onSubmit={handleUpdateTaskFull}
+          isSubmitting={updateTask?.isPending || false}
+          initialTask={editingTask}
+          isEditing={true}
+          employeeOptions={employeeOptions}
+          projectOptions={projectOptions}
+          defaultProjectId={typeof editingTask.projectId === "string" ? editingTask.projectId : editingTask.projectId?._id || editingTask.projectId?.id}
+          canAssign={capabilities.canAssign}
+        />
+      )}
 
       <CreateProjectModal
         visible={isCreateProjectOpen}
@@ -457,6 +694,24 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
     letterSpacing: -0.4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  workspaceBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  workspaceBtnText: {
+    fontWeight: "700",
+    fontSize: 12.5,
   },
   addBtn: {
     flexDirection: "row",

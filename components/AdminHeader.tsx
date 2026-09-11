@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import {
   Bell,
   Menu,
+  LayoutGrid,
   LogOut,
   Mail,
   Bug,
@@ -645,6 +646,14 @@ export default function AdminHeader({ onMenuPress }: { onMenuPress: () => void }
           <View style={styles.actionIconClusterRow}>
             <TouchableOpacity style={styles.iconActionItem} onPress={onMenuPress} activeOpacity={0.7}>
               <Menu color="#FFFFFF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.iconActionItem}
+              onPress={() => router.push("/(admin)/task-workspace" as any)}
+              activeOpacity={0.7}
+            >
+              <LayoutGrid color="#FFFFFF" size={18} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.iconActionItem} onPress={() => router.push("/(admin)/messaging" as any)}>

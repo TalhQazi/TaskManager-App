@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Task Manager",
+    "name": "Task Manager Pro",
     "slug": "employee-mobile-app-50y6sgn",
     "version": "21.0.0",
     "orientation": "default",
@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.employee-mobile-app-50y6sgn"
+      "bundleIdentifier": "app.rork.employee-mobile-app-50y6sgn",
+      "infoPlist": {
+        "CFBundleDisplayName": "Task Manager Pro"
+      }
     },
     "android": {
       "largeHeap": true,
@@ -47,7 +50,9 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_MEDIA_IMAGES",
-        "READ_MEDIA_VIDEO"
+        "READ_MEDIA_VIDEO",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
       ]
     },
     "web": {

@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   LucideIcon,
   ChevronRight,
+  LayoutGrid,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -194,7 +195,7 @@ export default function AdminHomeScreen() {
     return [
       { title: 'Active Employee', value: summary.employeeTotal, icon: Users, variant: 'indigo', route: '/(admin)/employee-directory' },
       { title: 'Active Projects', value: summary.projectTotal, icon: Folder, variant: 'purple', route: '/(admin)/task-management' },
-      { title: 'Active Tasks', value: summary.activeTasks, icon: ClipboardCheck, variant: 'blue', route: '/(admin)/task-history' },
+      { title: 'Active Tasks', value: summary.activeTasks, icon: ClipboardCheck, variant: 'blue', route: '/(admin)/task-workspace' },
       { title: 'Clocked In', value: summary.employeesWorking, icon: Clock, variant: 'green', route: '/(admin)/time-tracking' },
       { title: 'Companies', value: summary.companyTotal, icon: Building2, variant: 'dark-grey', route: '/(admin)/companies' },
       { title: 'Due Today', value: summary.dueToday, icon: Calendar, variant: 'blue', route: '/(admin)/task-management' },
@@ -298,6 +299,65 @@ export default function AdminHomeScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Task Workspace Quick Banner */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => router.push('/(admin)/task-workspace' as any)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: colors.cardBg,
+            borderColor: colors.borderColor,
+            borderWidth: 1,
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 16,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <LayoutGrid size={22} color="#3B82F6" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.textColor, fontSize: 15, fontWeight: '700' }}>
+                Task Workspace
+              </Text>
+              <Text style={{ color: colors.mutedText, fontSize: 12, marginTop: 2 }}>
+                Card, List, Kanban, Workload, Calendar, Timeline & more
+              </Text>
+            </View>
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#3B82F6',
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 8,
+              gap: 4,
+            }}
+          >
+            <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Open</Text>
+            <ChevronRight size={14} color="#ffffff" />
+          </View>
+        </TouchableOpacity>
 
         {/* Section Header */}
         <View style={s(styles.sectionHeaderRow)}>
